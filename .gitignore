@@ -20,6 +20,9 @@ CVSight annotation platform/
 
 # Private benchmark images, annotations, and measurements
 benchmark-local/
+backup-local/
+*.dump
+*.backup
 
 # Python development artifacts
 __pycache__/

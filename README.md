@@ -26,6 +26,14 @@ uv run python -m shelfsight_api.auth_cli
    `reviewer` roles. The example keeps secure cookies off for local HTTP; set
    `SHELFSIGHT_SESSION_COOKIE_SECURE=true` when serving through HTTPS.
 5. Load the variables from `.env` into the current terminal.
+
+```powershell
+Get-Content .env | Where-Object { $_ -and -not $_.StartsWith('#') } | ForEach-Object {
+    $name, $value = $_.Split('=', 2)
+    Set-Item -Path "Env:$name" -Value $value
+}
+```
+
 6. Install dependencies:
 
 ```powershell
@@ -68,6 +76,11 @@ Run the networked dependency and container vulnerability gate before a release:
 
 The threat model, privacy behavior, retention rules, deletion boundary, access logging,
 and current vulnerability acceptance are documented in [SECURITY.md](SECURITY.md).
+The verified backup, clean restore, restart, and projection rebuild procedures are in
+[RECOVERY.md](RECOVERY.md).
+The supported release boundary, configuration matrix, GPU guidance, workflow, and known
+limitations are in [RELEASE.md](RELEASE.md). Dependency, model, dataset, and artifact
+licensing is recorded in [LICENSE_POLICY.md](LICENSE_POLICY.md).
 
 ## Database migrations
 

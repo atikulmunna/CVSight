@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import os
 from io import BytesIO
 from pathlib import Path
 
@@ -128,6 +129,32 @@ def test_managed_storage_writes_once_and_supports_cleanup(tmp_path: Path) -> Non
     assert not resolve_media_path(tmp_path, prepared.original_media_key).exists()
     assert not resolve_media_path(tmp_path, prepared.canonical_media_key).exists()
     assert not resolve_media_path(tmp_path, prepared.thumbnail_media_key).exists()
+
+
+def test_managed_storage_removes_partial_files_after_a_write_failure(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    prepared = prepare_image(image_bytes(), "shelf.jpg")
+    original_link = os.link
+    link_count = 0
+
+    def fail_second_link(source: str, target: str) -> None:
+        nonlocal link_count
+        link_count += 1
+        if link_count == 2:
+            raise OSError("simulated disk pressure")
+        original_link(source, target)
+
+    monkeypatch.setattr("shelfsight_api.media.os.link", fail_second_link)
+
+    with pytest.raises(OSError, match="disk pressure"):
+        write_media_bundle(tmp_path, prepared)
+
+    assert not resolve_media_path(tmp_path, prepared.original_media_key).exists()
+    assert not resolve_media_path(tmp_path, prepared.canonical_media_key).exists()
+    assert not resolve_media_path(tmp_path, prepared.thumbnail_media_key).exists()
+    assert not [path for path in tmp_path.rglob("*") if path.is_file()]
 
 
 @pytest.mark.parametrize(

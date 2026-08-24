@@ -12,7 +12,7 @@ from zipfile import ZIP_DEFLATED, ZipFile
 import pytest
 from fastapi.testclient import TestClient
 from PIL import Image
-from sqlalchemy import Connection, Engine, delete, insert, update
+from sqlalchemy import Connection, Engine, delete, func, insert, select, update
 
 from shelfsight_api.app import app
 from shelfsight_api.data_model import create_annotation, snapshot_dataset_version
@@ -32,6 +32,7 @@ from shelfsight_api.models import (
     datasets,
     images,
     skus,
+    snapshot_artifacts,
 )
 
 client = TestClient(app)
@@ -365,6 +366,46 @@ def test_export_rejects_missing_media_and_malformed_archives(
         )
     with pytest.raises(InvalidExportArchiveError, match="unsafe path"):
         validate_export_archive(unsafe.getvalue(), "detection")
+
+
+def test_interrupted_export_does_not_register_an_artifact(
+    database_engine: Engine,
+    export_target: ExportTarget,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setattr("shelfsight_api.export_api.get_engine", lambda: database_engine)
+    monkeypatch.setattr(
+        "shelfsight_api.export_api.get_media_root",
+        lambda: export_target.media_root,
+    )
+    monkeypatch.setattr(
+        "shelfsight_api.export_api.build_detection_export",
+        lambda *_args: (_ for _ in ()).throw(OSError("interrupted export")),
+    )
+    with database_engine.connect() as connection:
+        before = connection.execute(
+            select(func.count())
+            .select_from(snapshot_artifacts)
+            .where(
+                snapshot_artifacts.c.dataset_version_id == export_target.version_id
+            )
+        ).scalar_one()
+
+    response = client.get(
+        f"/api/dataset-versions/{export_target.version_id}/exports/detection"
+    )
+
+    assert response.status_code == 503
+    assert response.json()["detail"]["code"] == "export_unavailable"
+    with database_engine.connect() as connection:
+        after = connection.execute(
+            select(func.count())
+            .select_from(snapshot_artifacts)
+            .where(
+                snapshot_artifacts.c.dataset_version_id == export_target.version_id
+            )
+        ).scalar_one()
+    assert after == before
 
 
 def test_export_service_rejects_an_open_snapshot(

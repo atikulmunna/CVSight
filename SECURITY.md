@@ -59,9 +59,10 @@ original.
 - Backups must contain PostgreSQL and managed media from the same recovery point, be
   encrypted at rest, be limited to operators, and be retained for no more than 30 days
   after replacement. A source-retirement request also applies to every backup copy.
-- T038 must validate the backup and complete-deployment deletion procedures before the
-  first release. Until that gate passes, this repository does not claim verified
-  recovery or selective deletion.
+- T038 validated checksummed PostgreSQL and managed-media backup, clean restore,
+  restart recovery, and rebuildable projections on 2026-08-24. The procedure and
+  repeatable recovery drill are documented in `RECOVERY.md`. Selective deletion is
+  still not supported.
 
 ## Access logging
 
@@ -83,6 +84,7 @@ It audits the frozen Python runtime graph with pip-audit, audits the full npm gr
 rebuilds the rootless database image from its pinned base with current Debian security
 updates, and scans the resulting local image with pinned Trivy 0.74.0. Any fixable high
 or critical finding fails the command. The script requires network access and Docker.
+Passing evidence is retained locally at `benchmark-local/t039-security-report.json`.
 
 On 2026-08-24 the gate fixed five Starlette advisories by upgrading FastAPI and
 Starlette, fixed two high npm transitive advisories, and removed 22 fixable high or
