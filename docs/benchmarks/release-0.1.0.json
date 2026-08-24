@@ -1,0 +1,177 @@
+{
+  "schema": "cvsight-public-benchmark/v1",
+  "release": "0.1.0",
+  "source_commit": "d86e02b84f6775b4ed561a3767f1fe78053ffb1a",
+  "recorded_on": "2026-08-24",
+  "private_data_included": false,
+  "release_gates_passed": true,
+  "environment": {
+    "operating_system": "Windows 11",
+    "python": "3.13.5",
+    "node": "24.15.0",
+    "npm": "11.12.1",
+    "database": "PostgreSQL 17 with pgvector 0.8.6",
+    "logical_processors": 32,
+    "optional_model_gpu": "NVIDIA RTX 5060 Laptop GPU",
+    "optional_model_gpu_vram_mib": 8151
+  },
+  "install": {
+    "passed": true,
+    "duration_seconds": 48.214,
+    "source_file_count_at_capture": 205,
+    "service_smoke_checks_passed": true
+  },
+  "functional_checks": {
+    "passed": true,
+    "python_tests_passed": 204,
+    "optional_model_tests_skipped": 95,
+    "frontend_tests_passed": 100,
+    "ruff_passed": true,
+    "mypy_passed": true,
+    "eslint_passed": true,
+    "typescript_passed": true,
+    "frontend_build_passed": true
+  },
+  "scale": {
+    "passed": true,
+    "configured_gates_passed": 18,
+    "errors": 0,
+    "fixture": {
+      "image_metadata_rows": 100000,
+      "catalog_skus": 2000,
+      "dense_image_annotations": 300,
+      "queued_jobs": 1000,
+      "gallery_embeddings": 2000,
+      "export_images": 250,
+      "export_annotations": 3000
+    },
+    "measurements": {
+      "image_metadata_api_p95_ms": 44.0476,
+      "dense_annotations_api_p95_ms": 57.2365,
+      "full_catalog_api_p95_ms": 431.8873,
+      "catalog_search_api_p95_ms": 64.9623,
+      "expected_failure_paths_p95_ms": 76.5693,
+      "job_throughput_per_second": 124.726,
+      "job_duration_p95_ms": 42.0286,
+      "similarity_search_p95_ms": 114.8398,
+      "detection_export_p95_ms": 834.4735,
+      "recognition_export_p95_ms": 2798.1873,
+      "database_seed_growth_bytes": 112053084,
+      "database_bytes_per_image_metadata_row": 1120.531,
+      "database_workload_growth_bytes": 603300,
+      "python_traced_peak_bytes": 22702279,
+      "python_retained_growth_bytes": 814530
+    },
+    "gates": {
+      "image_metadata_api_p95_ms": 100,
+      "dense_annotations_api_p95_ms": 500,
+      "full_catalog_api_p95_ms": 750,
+      "catalog_search_api_p95_ms": 250,
+      "expected_failure_paths_p95_ms": 250,
+      "job_throughput_per_second_minimum": 50,
+      "job_duration_p95_ms": 150,
+      "similarity_search_p95_ms": 250,
+      "detection_export_p95_ms": 3000,
+      "recognition_export_p95_ms": 12000,
+      "database_seed_growth_bytes": 335544320,
+      "database_workload_growth_bytes": 33554432,
+      "python_traced_peak_bytes": 536870912,
+      "python_retained_growth_bytes": 67108864,
+      "api_errors": 0,
+      "job_errors": 0,
+      "similarity_errors": 0,
+      "export_errors": 0
+    }
+  },
+  "canvas": {
+    "passed": true,
+    "evidence_source": "human-reported production canvas measurement",
+    "calendar_date_captured": false,
+    "box_count": 354,
+    "fresh_automated_rerun_available": false,
+    "measurements": {
+      "browser_baseline_p95_ms": 16.8,
+      "canvas_frame_interval_p95_ms": 16.8,
+      "selection_update_p95_ms": 1.8,
+      "input_latency_p95_ms": 16.9,
+      "browser_baseline_max_ms": 16.8,
+      "canvas_frame_interval_max_ms": 66.9,
+      "selection_update_max_ms": 2.7,
+      "input_latency_max_ms": 46.2
+    },
+    "gates": {
+      "browser_baseline_p95_ms": 20,
+      "canvas_frame_interval_p95_ms": 25,
+      "selection_update_p95_ms": 8,
+      "input_latency_p95_ms": 25
+    }
+  },
+  "recovery": {
+    "passed": true,
+    "duration_seconds": 30.497,
+    "database_clean_restore_matches_source": true,
+    "database_restart_preserved_state": true,
+    "expired_worker_claims_recovered": 1,
+    "projection_rebuild_equivalent": true,
+    "similarity_targets_rebuilt": 3,
+    "managed_media_files_in_backup": 6
+  },
+  "security": {
+    "passed": true,
+    "duration_seconds": 21.811,
+    "python_known_vulnerabilities": 0,
+    "npm_vulnerabilities": 0,
+    "database_image_fixable_high_or_critical_findings": 0,
+    "database_image_unfixed_high_or_critical_findings": 60,
+    "unfixed_findings_documented_as_narrow_acceptance": true
+  },
+  "licenses": {
+    "passed": true,
+    "locked_core_python_packages": 62,
+    "installed_optional_fiftyone_packages": 128,
+    "npm_packages": 266,
+    "private_artifacts_absent_from_shipped_source": true,
+    "source_license_grant_present": false
+  },
+  "exploratory_models": {
+    "release_accuracy_evidence": false,
+    "dataset_limitations": [
+      "Annotations cover 48 selected SKUs rather than every visible product.",
+      "Related scenes crossed the original dataset splits.",
+      "Generic precision is withheld because labels are incomplete."
+    ],
+    "rf_detr_full_image": {
+      "status": "suggestion_only",
+      "target_label_recall_percent": 90.41,
+      "warm_p50_ms": 39.0,
+      "peak_reserved_vram_mib": 308,
+      "duplicate_rate_percent": 11.86
+    },
+    "rf_detr_sliced_2_by_2": {
+      "status": "dense_scene_retry_only",
+      "target_label_recall_percent": 92.62,
+      "overlap_stratum_recall_percent": 82.05,
+      "warm_p50_ms": 93.2
+    },
+    "sam_box_refinement": {
+      "status": "optional_dedicated_worker_only",
+      "selected_label_recall_percent": 98.89,
+      "warm_p95_ms": 704.3,
+      "throughput_images_per_second": 1.8,
+      "peak_reserved_vram_mib": 7910
+    },
+    "clip_recognition": {
+      "status": "rejected_for_automatic_assignment",
+      "known_top_1_percent": 47.0,
+      "known_top_5_percent": 76.5,
+      "unknown_false_acceptance_percent": 50.0,
+      "peak_reserved_vram_mib": 754
+    },
+    "clip_propagation": {
+      "status": "rejected_for_automatic_propagation",
+      "same_sku_top_1_percent": 50.0,
+      "same_sku_top_5_percent": 76.5,
+      "hard_pair_confusion_percent": 13.33
+    }
+  }
+}
