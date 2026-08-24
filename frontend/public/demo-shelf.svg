@@ -1,0 +1,13 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1920" height="1080" viewBox="0 0 1920 1080">
+  <defs>
+    <pattern id="product-grid" width="46" height="126" patternUnits="userSpaceOnUse">
+      <rect x="4" y="4" width="38" height="102" rx="2" fill="#38414a"/>
+      <rect x="8" y="11" width="30" height="17" rx="2" fill="#56616c"/>
+      <rect x="8" y="34" width="30" height="60" rx="2" fill="#2d343b"/>
+      <path d="M0 116H46" stroke="#68737d" stroke-width="6"/>
+    </pattern>
+  </defs>
+  <rect width="1920" height="1080" fill="#15191d"/>
+  <rect x="38" y="50" width="1844" height="1008" fill="url(#product-grid)"/>
+  <path d="M38 50H1882M38 1058H1882" stroke="#89939d" stroke-width="5"/>
+</svg>

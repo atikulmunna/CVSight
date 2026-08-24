@@ -1,0 +1,55 @@
+# Local agent and planning instructions
+AGENTS.md
+**/AGENTS.md
+ShelfSight_SRS.md
+*_SRS.md
+*-SRS.md
+SRS.md
+tasks.md
+**/tasks.md
+PLAN.md
+ROADMAP.md
+planning/
+docs/planning/
+handoff/
+docs/handoff/
+.agents/
+.claude/
+.codex/
+CVSight annotation platform/
+
+# Private benchmark images, annotations, and measurements
+benchmark-local/
+
+# Python development artifacts
+__pycache__/
+*.py[cod]
+.pytest_cache/
+.pytest-*/
+.pytest-tmp/
+.pytest-run/
+.pytest-security/
+.security-image-scan-*.tar
+.ruff_cache/
+.mypy_cache/
+.venv/
+.venv-fiftyone/
+.uv-cache/
+*.egg-info/
+
+# Local configuration and database state
+.env
+media-local/
+import-local/
+fiftyone-local/
+
+# Frontend development artifacts
+frontend/node_modules/
+frontend/dist/
+frontend/coverage/
+frontend/public/local-fixtures/
+
+# Operating-system metadata
+.DS_Store
+Thumbs.db
+desktop.ini

@@ -1,0 +1,162 @@
+import { parseCanvasFixture, type CanvasFixture, type OverlayState } from "./model";
+
+type Fetcher = typeof fetch;
+
+export class LiveFixtureError extends Error {
+  constructor(
+    readonly status: number,
+    readonly code: string,
+  ) {
+    super("live image workspace failed to load");
+  }
+}
+
+export async function loadLiveFixture(
+  imageId: string,
+  fetcher: Fetcher = fetch,
+): Promise<CanvasFixture> {
+  if (!isUuid(imageId)) {
+    throw new LiveFixtureError(400, "invalid_image_id");
+  }
+  const encodedId = encodeURIComponent(imageId);
+  const [imageResponse, annotationsResponse] = await Promise.all([
+    fetcher(`/api/images/${encodedId}`, {
+      headers: { Accept: "application/json" },
+    }),
+    fetcher(`/api/images/${encodedId}/annotations`, {
+      headers: { Accept: "application/json" },
+    }),
+  ]);
+  const imageBody = await responseBody(imageResponse);
+  const annotationsBody = await responseBody(annotationsResponse);
+  if (!imageResponse.ok) {
+    throw requestError(imageResponse.status, imageBody);
+  }
+  if (!annotationsResponse.ok) {
+    throw requestError(annotationsResponse.status, annotationsBody);
+  }
+
+  const image = record(imageBody);
+  const annotationList = record(annotationsBody).annotations;
+  if (!Array.isArray(annotationList)) {
+    throw new LiveFixtureError(502, "invalid_response");
+  }
+  const loadedImageId = requiredString(image.id);
+  if (loadedImageId !== imageId) {
+    throw new LiveFixtureError(502, "invalid_response");
+  }
+
+  try {
+    return parseCanvasFixture({
+      name: requiredString(image.original_filename),
+      image: {
+        width: image.width,
+        height: image.height,
+      },
+      images: [
+        {
+          id: loadedImageId,
+          url: image.canonical_url,
+          x: 0,
+          y: 0,
+          width: image.width,
+          height: image.height,
+        },
+      ],
+      boxes: annotationList.map((value) => liveAnnotation(value, loadedImageId)),
+    });
+  } catch (error) {
+    if (error instanceof LiveFixtureError) {
+      throw error;
+    }
+    throw new LiveFixtureError(502, "invalid_response");
+  }
+}
+
+function liveAnnotation(value: unknown, imageId: string): Record<string, unknown> {
+  const annotation = record(value);
+  if (requiredString(annotation.image_id) !== imageId) {
+    throw new LiveFixtureError(502, "invalid_response");
+  }
+  return {
+    id: requiredString(annotation.id),
+    server_id: annotation.id,
+    image_id: annotation.image_id,
+    revision: annotation.revision,
+    x: annotation.x,
+    y: annotation.y,
+    width: annotation.width,
+    height: annotation.height,
+    kind: annotation.class_type,
+    state: overlayState(
+      annotation.lifecycle_state,
+      annotation.review_state,
+      annotation.source,
+    ),
+    lifecycle_state: annotation.lifecycle_state,
+    review_state: annotation.review_state,
+    sku: annotation.sku_id === null ? "Unknown SKU" : "Assigned SKU",
+    sku_id: annotation.sku_id,
+    confidence: annotation.confidence,
+    occluded: annotation.occluded,
+    truncated: annotation.truncated,
+    shelf_row: annotation.shelf_row,
+    image_index: 0,
+  };
+}
+
+function overlayState(
+  lifecycle: unknown,
+  review: unknown,
+  source: unknown,
+): OverlayState {
+  if (review === "flagged") {
+    return "flagged";
+  }
+  if (lifecycle === "verified" && review === "accepted") {
+    return "verified";
+  }
+  if (source === "propagated") {
+    return "propagated";
+  }
+  return "unverified";
+}
+
+function isUuid(value: string): boolean {
+  return /^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(
+    value,
+  );
+}
+
+function requestError(status: number, value: unknown): LiveFixtureError {
+  if (!value || typeof value !== "object" || Array.isArray(value)) {
+    return new LiveFixtureError(status, "request_failed");
+  }
+  const detail = (value as Record<string, unknown>).detail;
+  if (!detail || typeof detail !== "object" || Array.isArray(detail)) {
+    return new LiveFixtureError(status, "request_failed");
+  }
+  const code = (detail as Record<string, unknown>).code;
+  return new LiveFixtureError(
+    status,
+    typeof code === "string" ? code : "request_failed",
+  );
+}
+
+function record(value: unknown): Record<string, unknown> {
+  if (!value || typeof value !== "object" || Array.isArray(value)) {
+    throw new LiveFixtureError(502, "invalid_response");
+  }
+  return value as Record<string, unknown>;
+}
+
+function requiredString(value: unknown): string {
+  if (typeof value !== "string" || value === "") {
+    throw new LiveFixtureError(502, "invalid_response");
+  }
+  return value;
+}
+
+function responseBody(response: Response): Promise<unknown> {
+  return response.json().catch(() => null);
+}

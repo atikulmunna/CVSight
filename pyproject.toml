@@ -1,0 +1,47 @@
+[build-system]
+requires = ["setuptools>=80"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "shelfsight"
+version = "0.1.0"
+requires-python = ">=3.12"
+dependencies = [
+    "alembic>=1.16,<2",
+    "fastapi>=0.116,<1",
+    "pgvector>=0.4,<1",
+    "pillow==12.3.0",
+    "psycopg[binary]>=3.2,<4",
+    "python-multipart==0.0.32",
+    "sqlalchemy>=2.0,<3",
+    "uvicorn>=0.35,<1",
+]
+
+[dependency-groups]
+dev = [
+    "httpx>=0.28,<1",
+    "mypy>=1.17,<2",
+    "pip-audit==2.10.1",
+    "pytest>=8.4,<10",
+    "ruff>=0.12,<1",
+]
+
+[tool.pytest.ini_options]
+addopts = "-q"
+testpaths = ["tests"]
+tmp_path_retention_policy = "none"
+
+[tool.ruff]
+line-length = 100
+target-version = "py312"
+
+[tool.ruff.lint]
+select = ["B", "E", "F", "I", "UP"]
+
+[tool.mypy]
+python_version = "3.13"
+strict = true
+files = ["shelfsight_api"]
+
+[tool.setuptools.packages.find]
+include = ["benchmark_tool*", "shelfsight_api*"]
