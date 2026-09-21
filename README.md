@@ -4,6 +4,33 @@ CVSight is a self-hosted image annotation platform for dense retail shelves. The
 current application shell contains a React and TypeScript frontend, a FastAPI backend,
 PostgreSQL connectivity, and an Alembic migration path.
 
+## Interface
+
+The shelf photos below are synthetic renders used for the demo project, so the
+screenshots contain no store imagery.
+
+Projects dashboard. Each tile previews the project's first shelf photos.
+
+![Projects dashboard with two project tiles](docs/screenshots/dashboard.jpg)
+
+Project overview. The shelf rail in the header fills as images are reviewed, and the
+progress cards track box decisions, known identities, and QA.
+
+![Project overview with the shelf rail and progress cards](docs/screenshots/project-overview.jpg)
+
+Images. Upload shelf photos, filter by labeling state, and open one for annotation.
+
+![Project images grid with status chips](docs/screenshots/images.jpg)
+
+Verify boxes. Model proposals, verified facings, flagged boxes, and gaps sit on the
+canvas with a decision panel and keyboard shortcuts.
+
+![Verify boxes workspace with a selected facing](docs/screenshots/verify-boxes.jpg)
+
+Assign SKUs. Number keys assign catalog candidates to the selected verified facing.
+
+![Assign SKUs workspace with the catalog picker open](docs/screenshots/assign-skus.jpg)
+
 ## Requirements
 
 - Python 3.12 or newer
