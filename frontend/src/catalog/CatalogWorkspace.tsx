@@ -222,7 +222,7 @@ export function CatalogWorkspace({
     <main className="catalog-workspace">
       <aside className="catalog-sidebar" aria-label="SKU catalog search">
         <div className="catalog-summary">
-          <span className="eyebrow">SKU CATALOG</span>
+          <span className="eyebrow">Catalog</span>
           <strong>{visibleCatalog.length.toLocaleString()} results</strong>
           <span className="catalog-source" data-source={source}>
             {source}
@@ -291,7 +291,7 @@ export function CatalogWorkspace({
       <section className="catalog-detail" aria-label="SKU details">
         <header className="catalog-detail-header">
           <div>
-            <span className="eyebrow">CATALOG RECORD</span>
+            <span className="eyebrow">Record</span>
             <strong>{selected?.name ?? "No SKU selected"}</strong>
           </div>
           <div>
@@ -403,7 +403,7 @@ function SkuDetails({
       </dl>
       <section className="reference-section">
         <div>
-          <span className="eyebrow">REFERENCE IMAGES</span>
+          <span className="eyebrow">Reference images</span>
           <strong>{sku.referenceImages.length} images</strong>
         </div>
         <div className="reference-grid">
@@ -431,7 +431,7 @@ function SkuDetails({
       </section>
       {!sku.isUnknown && sku.status === "active" && (
         <section className="merge-section">
-          <span className="eyebrow">MERGE DUPLICATE</span>
+          <span className="eyebrow">Merge duplicate</span>
           <label>
             Find the canonical target
             <input

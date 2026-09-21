@@ -169,7 +169,7 @@ export function PropagationWorkspace({
       <section className="propagation-seed-panel" aria-label="Propagation seed">
         <div className="panel-heading">
           <div>
-            <span className="eyebrow">SEED FACING</span>
+            <span className="eyebrow">Seed facing</span>
             <strong>Choose one confirmed label</strong>
           </div>
           <span className="panel-count">{seeds.length}</span>
@@ -245,7 +245,7 @@ export function PropagationWorkspace({
       <section className="propagation-review-panel" aria-label="Propagation review">
         <header className="propagation-review-header">
           <div>
-            <span className="eyebrow">CONFIRMATION GRID</span>
+            <span className="eyebrow">Confirmation grid</span>
             <strong>
               {suggestionSet
                 ? suggestionSet.seedSku.name

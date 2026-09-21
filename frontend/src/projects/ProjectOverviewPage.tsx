@@ -2,8 +2,8 @@ import { useEffect, useState, type ReactNode } from "react";
 
 import type { AuthSession } from "../auth/api";
 import { isMissingProject, loadProject, type ProjectSummary } from "./api";
+import { ProjectBand } from "./ProjectBand";
 import { ProjectsHeader } from "./ProjectsHeader";
-import { ProjectNavigation } from "./ProjectNavigation";
 import { loadProjectProgress, type ProjectProgress } from "./progressApi";
 
 type ProjectOverviewPageProps = {
@@ -143,22 +143,21 @@ function ProjectOverview({
 
   return (
     <main className="project-overview-main">
-      <button className="projects-back" type="button" onClick={onBack}>← All projects</button>
-      <section className="project-overview-hero">
-        <div>
-          <span className="projects-eyebrow">Shelf annotation project</span>
-          <h1>{project.name}</h1>
-          <p>{project.description ?? "No project description has been added."}</p>
-        </div>
-        <span className={`project-version-state ${project.openVersionId ? "open" : "frozen"}`}>
-          {project.openVersionId ? "Working version" : "No working version"}
-        </span>
-      </section>
-
-      <ProjectNavigation
-        active="overview"
-        currentUser={currentUser}
+      <ProjectBand
         project={project}
+        currentUser={currentUser}
+        active="overview"
+        status={
+          <span className={`project-version-state ${project.openVersionId ? "open" : "frozen"}`}>
+            {project.openVersionId ? "Working version" : "No working version"}
+          </span>
+        }
+        rail={
+          progressStatus === "ready" && progress
+            ? { total: progress.images.total, reviewed: progress.qa.reviewedImages }
+            : null
+        }
+        onBack={onBack}
         onOverview={() => undefined}
         onImages={() => onOpenImages(project)}
         onReview={() => onOpenReview(project)}
@@ -193,10 +192,7 @@ function ProjectOverview({
 
       <section className="project-next-section">
         <div className="project-next-heading">
-          <div>
-            <span className="projects-eyebrow">Workflow</span>
-            <h2>What happens next</h2>
-          </div>
+          <h2>What happens next</h2>
           <p>Move from shelf images to reviewed, export-ready annotations.</p>
         </div>
         <div className="project-action-grid">
@@ -250,7 +246,6 @@ function FirstImageChecklist({
     <section className="first-image-checklist" aria-labelledby="first-image-checklist-title">
       <div className="first-image-checklist-heading">
         <div>
-          <span className="projects-eyebrow">Getting started</span>
           <h2 id="first-image-checklist-title">First image checklist</h2>
           <p>{hasImages ? "2 of 3 steps complete" : "1 of 3 steps complete"}</p>
         </div>
@@ -259,13 +254,15 @@ function FirstImageChecklist({
         </button>
       </div>
       <ol>
-        <ChecklistStep title="Project created" detail="Your editable working version is ready." state="complete" />
+        <ChecklistStep step={1} title="Project created" detail="Your editable working version is ready." state="complete" />
         <ChecklistStep
+          step={2}
           title="Add a shelf image"
           detail="Upload a JPEG or PNG shelf photo to managed project storage."
           state={hasImages ? "complete" : "current"}
         />
         <ChecklistStep
+          step={3}
           title="Review the first image"
           detail="Correct boxes, record every decision, assign identities as needed, wait for All changes saved, then choose Mark reviewed."
           state={hasImages ? "current" : "waiting"}
@@ -276,17 +273,19 @@ function FirstImageChecklist({
 }
 
 function ChecklistStep({
+  step,
   title,
   detail,
   state,
 }: {
+  step: number;
   title: string;
   detail: string;
   state: "complete" | "current" | "waiting";
 }) {
   return (
     <li className={state} aria-current={state === "current" ? "step" : undefined}>
-      <span aria-hidden="true">{state === "complete" ? "✓" : state === "current" ? "→" : "·"}</span>
+      <span aria-hidden="true">{state === "complete" ? "✓" : step}</span>
       <div>
         <strong>{title}</strong>
         <p>{detail}</p>
@@ -307,7 +306,6 @@ function ProjectProgressSection({
   if (status === "loading") {
     return (
       <section className="project-progress-section" aria-label="Project progress">
-        <span className="projects-eyebrow">Current version</span>
         <h2>Project progress</h2>
         <p className="project-progress-message">Loading annotation progress...</p>
       </section>
@@ -316,7 +314,6 @@ function ProjectProgressSection({
   if (status === "error" || !progress) {
     return (
       <section className="project-progress-section" aria-label="Project progress">
-        <span className="projects-eyebrow">Current version</span>
         <h2>Project progress</h2>
         <div className="project-progress-error">
           <div>
@@ -331,7 +328,6 @@ function ProjectProgressSection({
 
   return (
     <section className="project-progress-section" aria-label="Project progress">
-      <span className="projects-eyebrow">Current version</span>
       <h2>Project progress</h2>
       <div className="project-progress-grid">
         <ProgressCard
@@ -549,7 +545,7 @@ function OverviewMessage({
   return (
     <main className="project-overview-main">
       <section className="projects-message project-overview-message">
-        <img src="/cvsight-mark.png" alt="" />
+        <img src="/cvsight-mark.svg" alt="" />
         <h1>{title}</h1>
         <p>{detail}</p>
         {action}

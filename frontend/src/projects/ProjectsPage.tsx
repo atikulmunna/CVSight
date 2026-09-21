@@ -15,6 +15,7 @@ import {
   type ProjectSummary,
 } from "./api";
 import { CatalogCsvError, parseCatalogCsv, type CatalogImportSku } from "./catalogCsv";
+import { loadProjectImages } from "./imagesApi";
 import { ProjectsHeader } from "./ProjectsHeader";
 
 type ProjectsPageProps = {
@@ -41,14 +42,20 @@ export function ProjectsPage({
   const [loadError, setLoadError] = useState(false);
   const [search, setSearch] = useState("");
   const [refreshKey, setRefreshKey] = useState(0);
+  const [previews, setPreviews] = useState<Record<string, string[]>>({});
 
   useEffect(() => {
     let active = true;
     loadProjects()
-      .then((loaded) => {
+      .then(async (loaded) => {
+        if (!active) {
+          return;
+        }
+        setProjects(loaded);
+        setLoadError(false);
+        const loadedPreviews = await loadPreviews(loaded);
         if (active) {
-          setProjects(loaded);
-          setLoadError(false);
+          setPreviews(loadedPreviews);
         }
       })
       .catch(() => {
@@ -97,7 +104,6 @@ export function ProjectsPage({
           <>
             <section className="projects-heading">
               <div>
-                <span className="projects-eyebrow">Retail vision workspace</span>
                 <h1>Your projects</h1>
                 <p>Create a project for each shelf-audit dataset and annotation run.</p>
               </div>
@@ -140,7 +146,12 @@ export function ProjectsPage({
             ) : (
               <section className="project-grid" aria-label="Projects">
                 {visibleProjects.map((project) => (
-                  <ProjectCard key={project.id} project={project} onOpen={onOpenProject} />
+                  <ProjectCard
+                    key={project.id}
+                    project={project}
+                    previews={previews[project.id] ?? []}
+                    onOpen={onOpenProject}
+                  />
                 ))}
               </section>
             )}
@@ -225,9 +236,8 @@ function CreateProjectForm({
 
   return (
     <section className="create-project-layout">
-      <button className="projects-back" type="button" onClick={onCancel}>← Projects</button>
+      <button className="projects-back" type="button" onClick={onCancel}>Projects</button>
       <div className="create-project-card">
-        <span className="projects-eyebrow">New retail vision project</span>
         <h1>Create a project</h1>
         <p>Start with a name. CVSight will create the first editable annotation version automatically.</p>
         <form onSubmit={(event) => void submit(event)}>
@@ -293,16 +303,22 @@ function CreateProjectForm({
 
 function ProjectCard({
   project,
+  previews,
   onOpen,
 }: {
   project: ProjectSummary;
+  previews: string[];
   onOpen: (project: ProjectSummary) => void;
 }) {
   return (
     <article className="project-card">
-      <div className="project-card-preview">
-        <img src="/cvsight-mark.png" alt="" />
-        <span>{project.imageCount === 0 ? "Ready for images" : `${project.imageCount} shelf images`}</span>
+      <div className={`project-card-preview${previews.length > 0 ? " has-photos" : ""}`}>
+        {previews.length > 0 ? (
+          previews.map((url) => <img key={url} src={url} alt="" loading="lazy" />)
+        ) : (
+          <img src="/cvsight-mark.svg" alt="" />
+        )}
+        <span>{project.imageCount === 0 ? "Ready for images" : `${project.imageCount} shelf ${project.imageCount === 1 ? "image" : "images"}`}</span>
       </div>
       <div className="project-card-body">
         <div>
@@ -325,6 +341,29 @@ function ProjectCard({
   );
 }
 
+// Previews are decoration: any failure leaves the tile with its placeholder.
+async function loadPreviews(projects: ProjectSummary[]): Promise<Record<string, string[]>> {
+  const entries = await Promise.all(
+    projects
+      .filter((project) => project.imageCount > 0)
+      .map(async (project) => {
+        try {
+          const page = await loadProjectImages(
+            project.id,
+            project.openVersionId ?? project.latestVersionId,
+            null,
+            0,
+            3,
+          );
+          return [project.id, page.images.map((image) => image.thumbnailUrl)] as const;
+        } catch {
+          return [project.id, []] as const;
+        }
+      }),
+  );
+  return Object.fromEntries(entries);
+}
+
 function ProjectMessage({
   title,
   detail,
@@ -336,7 +375,7 @@ function ProjectMessage({
 }) {
   return (
     <section className="projects-message">
-      <img src="/cvsight-mark.png" alt="" />
+      <img src="/cvsight-mark.svg" alt="" />
       <h2>{title}</h2>
       <p>{detail}</p>
       {action}

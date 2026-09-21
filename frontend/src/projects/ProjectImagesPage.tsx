@@ -16,8 +16,8 @@ import {
   type ProjectImage,
   type ProjectImageStatus,
 } from "./imagesApi";
+import { ProjectBand } from "./ProjectBand";
 import { ProjectsHeader } from "./ProjectsHeader";
-import { ProjectNavigation } from "./ProjectNavigation";
 
 type ProjectImagesPageProps = {
   projectId: string;
@@ -180,11 +180,20 @@ export function ProjectImagesPage({
     <div className="projects-shell">
       <ProjectsHeader currentUser={currentUser} section="Project images" onLogout={onLogout} />
       <main className="project-images-main">
-        <button className="projects-back" type="button" onClick={onBack}>← All projects</button>
+        <ProjectBand
+          project={project}
+          currentUser={currentUser}
+          active="images"
+          onBack={onBack}
+          onOverview={onOpenOverview}
+          onImages={() => undefined}
+          onReview={() => onOpenReview(project)}
+          onVersions={() => onOpenVersions(project)}
+        />
+
         <section className="project-images-heading">
           <div>
-            <span className="projects-eyebrow">{project.name}</span>
-            <h1>Images</h1>
+            <h2>Images</h2>
             <p>Upload shelf photos, track labeling state, and open an image for annotation.</p>
           </div>
           {canUpload && (
@@ -193,16 +202,6 @@ export function ProjectImagesPage({
             </button>
           )}
         </section>
-
-        <ProjectNavigation
-          active="images"
-          currentUser={currentUser}
-          project={project}
-          onOverview={onOpenOverview}
-          onImages={() => undefined}
-          onReview={() => onOpenReview(project)}
-          onVersions={() => onOpenVersions(project)}
-        />
 
         {showUpload && project.openVersionId && (
           <ImageUploadPanel
@@ -384,7 +383,6 @@ function ImageUploadPanel({
     <section className="image-upload-panel" aria-label="Upload images">
       <div className="image-upload-panel-heading">
         <div>
-          <span className="projects-eyebrow">Managed project storage</span>
           <h2>Upload shelf images</h2>
           <p>JPEG or PNG, up to 50 MiB each. Files are validated before they enter the project.</p>
         </div>
@@ -512,7 +510,7 @@ function ImageGridMessage({
 }) {
   return (
     <section className="projects-message project-images-message">
-      <img src="/cvsight-mark.png" alt="" />
+      <img src="/cvsight-mark.svg" alt="" />
       <h2>{title}</h2>
       <p>{detail}</p>
       {action}

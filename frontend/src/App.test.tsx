@@ -24,7 +24,7 @@ describe("App health", () => {
 
     expect(document.querySelector(".brand-mark")).toHaveAttribute(
       "src",
-      "/cvsight-mark.png",
+      "/cvsight-mark.svg",
     );
     expect(screen.getByText("Verify boxes")).toBeInTheDocument();
     expect(screen.getByLabelText("Shelf annotation canvas")).toBeInTheDocument();

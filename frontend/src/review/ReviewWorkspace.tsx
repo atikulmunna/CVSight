@@ -120,7 +120,6 @@ export function ReviewWorkspace({ datasetVersionId }: ReviewWorkspaceProps) {
   if (!datasetVersionId) {
     return (
       <section className="review-empty">
-        <p className="eyebrow">Quality assurance</p>
         <h1>Open a dataset review</h1>
         <p>Add a dataset version to the URL with <code>?version=&lt;uuid&gt;</code>.</p>
       </section>
@@ -131,10 +130,7 @@ export function ReviewWorkspace({ datasetVersionId }: ReviewWorkspaceProps) {
     <section className="review-workspace">
       <aside className="review-panel">
         <div className="review-heading">
-          <div>
-            <p className="eyebrow">Risk-ranked queue</p>
-            <h2>Quality review</h2>
-          </div>
+          <h2>Quality review</h2>
           <span className="review-count">{queue?.unresolvedCount ?? 0}</span>
         </div>
         <p className="review-guidance">

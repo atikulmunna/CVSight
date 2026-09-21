@@ -40,7 +40,7 @@ export function SkuAssignmentPanel({
     >
       <div className="assignment-heading">
         <div>
-          <span className="eyebrow">ASSIGN IDENTITY</span>
+          <span className="eyebrow">Assign identity</span>
           <strong>{box.skuId ? box.sku : "No SKU assigned"}</strong>
         </div>
         <span className="catalog-source">

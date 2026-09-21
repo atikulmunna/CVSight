@@ -24,6 +24,7 @@ APPROVED_NPM_LICENSES = {
     "MIT",
     "MIT-0",
     "MPL-2.0",
+    "OFL-1.1",
 }
 APPROVED_LICENSE_MARKERS = (
     "APACHE",

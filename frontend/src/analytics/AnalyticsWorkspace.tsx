@@ -41,7 +41,6 @@ export function AnalyticsWorkspace({ datasetVersionId }: AnalyticsWorkspaceProps
   if (!datasetVersionId) {
     return (
       <section className="analytics-empty">
-        <p className="eyebrow">Verified retail analytics</p>
         <h1>Open an immutable snapshot</h1>
         <p>Add a dataset version to the URL with <code>?version=&lt;uuid&gt;</code>.</p>
       </section>
@@ -50,7 +49,6 @@ export function AnalyticsWorkspace({ datasetVersionId }: AnalyticsWorkspaceProps
   if (error) {
     return (
       <section className="analytics-empty">
-        <p className="eyebrow">Verified retail analytics</p>
         <h1>Analytics unavailable</h1>
         <p>{error}</p>
       </section>
@@ -64,7 +62,6 @@ export function AnalyticsWorkspace({ datasetVersionId }: AnalyticsWorkspaceProps
     <section className="analytics-workspace">
       <header className="analytics-heading">
         <div>
-          <p className="eyebrow">Immutable snapshot</p>
           <h1>Retail analytics</h1>
           <p>
             Count share is primary. Every result carries its evidence status and

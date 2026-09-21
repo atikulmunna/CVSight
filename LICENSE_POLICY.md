@@ -29,8 +29,10 @@ and runtime state remain ignored by Git.
 The locked main Python graph uses permissive OSI licenses plus unmodified dynamically
 loaded LGPL psycopg packages. The npm graph uses the approved set recorded by
 `benchmark_tool.license_audit`, including MIT, BSD, Apache-2.0, ISC, MPL-2.0,
-BlueOak-1.0.0, CC0-1.0, and CC-BY-4.0. MPL packages are build dependencies and are not
-modified in this repository.
+BlueOak-1.0.0, CC0-1.0, CC-BY-4.0, and OFL-1.1. MPL packages are build dependencies and
+are not modified in this repository. OFL-1.1 covers the bundled Bricolage Grotesque and
+IBM Plex typefaces, which ship unmodified inside the frontend build so the interface
+makes no network font requests.
 
 FiftyOne 1.19.0 is an optional Apache-licensed operator projection. Its isolated Python
 environment includes permissive and unmodified LGPL dependencies. It is not bundled in

@@ -2,7 +2,7 @@ import { useEffect, useState, type ReactNode } from "react";
 
 import type { AuthSession } from "../auth/api";
 import { isMissingProject, loadProject, type ProjectSummary } from "./api";
-import { ProjectNavigation } from "./ProjectNavigation";
+import { ProjectBand } from "./ProjectBand";
 import { ProjectsHeader } from "./ProjectsHeader";
 import {
   createWorkingVersion,
@@ -166,36 +166,34 @@ function VersionsContent({
 
   return (
     <main className="project-versions-main">
-      <button className="projects-back" type="button" onClick={onBack}>← All projects</button>
-      <section className="project-versions-heading">
-        <div>
-          <span className="projects-eyebrow">{view.project.name}</span>
-          <h1>Versions and releases</h1>
-          <p>Keep active annotation work separate from signed, immutable datasets.</p>
-        </div>
-        <span className={`project-version-state ${working ? "open" : "frozen"}`}>
-          {working
-            ? "Working version open"
-            : `${releases.length} immutable ${releases.length === 1 ? "release" : "releases"}`}
-        </span>
-      </section>
-
-      <ProjectNavigation
-        active="versions"
-        currentUser={currentUser}
+      <ProjectBand
         project={view.project}
+        currentUser={currentUser}
+        active="versions"
+        status={
+          <span className={`project-version-state ${working ? "open" : "frozen"}`}>
+            {working
+              ? "Working version open"
+              : `${releases.length} immutable ${releases.length === 1 ? "release" : "releases"}`}
+          </span>
+        }
+        onBack={onBack}
         onOverview={onOpenOverview}
         onImages={onOpenImages}
         onReview={onOpenReview}
         onVersions={() => undefined}
       />
 
+      <section className="project-versions-heading">
+        <div>
+          <h2>Versions and releases</h2>
+          <p>Keep active annotation work separate from signed, immutable datasets.</p>
+        </div>
+      </section>
+
       <section className="versions-working-section" aria-labelledby="working-version-title">
         <div className="versions-section-heading">
-          <div>
-            <span className="projects-eyebrow">Active workspace</span>
-            <h2 id="working-version-title">Working version</h2>
-          </div>
+          <h2 id="working-version-title">Working version</h2>
           <p>Edits remain live until QA sign-off creates an immutable release.</p>
         </div>
         {working ? (
@@ -245,10 +243,7 @@ function VersionsContent({
 
       <section className="versions-release-section" aria-labelledby="release-history-title">
         <div className="versions-section-heading">
-          <div>
-            <span className="projects-eyebrow">Immutable history</span>
-            <h2 id="release-history-title">Releases</h2>
-          </div>
+          <h2 id="release-history-title">Releases</h2>
           <p>Downloads always use the exact snapshot captured for that release.</p>
         </div>
         {releases.length === 0 ? (
@@ -372,7 +367,7 @@ function VersionsMessage({
   return (
     <main className="project-versions-main">
       <section className="projects-message project-overview-message">
-        <img src="/cvsight-mark.png" alt="" />
+        <img src="/cvsight-mark.svg" alt="" />
         <h1>{title}</h1>
         <p>{detail}</p>
         {action}

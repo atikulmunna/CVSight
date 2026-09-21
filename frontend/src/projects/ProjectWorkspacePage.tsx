@@ -58,7 +58,6 @@ export function ProjectWorkspacePage({
         <ProjectsHeader currentUser={currentUser} section="Project workspace" onLogout={onLogout} />
         <main className="project-overview-main">
           <section className="projects-message">
-            <span className="projects-eyebrow">Project workspace</span>
             <h1>{workspaceMessage(status).title}</h1>
             <p>{workspaceMessage(status).detail}</p>
             {status !== "loading" && (

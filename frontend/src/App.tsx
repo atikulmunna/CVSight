@@ -294,7 +294,7 @@ export default function App({
       <header className="topbar">
         <div className="brand-block">
           <span className="brand-lockup">
-            <img className="brand-mark" src="/cvsight-mark.png" alt="" />
+            <img className="brand-mark" src="/cvsight-mark.svg" alt="" />
             <span className="brand">
               CV<span>Sight</span>
             </span>
@@ -366,7 +366,10 @@ export default function App({
         </nav>
         <div className="topbar-status">
           {currentUser && (
-            <span className="session-user">{currentUser.username} · {currentUser.role}</span>
+            <span className="session-user">
+              <strong>{currentUser.username}</strong>
+              <span className={`role-chip ${currentUser.role}`}>{currentUser.role}</span>
+            </span>
           )}
           {fixtureError && (
             <span className="fixture-error">Image workspace unavailable</span>

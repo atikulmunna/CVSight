@@ -622,10 +622,10 @@ export function AnnotationWorkspace({
           <div>
             <span className="eyebrow">
               {isGapReview
-                ? "VISIBLE GAPS"
+                ? "Visible gaps"
                 : mode === "assign"
-                  ? "VERIFIED PRODUCTS"
-                  : "FACINGS"}
+                  ? "Verified products"
+                  : "Facings"}
             </span>
             <strong>{filteredAnnotations.length} shown</strong>
           </div>
@@ -688,11 +688,7 @@ export function AnnotationWorkspace({
       <section className="canvas-column">
         <div className="canvas-context">
           <span>
-            SHELF PHOTO · {isGapReview
-              ? "REVIEW VISIBLE GAPS"
-              : mode === "assign"
-                ? "ASSIGN SKUS"
-                : "VERIFY BOXES"}
+            {isGapReview ? "Gap review" : "Shelf photo"}
           </span>
           <span>{fixture.name}</span>
         </div>
@@ -828,7 +824,7 @@ export function AnnotationWorkspace({
         <div className="panel-heading">
           <div>
             <span className="eyebrow">
-              {isGapReview ? "SELECTED GAP" : "SELECTED FACING"}
+              {isGapReview ? "Selected gap" : "Selected facing"}
             </span>
             <strong>{selectedBox?.id ?? "None"}</strong>
           </div>
@@ -871,7 +867,7 @@ export function AnnotationWorkspace({
           <section className="performance-panel" aria-label="Canvas performance">
             <div className="panel-heading">
               <div>
-                <span className="eyebrow">PERFORMANCE</span>
+                <span className="eyebrow">Performance</span>
                 <strong>Production canvas check</strong>
               </div>
               <button
@@ -1060,7 +1056,7 @@ function AutosavePanel({
   return (
     <section className="autosave-panel" aria-label="Save status">
       <div className="autosave-heading">
-        <span className="eyebrow">SAVE STATUS</span>
+        <span className="eyebrow">Save status</span>
         <span className="save-state" data-status={status} role="status">
           {status}
         </span>

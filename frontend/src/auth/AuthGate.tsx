@@ -74,11 +74,10 @@ function LoginScreen({ error, onSubmit }: LoginScreenProps) {
     <main className="auth-shell">
       <form className="auth-card" onSubmit={(event) => void submit(event)}>
         <div className="auth-brand">
-          <img src="/cvsight-mark.png" alt="" />
+          <img src="/cvsight-mark.svg" alt="" />
           <span>CV<strong>Sight</strong></span>
         </div>
         <div>
-          <p className="eyebrow">SECURE WORKSPACE</p>
           <h1>Sign in</h1>
           <p>Use the local account configured by this CVSight server.</p>
         </div>
