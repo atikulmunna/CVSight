@@ -37,6 +37,7 @@ Optional configuration:
 | Variable | Purpose |
 | --- | --- |
 | `SHELFSIGHT_DB_PORT` | Loopback PostgreSQL port used by Compose. Default is 5432. |
+| `SHELFSIGHT_TEST_DATABASE_URL` | Separate PostgreSQL database for the test suite. `scripts/check.ps1` requires it and migrates it before the Python tests. |
 | `FIFTYONE_DATABASE_DIR` | Local rebuildable FiftyOne database directory. |
 | `SHELFSIGHT_RFDETR_CHECKPOINT` and `SHELFSIGHT_RFDETR_VERSION` | Operator-supplied RF-DETR detector identity. |
 | `SHELFSIGHT_SAM3_CHECKPOINT` and `SHELFSIGHT_SAM3_VERSION` | Operator-supplied optional SAM refiner identity. |

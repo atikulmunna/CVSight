@@ -40,7 +40,7 @@ checks:
 
 | Check | Result |
 | --- | ---: |
-| Python tests | 204 passed, 95 optional-model tests skipped |
+| Python tests | 204 passed, 95 database integration tests skipped |
 | Frontend tests | 100 passed |
 | Ruff | Passed |
 | mypy | Passed |
@@ -48,6 +48,12 @@ checks:
 | TypeScript | Passed |
 | Production frontend build | Passed |
 | API, database, worker, and frontend smoke checks | Passed |
+
+The 95 skipped tests were the PostgreSQL-backed integration tests, not model tests. The
+rehearsal configured only the application database, so `SHELFSIGHT_TEST_DATABASE_URL`
+was unset and those tests skipped. `scripts/install-check.ps1` now creates a test
+database and `scripts/check.ps1` fails when the variable is missing, so the next
+rehearsal runs the complete Python suite.
 
 The source file count was 205 when this evidence was captured. Later documentation and
 test additions can change that count without invalidating the measured release tree.

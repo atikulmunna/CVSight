@@ -2,39 +2,40 @@ from __future__ import annotations
 
 import json
 from collections.abc import Iterator
+from uuid import uuid4
 
 import pytest
 from fastapi.testclient import TestClient
-from sqlalchemy import select
+from sqlalchemy import Engine, delete, select
 
 from shelfsight_api.app import app
 from shelfsight_api.auth_service import hash_password
-from shelfsight_api.database import get_engine
 from shelfsight_api.models import auth_events, auth_sessions
 
 client = TestClient(app)
 
 
 @pytest.fixture
-def configured_auth(monkeypatch: pytest.MonkeyPatch) -> Iterator[dict[str, str]]:
+def configured_auth(
+    application_database: Engine,
+    monkeypatch: pytest.MonkeyPatch,
+) -> Iterator[dict[str, str]]:
+    """Configure one unique user per role so audit assertions cannot match earlier runs."""
     password = "local-test-password"
+    suffix = uuid4().hex[:8]
+    usernames = {role: f"{role}-{suffix}" for role in ("owner", "annotator", "reviewer")}
     users = [
-        {"username": "owner35", "role": "owner", "password_hash": hash_password(password)},
-        {
-            "username": "annotator35",
-            "role": "annotator",
-            "password_hash": hash_password(password),
-        },
-        {
-            "username": "reviewer35",
-            "role": "reviewer",
-            "password_hash": hash_password(password),
-        },
+        {"username": username, "role": role, "password_hash": hash_password(password)}
+        for role, username in usernames.items()
     ]
     monkeypatch.setenv("SHELFSIGHT_AUTH_USERS", json.dumps(users))
     monkeypatch.setenv("SHELFSIGHT_SESSION_COOKIE_SECURE", "false")
-    yield {"password": password}
+    yield {"password": password, **usernames}
     client.cookies.clear()
+    with application_database.begin() as connection:
+        connection.execute(
+            delete(auth_sessions).where(auth_sessions.c.username.in_(list(usernames.values())))
+        )
 
 
 def test_every_application_route_requires_authentication(enforce_authentication: None) -> None:
@@ -59,22 +60,24 @@ def test_every_application_route_requires_authentication(enforce_authentication:
 
 def test_login_session_logout_and_audit(
     configured_auth: dict[str, str],
+    application_database: Engine,
     enforce_authentication: None,
 ) -> None:
     client.cookies.clear()
+    owner = configured_auth["owner"]
     wrong = client.post(
         "/api/auth/login",
-        json={"username": "owner35", "password": "wrong-password"},
+        json={"username": owner, "password": "wrong-password"},
     )
     assert wrong.status_code == 401
     assert configured_auth["password"] not in wrong.text
 
     login = client.post(
         "/api/auth/login",
-        json={"username": "OWNER35", "password": configured_auth["password"]},
+        json={"username": owner.upper(), "password": configured_auth["password"]},
     )
     assert login.status_code == 200
-    assert login.json() == {"username": "owner35", "role": "owner"}
+    assert login.json() == {"username": owner, "role": "owner"}
     cookie = login.headers["set-cookie"]
     assert "HttpOnly" in cookie
     assert "SameSite=strict" in cookie
@@ -84,14 +87,14 @@ def test_login_session_logout_and_audit(
     assert session.status_code == 200
     assert session.json()["role"] == "owner"
 
-    with get_engine().connect() as connection:
+    with application_database.connect() as connection:
         stored_session = connection.execute(
             select(auth_sessions)
-            .where(auth_sessions.c.username == "owner35")
+            .where(auth_sessions.c.username == owner)
             .order_by(auth_sessions.c.created_at.desc())
         ).mappings().first()
         actions = connection.execute(
-            select(auth_events.c.action).where(auth_events.c.username.in_(["owner35", "OWNER35"]))
+            select(auth_events.c.action).where(auth_events.c.username.in_([owner, owner.upper()]))
         ).scalars().all()
     assert stored_session is not None
     assert len(stored_session["token_sha256"]) == 64
@@ -131,7 +134,13 @@ def test_login_session_logout_and_audit(
         ("reviewer:test", "GET", "/api/skus", 200),
     ],
 )
-def test_role_boundaries(actor: str, method: str, path: str, expected: int) -> None:
+def test_role_boundaries(
+    application_database: Engine,
+    actor: str,
+    method: str,
+    path: str,
+    expected: int,
+) -> None:
     response = client.request(method, path, headers={"X-ShelfSight-Actor": actor})
     assert response.status_code == expected
 
@@ -165,12 +174,13 @@ def test_login_validation_does_not_reflect_password(enforce_authentication: None
 
 def test_authenticated_roles_cannot_be_overridden_by_actor_header(
     configured_auth: dict[str, str],
+    application_database: Engine,
     enforce_authentication: None,
 ) -> None:
     client.cookies.clear()
     login = client.post(
         "/api/auth/login",
-        json={"username": "annotator35", "password": configured_auth["password"]},
+        json={"username": configured_auth["annotator"], "password": configured_auth["password"]},
     )
     assert login.status_code == 200
 
@@ -185,7 +195,7 @@ def test_authenticated_roles_cannot_be_overridden_by_actor_header(
     assert client.post("/api/auth/logout").status_code == 204
     reviewer_login = client.post(
         "/api/auth/login",
-        json={"username": "reviewer35", "password": configured_auth["password"]},
+        json={"username": configured_auth["reviewer"], "password": configured_auth["password"]},
     )
     assert reviewer_login.status_code == 200
     reviewer_request = client.get(
@@ -193,10 +203,10 @@ def test_authenticated_roles_cannot_be_overridden_by_actor_header(
     )
     assert reviewer_request.status_code == 404
 
-    with get_engine().connect() as connection:
+    with application_database.connect() as connection:
         denied_events = connection.execute(
             select(auth_events.c.action).where(
-                auth_events.c.username == "annotator35",
+                auth_events.c.username == configured_auth["annotator"],
                 auth_events.c.action == "access_denied",
             )
         ).scalars().all()
@@ -213,7 +223,7 @@ def test_https_configuration_marks_session_cookie_secure(
 
     response = client.post(
         "/api/auth/login",
-        json={"username": "owner35", "password": configured_auth["password"]},
+        json={"username": configured_auth["owner"], "password": configured_auth["password"]},
     )
 
     assert response.status_code == 200

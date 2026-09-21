@@ -36,6 +36,8 @@ def test_complete_mvp_workflow_from_ingest_through_exports(
     )
     monkeypatch.setattr("shelfsight_api.export_api.get_engine", lambda: database_engine)
     monkeypatch.setattr("shelfsight_api.export_api.get_media_root", lambda: media_root)
+    monkeypatch.setattr("shelfsight_api.sku_api.get_engine", lambda: database_engine)
+    monkeypatch.setattr("shelfsight_api.sku_api.get_media_root", lambda: media_root)
 
     dataset_id: UUID | None = None
     sku_id: UUID | None = None

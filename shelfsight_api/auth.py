@@ -88,7 +88,7 @@ def _require_roles(
     try:
         with get_engine().begin() as connection:
             record_auth_event(connection, "access_denied", request.url.path, user=user)
-    except SQLAlchemyError as error:
+    except (ConfigurationError, SQLAlchemyError) as error:
         raise api_error(
             status.HTTP_503_SERVICE_UNAVAILABLE,
             "authentication_unavailable",

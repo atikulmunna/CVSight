@@ -24,7 +24,8 @@
   "functional_checks": {
     "passed": true,
     "python_tests_passed": 204,
-    "optional_model_tests_skipped": 95,
+    "database_integration_tests_skipped": 95,
+    "skip_reason": "SHELFSIGHT_TEST_DATABASE_URL was not configured during the rehearsal",
     "frontend_tests_passed": 100,
     "ruff_passed": true,
     "mypy_passed": true,

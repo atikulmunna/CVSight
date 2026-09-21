@@ -59,14 +59,24 @@ worker named `local-worker`.
 
 ## Quality checks
 
+The database tests run against a separate PostgreSQL database named by
+`SHELFSIGHT_TEST_DATABASE_URL`. Create it once inside the running Compose service:
+
+```powershell
+docker compose --env-file .env -f compose.dev.yaml exec database createdb -U shelfsight shelfsight_test
+```
+
 Run the complete local check:
 
 ```powershell
 ./scripts/check.ps1
 ```
 
-The command runs Python tests, Ruff, mypy, frontend tests, ESLint, TypeScript checking,
-and the production frontend build.
+The command refuses to run without `SHELFSIGHT_TEST_DATABASE_URL`, rejects a value equal
+to `SHELFSIGHT_DATABASE_URL`, and migrates the test database so its schema matches the
+current migrations. It then runs Python tests, Ruff, mypy, frontend tests, ESLint,
+TypeScript checking, and the production frontend build. Without the test database the
+database-backed tests would skip silently, which is why the check fails closed.
 
 Run the networked dependency and container vulnerability gate before a release:
 

@@ -45,8 +45,9 @@ function Get-FreePort {
 }
 
 function Wait-Database {
+    # Probe over TCP: the entrypoint's temporary init server listens only on the socket.
     for ($attempt = 0; $attempt -lt 60; $attempt++) {
-        docker exec $containerName pg_isready -U $databaseUser -d $databaseName `
+        docker exec $containerName pg_isready -h 127.0.0.1 -U $databaseUser -d $databaseName `
             2>$null | Out-Null
         if ($LASTEXITCODE -eq 0) {
             return
@@ -144,9 +145,13 @@ try {
             --detach $databaseImage | Out-Null
         Assert-NativeSuccess "Clean database start"
         Wait-Database
+        docker exec $containerName createdb -U $databaseUser "${databaseName}_test"
+        Assert-NativeSuccess "Clean test database creation"
 
         $env:SHELFSIGHT_DATABASE_URL =
             "postgresql+psycopg://${databaseUser}:${databasePassword}@127.0.0.1:${databasePort}/${databaseName}"
+        $env:SHELFSIGHT_TEST_DATABASE_URL =
+            "postgresql+psycopg://${databaseUser}:${databasePassword}@127.0.0.1:${databasePort}/${databaseName}_test"
         $env:SHELFSIGHT_MEDIA_ROOT = $mediaRoot
         $env:SHELFSIGHT_IMPORT_ROOT = $importRoot
         $env:SHELFSIGHT_SESSION_COOKIE_SECURE = "false"
