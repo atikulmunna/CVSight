@@ -25,13 +25,12 @@ uv run python -m shelfsight_api.auth_cli
 4. Put the hashes in `SHELFSIGHT_AUTH_USERS`. Use only the `owner`, `annotator`, and
    `reviewer` roles. The example keeps secure cookies off for local HTTP; set
    `SHELFSIGHT_SESSION_COOKIE_SECURE=true` when serving through HTTPS.
-5. Load the variables from `.env` into the current terminal.
+5. Load the variables from `.env` into the current terminal. The leading dot matters:
+   it loads them into your session rather than a child process. Repeat this in every
+   new terminal.
 
 ```powershell
-Get-Content .env | Where-Object { $_ -and -not $_.StartsWith('#') } | ForEach-Object {
-    $name, $value = $_.Split('=', 2)
-    Set-Item -Path "Env:$name" -Value $value
-}
+. ./scripts/load-env.ps1
 ```
 
 6. Install dependencies:
