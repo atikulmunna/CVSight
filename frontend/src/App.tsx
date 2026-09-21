@@ -293,12 +293,12 @@ export default function App({
     <div className="app-shell">
       <header className="topbar">
         <div className="brand-block">
-          <span className="brand-lockup">
+          <a className="brand-lockup" href="/projects" aria-label="CVSight projects">
             <img className="brand-mark" src="/cvsight-mark.svg" alt="" />
             <span className="brand">
               CV<span>Sight</span>
             </span>
-          </span>
+          </a>
           {onExitWorkspace ? (
             <button className="project-path project-path-button" type="button" onClick={onExitWorkspace}>
               {projectLabel ?? "Project"}
