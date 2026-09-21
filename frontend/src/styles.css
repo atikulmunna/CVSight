@@ -1,6 +1,6 @@
 /* ==========================================================================
    CVSight design tokens
-   Light management shell, neutral dark canvas. Colour carries state:
+   Light shell and light canvas chrome. Colour carries state:
    violet = interactive, magenta = needs attention or gap, yellow = flagged,
    mint = verified. Never colour alone: glyph cues stay on every overlay.
    ========================================================================== */
@@ -29,15 +29,15 @@
   --text: var(--ink);
   --focus: #6b0fe0;
 
-  --ws-bg: #141318;
-  --ws-panel: #1c1533;
-  --ws-elevated: #271d48;
-  --ws-line: #372b5c;
-  --ws-line-strong: #4b3d7a;
-  --ws-text: #f2eefc;
-  --ws-text-2: #bdb4da;
-  --ws-muted: #8a80ad;
-  --ws-violet: #b794ff;
+  --ws-bg: #eeedf2;
+  --ws-panel: #ffffff;
+  --ws-elevated: #f4f3f7;
+  --ws-line: #e2e0ea;
+  --ws-line-strong: #c8c5d4;
+  --ws-text: #1c1830;
+  --ws-text-2: #5d5975;
+  --ws-muted: #8a879b;
+  --ws-violet: #6b0fe0;
 
   --font-display: "Bricolage Grotesque Variable", "Segoe UI Variable Display", "Segoe UI", system-ui, sans-serif;
   --font-ui: "IBM Plex Sans", "Segoe UI Variable Text", "Segoe UI", system-ui, sans-serif;
@@ -51,7 +51,7 @@
   --rail-gradient: linear-gradient(90deg, var(--violet), var(--magenta));
 
   /* Aliases consumed by the canvas workspace rules further down. */
-  --void: #0e0c14;
+  --void: #e4e2ea;
   --bg-app: var(--ws-bg);
   --bg-panel: var(--ws-panel);
   --bg-elevated: var(--ws-elevated);
@@ -60,9 +60,9 @@
   --text-primary: var(--ws-text);
   --text-secondary: var(--ws-text-2);
   --text-muted: var(--ws-muted);
-  --brand: #7d3ee6;
-  --brand-hover: #8f55ff;
-  --brand-active: #6a2fd0;
+  --brand: #6b0fe0;
+  --brand-hover: #5a0cc0;
+  --brand-active: #4b0aa3;
   --success: var(--mint);
   --warning: var(--yellow);
   --danger: var(--magenta);
@@ -4245,8 +4245,9 @@ kbd {
 
 /* ==========================================================================
    Canvas workspace identity
-   The image stays on a neutral dark viewport so product colours read true;
-   the chrome around it is ink and violet like the rest of the shell.
+   Light neutral chrome so the shelf photo is the only saturated thing on
+   screen. Violet marks the active mode and primary actions, mint accepts,
+   magenta rejects and draws gaps, yellow flags.
    ========================================================================== */
 
 .app-shell {
@@ -4258,15 +4259,15 @@ kbd {
 }
 
 .app-shell button {
-  background: transparent;
+  background: var(--surface);
   border-color: var(--ws-line-strong);
   color: var(--ws-text);
 }
 
 .app-shell button:hover:not(:disabled) {
-  background: var(--ws-elevated);
-  border-color: var(--ws-violet);
-  color: var(--ws-text);
+  background: var(--surface);
+  border-color: var(--violet);
+  color: var(--violet-strong);
 }
 
 .app-shell input,
@@ -4276,26 +4277,31 @@ kbd {
 }
 
 .app-shell .primary-action,
-.app-shell .projects-primary-action {
-  background: var(--brand);
-  border-color: var(--brand);
+.app-shell .projects-primary-action,
+.review-panel .primary-action,
+.propagation-seed-actions .primary-action,
+.propagation-confirm-bar .primary-action {
+  background: var(--violet);
+  border-color: var(--violet);
   color: #fff;
+  box-shadow: none;
 }
 
 .app-shell .primary-action:hover:not(:disabled),
-.app-shell .projects-primary-action:hover:not(:disabled) {
-  background: var(--brand-hover);
-  border-color: var(--brand-hover);
+.app-shell .projects-primary-action:hover:not(:disabled),
+.review-panel .primary-action:hover:not(:disabled) {
+  background: var(--violet-strong);
+  border-color: var(--violet-strong);
   color: #fff;
 }
+
+/* Top bar */
 
 .topbar {
   grid-template-columns: minmax(200px, 1fr) auto minmax(0, 1.3fr);
   gap: 16px;
-  background:
-    radial-gradient(ellipse at 100% 0%, rgb(255 46 136 / 18%), transparent 40%),
-    linear-gradient(120deg, var(--ink) 0%, var(--ink-2) 100%);
-  border-bottom: 0;
+  background: var(--surface);
+  border-bottom: 1px solid var(--ws-line);
   box-shadow: none;
 }
 
@@ -4315,17 +4321,17 @@ kbd {
   font-size: 20px;
   font-weight: 800;
   letter-spacing: -0.03em;
-  color: #fff;
+  color: var(--ink);
 }
 
 .brand strong,
 .brand span {
-  color: var(--ws-violet);
+  color: var(--violet);
 }
 
 .project-path,
 .project-path-button {
-  color: rgb(255 255 255 / 68%);
+  color: var(--muted);
   font-family: var(--font-ui);
   font-size: 13px;
   font-weight: 500;
@@ -4333,7 +4339,7 @@ kbd {
 
 .project-path-button:hover:not(:disabled) {
   background: transparent;
-  color: #fff;
+  color: var(--violet-strong);
   text-decoration: underline;
   text-underline-offset: 3px;
 }
@@ -4341,9 +4347,9 @@ kbd {
 .mode-tabs {
   gap: 2px;
   padding: 3px;
-  border: 1px solid rgb(255 255 255 / 16%);
+  border: 1px solid var(--ws-line);
   border-radius: 999px;
-  background: rgb(0 0 0 / 22%);
+  background: var(--ws-elevated);
 }
 
 .mode-tabs button {
@@ -4351,15 +4357,16 @@ kbd {
   min-height: 32px;
   padding: 0 14px;
   border-radius: 999px;
-  color: rgb(255 255 255 / 74%);
+  background: transparent;
+  color: var(--ws-text-2);
   font-family: var(--font-ui);
   font-size: 13px;
   font-weight: 600;
 }
 
 .mode-tabs button:hover:not(:disabled) {
-  background: rgb(255 255 255 / 10%);
-  color: #fff;
+  background: var(--surface);
+  color: var(--ink);
 }
 
 .mode-tabs button.is-active {
@@ -4374,7 +4381,7 @@ kbd {
   justify-content: flex-end;
   gap: 14px;
   min-width: 0;
-  color: rgb(255 255 255 / 80%);
+  color: var(--ws-text-2);
   font-family: var(--font-ui);
   font-size: 13px;
   font-variant-numeric: tabular-nums;
@@ -4385,10 +4392,6 @@ kbd {
   flex-shrink: 0;
 }
 
-.save-state {
-  text-transform: capitalize;
-}
-
 .session-user {
   display: inline-flex;
   align-items: center;
@@ -4397,33 +4400,29 @@ kbd {
 }
 
 .session-user strong {
-  color: #fff;
+  color: var(--ink);
   font-weight: 600;
-}
-
-.topbar .role-chip {
-  background: rgb(255 255 255 / 14%);
-  color: #fff;
 }
 
 .api-status {
   padding: 3px 9px;
-  border-color: rgb(255 255 255 / 20%);
+  border-color: var(--ws-line-strong);
   font-weight: 600;
 }
 
 .api-status.online {
-  color: var(--mint);
-  border-color: rgb(22 199 132 / 45%);
+  color: var(--mint-text);
+  border-color: var(--mint);
+  background: var(--mint-soft);
 }
 
 .api-status.unavailable,
 .fixture-error {
-  color: #ff8fbd;
+  color: var(--magenta-text);
 }
 
 .progress-track {
-  background: rgb(255 255 255 / 16%);
+  background: var(--ws-line);
 }
 
 .progress-track span {
@@ -4433,18 +4432,11 @@ kbd {
 .logout-button {
   min-height: 32px;
   padding: 0 12px;
-  border-color: rgb(255 255 255 / 26%);
-  color: #fff;
   font-size: 13px;
   font-weight: 600;
 }
 
-.topbar .logout-button:hover:not(:disabled) {
-  background: rgb(255 255 255 / 12%);
-  border-color: #fff;
-}
-
-/* Panels */
+/* Panels and lists */
 
 .box-panel,
 .detail-panel,
@@ -4452,8 +4444,25 @@ kbd {
 .catalog-detail,
 .review-panel,
 .propagation-seed-panel,
-.propagation-review-panel {
-  background: var(--ws-panel);
+.propagation-review-panel,
+.analytics-workspace {
+  background: var(--surface);
+}
+
+.catalog-workspace,
+.propagation-workspace {
+  background: var(--ws-bg);
+}
+
+.box-panel,
+.catalog-sidebar,
+.review-panel,
+.propagation-seed-panel {
+  border-right: 1px solid var(--ws-line);
+}
+
+.detail-panel {
+  border-left: 1px solid var(--ws-line);
 }
 
 .panel-heading,
@@ -4485,6 +4494,7 @@ kbd {
   font-family: var(--font-display);
   font-weight: 800;
   letter-spacing: -0.02em;
+  color: var(--ink);
 }
 
 .panel-heading h2 {
@@ -4500,9 +4510,15 @@ kbd {
 
 .search-row input,
 .assignment-search input,
-.catalog-search input {
-  background: rgb(0 0 0 / 22%);
-  border: 1px solid var(--ws-line);
+.catalog-search input,
+.annotation-class-select,
+.shelf-row-input,
+.autosave-controls select,
+.sku-form input,
+.sku-form select,
+.propagation-seed-picker select {
+  background: var(--surface);
+  border: 1px solid var(--ws-line-strong);
   border-radius: var(--radius-control);
   color: var(--ws-text);
 }
@@ -4511,25 +4527,34 @@ kbd {
 .assignment-search input:focus-visible,
 .catalog-search input:focus-visible {
   outline: none;
-  border-color: var(--ws-violet);
-  box-shadow: 0 0 0 3px rgb(183 148 255 / 22%);
+  border-color: var(--violet);
+  box-shadow: 0 0 0 3px var(--violet-soft);
+}
+
+.search-row input::placeholder,
+.assignment-search input::placeholder,
+.catalog-search input::placeholder {
+  color: var(--ws-muted);
 }
 
 .box-row {
   font-family: var(--font-ui);
+  border-bottom-color: var(--ws-line);
 }
 
 .box-row:hover:not(.is-selected) {
-  background: rgb(255 255 255 / 4%);
+  background: var(--ws-elevated);
 }
 
 .box-row.is-selected {
-  background: rgb(125 62 230 / 24%);
+  background: var(--violet-soft);
   border-left: 3px solid var(--magenta);
   padding-left: 8px;
+  box-shadow: none;
 }
 
 .box-copy strong {
+  color: var(--ink);
   font-size: 13px;
   font-weight: 600;
 }
@@ -4546,16 +4571,38 @@ kbd {
   font-size: 11px;
 }
 
+.box-list::-webkit-scrollbar-thumb,
+.candidate-list::-webkit-scrollbar-thumb,
+.sku-assignment-panel.is-popover .candidate-list::-webkit-scrollbar-thumb {
+  background: var(--ws-line-strong);
+}
+
+.box-list::-webkit-scrollbar-track,
+.candidate-list::-webkit-scrollbar-track,
+.sku-assignment-panel.is-popover .candidate-list::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+.sku-assignment-panel.is-popover .candidate-list {
+  scrollbar-color: var(--ws-line-strong) transparent;
+}
+
 /* Canvas furniture */
+
+.canvas-scene {
+  background: transparent;
+}
 
 .canvas-context,
 .shortcut-strip,
 .zoom-controls,
 .draw-gap-control,
-.gap-review-navigator {
-  background: rgb(23 11 59 / 88%);
-  border-color: rgb(255 255 255 / 14%);
-  box-shadow: 0 10px 30px rgb(0 0 0 / 35%);
+.gap-review-navigator,
+.sku-picker-popover {
+  background: var(--surface);
+  border-color: var(--ws-line);
+  box-shadow: 0 10px 30px rgb(23 11 59 / 16%);
+  color: var(--ws-text);
 }
 
 .canvas-context {
@@ -4563,20 +4610,20 @@ kbd {
 }
 
 .canvas-context span:first-child {
-  color: var(--ws-violet);
+  color: var(--violet-strong);
   font-size: 11px;
   font-weight: 700;
   letter-spacing: 0.02em;
 }
 
 .canvas-context span + span {
-  color: rgb(255 255 255 / 78%);
+  color: var(--ws-text-2);
   font-family: var(--font-mono);
   font-size: 11px;
 }
 
 .shortcut-strip {
-  color: rgb(255 255 255 / 72%);
+  color: var(--ws-text-2);
   font-family: var(--font-ui);
   font-size: 11px;
 }
@@ -4584,28 +4631,28 @@ kbd {
 .shortcut-strip kbd,
 kbd {
   padding: 1px 5px;
-  border: 1px solid rgb(255 255 255 / 22%);
+  border: 1px solid var(--ws-line-strong);
   border-bottom-width: 2px;
   border-radius: 4px;
-  background: rgb(255 255 255 / 8%);
-  color: #fff;
+  background: var(--ws-elevated);
+  color: var(--ink);
   font-family: var(--font-mono);
   font-size: 10px;
 }
 
 .zoom-controls button {
-  color: #fff;
+  color: var(--ink);
   font-size: 15px;
 }
 
 .zoom-controls output {
-  color: rgb(255 255 255 / 72%);
+  color: var(--ws-muted);
   font-family: var(--font-mono);
   font-size: 10px;
 }
 
 .draw-gap-control {
-  color: #fff;
+  color: var(--ink);
   font-weight: 600;
 }
 
@@ -4615,11 +4662,32 @@ kbd {
   color: #fff;
 }
 
+.gap-review-navigator {
+  color: var(--ws-text);
+}
+
+.gap-review-navigator p,
+.gap-review-navigation-actions span {
+  color: var(--ws-text-2);
+}
+
 /* Selection and decisions */
+
+.selected-crop,
+.propagation-crop,
+.propagation-seed-canvas {
+  background-color: var(--void);
+  border: 1px solid var(--ws-line);
+}
 
 .selection-details dt,
 .sku-details dt {
   color: var(--ws-muted);
+}
+
+.selection-details dd,
+.sku-details dd {
+  color: var(--ink);
 }
 
 .verification-actions .primary-action {
@@ -4635,76 +4703,265 @@ kbd {
 }
 
 .verification-actions .reject-action {
-  border-color: rgb(255 46 136 / 55%);
-  color: #ff8fbd;
+  border-color: var(--magenta);
+  color: var(--magenta-text);
 }
 
 .verification-actions .reject-action:hover:not(:disabled) {
-  background: rgb(255 46 136 / 16%);
+  background: var(--magenta-soft);
   border-color: var(--magenta);
-  color: #fff;
+  color: var(--magenta-text);
+}
+
+.verification-actions .reject-action:focus-visible {
+  outline-color: var(--magenta);
+  color: var(--magenta-text);
+  background: var(--magenta-soft);
+  box-shadow: none;
+}
+
+.verification-actions kbd {
+  background: rgb(255 255 255 / 55%);
+  border-color: rgb(23 11 59 / 22%);
 }
 
 .save-state {
   font-family: var(--font-ui);
   font-weight: 700;
+  text-transform: capitalize;
 }
 
 .save-state[data-status="saved"] {
-  color: var(--mint);
+  color: var(--mint-text);
+  background: var(--mint-soft);
 }
 
 .save-state[data-status="saving"],
 .save-state[data-status="pending"] {
-  color: var(--yellow);
+  color: var(--yellow-text);
+  background: var(--yellow-soft);
 }
 
 .save-state[data-status="error"],
 .save-state[data-status="conflict"] {
-  color: #ff8fbd;
+  color: var(--magenta-text);
+  background: var(--magenta-soft);
+}
+
+.autosave-panel > p,
+.autosave-controls label {
+  color: var(--ws-text-2);
 }
 
 .conflict-panel {
-  background: rgb(255 46 136 / 12%);
-  border-color: rgb(255 46 136 / 45%);
+  background: var(--magenta-soft);
+  border-color: var(--magenta);
+  color: var(--magenta-text);
 }
 
-/* Assignment, catalog, propagation, review, analytics */
+.performance-panel,
+.autosave-panel {
+  border-top: 1px solid var(--ws-line);
+}
 
-.candidate-key,
-.review-rank,
-.review-count {
-  font-family: var(--font-mono);
+.benchmark-output {
+  background: var(--ws-elevated);
+  color: var(--ws-text);
+}
+
+.benchmark-output dt {
+  color: var(--ws-muted);
+}
+
+/* Assignment */
+
+.sku-picker-popover {
+  box-shadow: 0 20px 50px rgb(23 11 59 / 22%);
+}
+
+.assignment-heading strong {
+  color: var(--ink);
+}
+
+.catalog-source {
+  border-color: var(--ws-line-strong);
+  color: var(--ws-text-2);
+}
+
+.catalog-source[data-source="live"] {
+  color: var(--mint-text);
+  border-color: var(--mint);
+  background: var(--mint-soft);
+}
+
+.assignment-recents > span,
+.assignment-references p,
+.assignment-empty {
+  color: var(--ws-text-2);
+}
+
+.candidate-list > button {
+  background: var(--surface);
+  border-color: var(--ws-line);
+}
+
+.candidate-list > button:hover:not(:disabled) {
+  background: var(--ws-elevated);
+  border-color: var(--violet);
 }
 
 .candidate-list > button.is-assigned {
-  border-color: var(--ws-violet);
+  background: var(--violet-soft);
+  border-color: var(--violet);
+}
+
+.candidate-key {
+  background: var(--violet);
+  color: #fff;
+  font-family: var(--font-mono);
+}
+
+.candidate-copy strong {
+  color: var(--ink);
+}
+
+.candidate-copy span {
+  color: var(--ws-text-2);
+}
+
+.reference-placeholder {
+  background: var(--ws-elevated);
+  border-color: var(--ws-line);
+  color: var(--ws-muted);
 }
 
 .assignment-fallbacks .unknown-action {
-  border-color: rgb(255 197 61 / 55%);
-  color: #ffe2a3;
+  background: var(--yellow-soft);
+  border-color: var(--yellow);
+  color: var(--yellow-text);
+}
+
+.assignment-fallbacks .unknown-action:hover:not(:disabled) {
+  background: var(--yellow);
+  border-color: var(--yellow);
+  color: var(--ink);
+}
+
+/* Catalog */
+
+.catalog-workspace button {
+  background: var(--surface);
+}
+
+.catalog-workspace button:hover:not(:disabled) {
+  background: var(--violet-soft);
+  border-color: var(--violet);
 }
 
 .catalog-views button.is-active {
   background: var(--violet);
+  border-color: var(--violet);
   color: #fff;
 }
 
+.catalog-row {
+  border-bottom-color: var(--ws-line);
+}
+
+.catalog-row:hover:not(.is-selected) {
+  background: var(--ws-elevated);
+}
+
 .catalog-row.is-selected {
-  background: rgb(125 62 230 / 22%);
+  background: var(--violet-soft);
   border-left: 3px solid var(--magenta);
+}
+
+.catalog-row strong,
+.catalog-detail-header strong {
+  color: var(--ink);
+}
+
+.catalog-row small,
+.catalog-notice,
+.reference-grid figcaption {
+  color: var(--ws-text-2);
 }
 
 .sku-status {
   font-family: var(--font-ui);
   font-weight: 700;
   text-transform: none;
+  color: var(--ws-text-2);
+  background: var(--ws-elevated);
 }
 
-.catalog-source[data-source="live"] {
-  color: var(--mint);
-  border-color: rgb(22 199 132 / 45%);
+.sku-details dl div,
+.reference-grid figure {
+  border-color: var(--ws-line);
+}
+
+.merge-section,
+.reference-section {
+  border-top-color: var(--ws-line);
+}
+
+.merge-results strong {
+  color: var(--ink);
+}
+
+.merge-results span {
+  color: var(--ws-text-2);
+}
+
+/* Propagation */
+
+.propagation-seed-picker label,
+.propagation-card-meta,
+.model-evidence,
+.propagation-confirm-bar > span {
+  color: var(--ws-text-2);
+}
+
+.propagation-review-header {
+  border-bottom-color: var(--ws-line);
+}
+
+.propagation-confirm-bar {
+  background: var(--surface);
+  border-top: 1px solid var(--ws-line);
+}
+
+.propagation-grid > button,
+.propagation-grid > label {
+  background: var(--surface);
+  border-color: var(--ws-line);
+}
+
+.confusion-badge {
+  background: var(--yellow);
+  color: var(--ink);
+  font-family: var(--font-ui);
+  font-weight: 600;
+}
+
+.hard-pair-warning {
+  background: var(--yellow-soft);
+  border-color: var(--yellow);
+  color: var(--yellow-text);
+  font-family: var(--font-ui);
+  font-weight: 600;
+}
+
+/* Review */
+
+.review-guidance,
+.propagation-message,
+.analytics-notice,
+.review-item-copy span,
+.review-canvas-empty {
+  color: var(--ws-text-2);
+  font-family: var(--font-ui);
 }
 
 .review-count {
@@ -4712,42 +4969,112 @@ kbd {
   background: var(--violet);
   border: 0;
   border-radius: 10px;
+  font-family: var(--font-mono);
+}
+
+.review-item {
+  background: var(--surface);
+  border-color: var(--ws-line);
+}
+
+.review-item:hover:not(.is-selected) {
+  border-color: var(--violet-line);
 }
 
 .review-item.is-selected {
-  background: rgb(125 62 230 / 22%);
-  border-color: var(--ws-violet);
+  background: var(--violet-soft);
+  border-color: var(--violet);
   box-shadow: none;
 }
 
-.review-guidance,
-.propagation-message,
-.analytics-notice {
+.review-rank {
+  color: var(--violet-strong);
+  background: var(--violet-soft);
+  font-family: var(--font-mono);
+}
+
+.review-item-copy strong {
+  color: var(--ink);
+}
+
+.review-reasons span {
+  background: var(--yellow-soft);
+  border-color: var(--yellow);
+  color: var(--yellow-text);
+}
+
+.review-cleared {
+  background: var(--ws-elevated);
   color: var(--ws-text-2);
-  font-family: var(--font-ui);
 }
 
-.propagation-confirm-bar {
-  background: var(--ws-panel);
-  border-top: 1px solid var(--ws-line);
+.review-error {
+  background: var(--magenta-soft);
+  border-color: var(--magenta);
+  color: var(--magenta-text);
 }
 
-.confusion-badge,
-.hard-pair-warning {
-  font-family: var(--font-ui);
-  font-weight: 600;
+.review-canvas {
+  background: var(--ws-bg);
+}
+
+/* Analytics */
+
+.analytics-heading,
+.analytics-lineage,
+.analytics-summary > div,
+.analytics-image-card {
+  border-color: var(--ws-line);
+}
+
+.analytics-summary strong,
+.analytics-image-title strong {
+  color: var(--ink);
+}
+
+.analytics-summary span,
+.analytics-lineage,
+.analytics-metric-foot {
+  color: var(--ws-text-2);
+}
+
+.analytics-notice,
+.analytics-incomplete {
+  background: var(--yellow-soft);
+  border-color: var(--yellow);
+  color: var(--yellow-text);
 }
 
 .analytics-status.is-final {
-  color: var(--mint);
+  background: var(--mint-soft);
+  border-color: var(--mint);
+  color: var(--mint-text);
 }
 
 .analytics-status.is-not-final {
-  color: var(--yellow);
+  background: var(--yellow-soft);
+  border-color: var(--yellow);
+  color: var(--yellow-text);
+}
+
+.share-row > div {
+  background: var(--ws-elevated);
 }
 
 .share-row span:last-child {
   background: var(--rail-gradient);
+}
+
+.analytics-export-actions a {
+  background: var(--violet);
+  border-color: var(--violet);
+  color: #fff;
+  box-shadow: none;
+}
+
+.analytics-export-actions a:hover {
+  background: var(--violet-strong);
+  border-color: var(--violet-strong);
 }
 
 .review-empty,
@@ -4757,18 +5084,32 @@ kbd {
 
 .review-empty h1,
 .analytics-empty h1 {
-  color: var(--ws-text);
   font-size: 28px;
+}
+
+.review-empty code,
+.analytics-empty code {
+  background: var(--ws-elevated);
+  padding: 2px 6px;
+  border-radius: 4px;
 }
 
 /* Overlay glyph cue colours follow the state tokens exactly. */
 
 .state-marker[data-state="verified"] {
-  color: var(--mint);
+  color: var(--mint-text);
 }
 
 .state-marker[data-state="flagged"] {
-  color: var(--yellow);
+  color: var(--yellow-text);
+}
+
+.state-marker[data-state="unverified"] {
+  color: #0e7490;
+}
+
+.state-marker[data-state="propagated"] {
+  color: var(--violet-strong);
 }
 
 @media (prefers-reduced-motion: reduce) {
