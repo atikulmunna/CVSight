@@ -107,6 +107,12 @@ def test_login_session_logout_and_audit(
     ("actor", "method", "path", "expected"),
     [
         ("annotator:test", "POST", "/api/datasets", 403),
+        (
+            "annotator:test",
+            "POST",
+            "/api/datasets/11111111-1111-4111-8111-111111111111/versions",
+            403,
+        ),
         ("reviewer:test", "GET", "/api/jobs/11111111-1111-4111-8111-111111111111", 403),
         ("annotator:test", "GET", "/api/model-registry", 403),
         (

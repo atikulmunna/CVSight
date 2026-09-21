@@ -1,9 +1,10 @@
 from __future__ import annotations
 
-from typing import Annotated, Any, Literal
+from datetime import datetime
+from typing import Annotated, Any, Literal, cast
 from uuid import UUID
 
-from fastapi import APIRouter, File, Form, HTTPException, UploadFile, status
+from fastapi import APIRouter, File, Form, HTTPException, Query, UploadFile, status
 from fastapi.responses import FileResponse
 from pydantic import BaseModel, Field
 from sqlalchemy.exc import SQLAlchemyError
@@ -21,6 +22,7 @@ from shelfsight_api.image_ingest import (
     IngestedImage,
     get_image_record,
     ingest_prepared_image,
+    list_version_images,
     mark_image_reviewed,
     media_variant,
 )
@@ -80,6 +82,58 @@ class ManifestResponse(BaseModel):
 class ImageReviewResponse(BaseModel):
     id: UUID
     status: Literal["reviewed"]
+
+
+ImageStatus = Literal["unlabeled", "pre_labeled", "in_progress", "labeled", "reviewed"]
+
+
+class ImageSummaryResponse(BaseModel):
+    id: UUID
+    original_filename: str
+    media_type: str
+    width: int
+    height: int
+    status: ImageStatus
+    created_at: datetime
+    thumbnail_url: str
+
+
+class ImageListResponse(BaseModel):
+    images: list[ImageSummaryResponse]
+    total: int
+    limit: int
+    offset: int
+
+
+@router.get(
+    "/datasets/{dataset_id}/versions/{dataset_version_id}/images",
+    response_model=ImageListResponse,
+)
+def images_index(
+    dataset_id: UUID,
+    dataset_version_id: UUID,
+    image_status: Annotated[ImageStatus | None, Query(alias="status")] = None,
+    limit: Annotated[int, Query(ge=1, le=250)] = 60,
+    offset: Annotated[int, Query(ge=0, le=1_000_000)] = 0,
+) -> ImageListResponse:
+    try:
+        result = list_version_images(
+            get_engine(),
+            dataset_id,
+            dataset_version_id,
+            image_status,
+            limit,
+            offset,
+        )
+        return ImageListResponse(
+            images=[_summary_response(image) for image in result["images"]],
+            total=int(result["total"]),
+            limit=limit,
+            offset=offset,
+        )
+    except Exception as error:
+        _raise_http_error(error)
+        raise
 
 
 @router.post(
@@ -269,6 +323,20 @@ def _record_response(record: dict[str, Any]) -> ImageResponse:
         status=str(record["status"]),
         capture_metadata=dict(record["capture_metadata"]),
         **_media_urls(image_id),
+    )
+
+
+def _summary_response(record: dict[str, Any]) -> ImageSummaryResponse:
+    image_id = UUID(str(record["id"]))
+    return ImageSummaryResponse(
+        id=image_id,
+        original_filename=str(record["original_filename"]),
+        media_type=str(record["media_type"]),
+        width=int(record["canonical_width"]),
+        height=int(record["canonical_height"]),
+        status=cast(ImageStatus, str(record["status"])),
+        created_at=cast(datetime, record["created_at"]),
+        thumbnail_url=_media_urls(image_id)["thumbnail_url"],
     )
 
 

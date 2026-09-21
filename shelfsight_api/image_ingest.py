@@ -6,7 +6,7 @@ from pathlib import Path
 from typing import Any
 from uuid import UUID, uuid4
 
-from sqlalchemy import Engine, and_, insert, select, update
+from sqlalchemy import Engine, and_, func, insert, select, update
 from sqlalchemy.exc import IntegrityError, SQLAlchemyError
 
 from shelfsight_api.media import PreparedImage, remove_media_keys, write_media_bundle
@@ -51,6 +51,56 @@ class IngestedImage:
     dataset_id: UUID
     dataset_version_id: UUID
     prepared: PreparedImage
+
+
+def list_version_images(
+    engine: Engine,
+    dataset_id: UUID,
+    dataset_version_id: UUID,
+    status_filter: str | None,
+    limit: int,
+    offset: int,
+) -> dict[str, Any]:
+    with engine.connect() as connection:
+        version_exists = connection.execute(
+            select(dataset_versions.c.id).where(
+                dataset_versions.c.id == dataset_version_id,
+                dataset_versions.c.dataset_id == dataset_id,
+            )
+        ).scalar_one_or_none()
+        if version_exists is None:
+            raise DatasetVersionNotFoundError("dataset version does not exist")
+
+        membership = dataset_version_images.join(
+            images,
+            and_(
+                images.c.id == dataset_version_images.c.image_id,
+                images.c.dataset_id == dataset_version_images.c.dataset_id,
+            ),
+        )
+        filters = [dataset_version_images.c.dataset_version_id == dataset_version_id]
+        if status_filter is not None:
+            filters.append(images.c.status == status_filter)
+        total = connection.execute(
+            select(func.count()).select_from(membership).where(*filters)
+        ).scalar_one()
+        rows = connection.execute(
+            select(
+                images.c.id,
+                images.c.original_filename,
+                images.c.media_type,
+                images.c.canonical_width,
+                images.c.canonical_height,
+                images.c.status,
+                images.c.created_at,
+            )
+            .select_from(membership)
+            .where(*filters)
+            .order_by(images.c.created_at.desc(), images.c.id)
+            .limit(limit)
+            .offset(offset)
+        ).mappings()
+    return {"images": [dict(row) for row in rows], "total": total}
 
 
 def ingest_prepared_image(

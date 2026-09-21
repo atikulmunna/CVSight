@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 
 import { AnalyticsWorkspace } from "./analytics/AnalyticsWorkspace";
-import type { AuthSession, UserRole } from "./auth/api";
+import type { AuthSession } from "./auth/api";
 import { AnnotationWorkspace } from "./canvas/AnnotationWorkspace";
 import { DEMO_FIXTURE } from "./canvas/demoFixture";
 import { loadLiveFixture } from "./canvas/liveFixture";
@@ -21,15 +21,9 @@ import {
 } from "./gapReview";
 import { ReviewWorkspace } from "./review/ReviewWorkspace";
 import type { SaveStatus } from "./canvas/useAnnotationAutosave";
+import { workspacesForRole, type Workspace } from "./workspace";
 
 type ApiStatus = "checking" | "online" | "unavailable";
-type Workspace =
-  | "verify"
-  | "assign"
-  | "propagate"
-  | "review"
-  | "catalog"
-  | "analytics";
 
 type HealthResponse = {
   status: "ok";
@@ -47,15 +41,24 @@ function isHealthResponse(value: unknown): value is HealthResponse {
 type AppProps = {
   currentUser?: AuthSession;
   onLogout?: () => Promise<void>;
+  datasetVersionId?: string | null;
+  imageId?: string | null;
+  initialWorkspace?: Workspace;
+  projectLabel?: string;
+  onExitWorkspace?: () => void;
+  onWorkspaceChange?: (workspace: Workspace) => void;
 };
 
-const ROLE_WORKSPACES: Record<UserRole, Workspace[]> = {
-  owner: ["verify", "assign", "propagate", "review", "catalog", "analytics"],
-  annotator: ["verify", "assign", "propagate"],
-  reviewer: ["verify", "assign", "review"],
-};
-
-export default function App({ currentUser, onLogout }: AppProps) {
+export default function App({
+  currentUser,
+  onLogout,
+  datasetVersionId: routedDatasetVersionId,
+  imageId: routedImageId,
+  initialWorkspace,
+  projectLabel,
+  onExitWorkspace,
+  onWorkspaceChange,
+}: AppProps) {
   const [apiStatus, setApiStatus] = useState<ApiStatus>("checking");
   const [fixture, setFixture] = useState<CanvasFixture>(DEMO_FIXTURE);
   const [liveAnnotations, setLiveAnnotations] = useState<AnnotationBox[]>(
@@ -70,13 +73,24 @@ export default function App({ currentUser, onLogout }: AppProps) {
   const [gapReviewSaveStatus, setGapReviewSaveStatus] =
     useState<SaveStatus>("saved");
   const gapReviewFlushRef = useRef<(() => Promise<void>) | null>(null);
-  const datasetVersionId = useMemo(
-    () => new URLSearchParams(window.location.search).get("version"),
-    [],
+  const datasetVersionId = useMemo(() => {
+    if (routedDatasetVersionId !== undefined) {
+      return routedDatasetVersionId;
+    }
+    return new URLSearchParams(window.location.search).get("version");
+  }, [routedDatasetVersionId]);
+  const requestedWorkspace = useMemo(
+    () =>
+      initialWorkspace ??
+      new URLSearchParams(window.location.search).get("workspace"),
+    [initialWorkspace],
   );
-  const allowedWorkspaces = ROLE_WORKSPACES[currentUser?.role ?? "owner"];
+  const allowedWorkspaces = workspacesForRole(currentUser?.role ?? "owner");
   const [workspace, setWorkspace] = useState<Workspace>(() =>
-    datasetVersionId && allowedWorkspaces.includes("review")
+    requestedWorkspace &&
+    allowedWorkspaces.includes(requestedWorkspace as Workspace)
+      ? (requestedWorkspace as Workspace)
+      : datasetVersionId && allowedWorkspaces.includes("review")
       ? "review"
       : allowedWorkspaces[0]!,
   );
@@ -106,7 +120,7 @@ export default function App({ currentUser, onLogout }: AppProps) {
 
   useEffect(() => {
     const parameters = new URLSearchParams(window.location.search);
-    const imageId = parameters.get("image");
+    const imageId = routedImageId ?? parameters.get("image");
     const localFixture = parameters.get("fixture") === "local";
     const benchmark = parameters.get("benchmark");
     const gapReviewRequested = benchmark === "gap" || benchmark === "gap-truth";
@@ -169,7 +183,12 @@ export default function App({ currentUser, onLogout }: AppProps) {
 
     void loadRequestedFixture();
     return () => controller.abort();
-  }, []);
+  }, [routedImageId]);
+
+  function changeWorkspace(nextWorkspace: Workspace) {
+    setWorkspace(nextWorkspace);
+    onWorkspaceChange?.(nextWorkspace);
+  }
 
   const handleAnnotationsChange = useCallback((annotations: AnnotationBox[]) => {
     setLiveAnnotations(annotations);
@@ -280,9 +299,18 @@ export default function App({ currentUser, onLogout }: AppProps) {
               CV<span>Sight</span>
             </span>
           </span>
-          <span className="project-path">
-            retail-q3-audit / {fixture.name.toLowerCase().replaceAll(" ", "-")}
-          </span>
+          {onExitWorkspace ? (
+            <button className="project-path project-path-button" type="button" onClick={onExitWorkspace}>
+              {projectLabel ?? "Project"}
+              {routedImageId
+                ? ` / ${fixture.name.toLowerCase().replaceAll(" ", "-")}`
+                : ""}
+            </button>
+          ) : (
+            <span className="project-path">
+              retail-q3-audit / {fixture.name.toLowerCase().replaceAll(" ", "-")}
+            </span>
+          )}
         </div>
         <nav className="mode-tabs" aria-label="Workspace">
           {gapReview ? (
@@ -294,42 +322,42 @@ export default function App({ currentUser, onLogout }: AppProps) {
           {allowedWorkspaces.includes("verify") && <button
             type="button"
             className={workspace === "verify" ? "is-active" : ""}
-            onClick={() => setWorkspace("verify")}
+            onClick={() => changeWorkspace("verify")}
           >
             Verify boxes
           </button>}
           {allowedWorkspaces.includes("assign") && <button
             type="button"
             className={workspace === "assign" ? "is-active" : ""}
-            onClick={() => setWorkspace("assign")}
+            onClick={() => changeWorkspace("assign")}
           >
             Assign SKUs
           </button>}
           {allowedWorkspaces.includes("propagate") && <button
             type="button"
             className={workspace === "propagate" ? "is-active" : ""}
-            onClick={() => setWorkspace("propagate")}
+            onClick={() => changeWorkspace("propagate")}
           >
             Propagate
           </button>}
           {allowedWorkspaces.includes("review") && <button
             type="button"
             className={workspace === "review" ? "is-active" : ""}
-            onClick={() => setWorkspace("review")}
+            onClick={() => changeWorkspace("review")}
           >
             Review QA
           </button>}
           {allowedWorkspaces.includes("catalog") && <button
             type="button"
             className={workspace === "catalog" ? "is-active" : ""}
-            onClick={() => setWorkspace("catalog")}
+            onClick={() => changeWorkspace("catalog")}
           >
             SKU catalog
           </button>}
           {allowedWorkspaces.includes("analytics") && <button
             type="button"
             className={workspace === "analytics" ? "is-active" : ""}
-            onClick={() => setWorkspace("analytics")}
+            onClick={() => changeWorkspace("analytics")}
           >
             Analytics
           </button>}

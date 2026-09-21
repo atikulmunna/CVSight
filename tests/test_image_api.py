@@ -137,6 +137,49 @@ def test_image_review_requires_all_active_annotations_to_be_resolved(
     assert client.post(f"/api/images/{image_id}/reviewed").json() == reviewed.json()
 
 
+def test_project_image_list_is_filtered_and_bounded(
+    database_engine: Engine,
+    ingest_target: tuple[UUID, UUID],
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+) -> None:
+    dataset_id, version_id = ingest_target
+    configure_image_api(monkeypatch, database_engine, tmp_path / "media", tmp_path / "imports")
+    first_id = client.post(
+        upload_url(dataset_id, version_id),
+        files={"file": ("first.jpg", make_image_bytes("blue"), "image/jpeg")},
+    ).json()["id"]
+    second_id = client.post(
+        upload_url(dataset_id, version_id),
+        files={"file": ("second.jpg", make_image_bytes("green"), "image/jpeg")},
+    ).json()["id"]
+    with database_engine.begin() as connection:
+        connection.execute(
+            update(images).where(images.c.id == second_id).values(status="reviewed")
+        )
+
+    first_page = client.get(f"{upload_url(dataset_id, version_id)}?limit=1")
+    reviewed = client.get(
+        f"{upload_url(dataset_id, version_id)}?status=reviewed&limit=60&offset=0"
+    )
+    missing = client.get(upload_url(dataset_id, uuid4()))
+
+    assert first_page.status_code == 200
+    assert first_page.json()["total"] == 2
+    assert len(first_page.json()["images"]) == 1
+    assert first_page.json()["limit"] == 1
+    assert reviewed.status_code == 200
+    assert reviewed.json()["total"] == 1
+    assert reviewed.json()["images"][0]["id"] == second_id
+    assert reviewed.json()["images"][0]["status"] == "reviewed"
+    assert reviewed.json()["images"][0]["thumbnail_url"].endswith(
+        f"/{second_id}/media/thumbnail"
+    )
+    assert first_id != second_id
+    assert missing.status_code == 404
+    assert missing.json()["detail"]["code"] == "dataset_version_not_found"
+
+
 def test_duplicate_corrupt_and_unsupported_uploads_are_deterministic(
     database_engine: Engine,
     ingest_target: tuple[UUID, UUID],

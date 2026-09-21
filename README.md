@@ -452,6 +452,56 @@ Favorites and the 12 most recent selections are stored locally in the browser. I
 catalog API is unavailable, the screen displays a read-only 2,001-SKU fixture for
 search and rendering checks.
 
+Owners can optionally attach a CSV catalog while creating a project. The file must be
+2 MiB or smaller and contain no more than 2,500 SKU rows. The `name` header is required;
+`upc`, `category`, `subcategory`, `brand`, and `variant` are optional. UPC values must
+contain 8, 12, 13, or 14 digits and cannot repeat in the file or existing catalog.
+Quoted commas and UTF-8 byte-order marks are supported. Project and catalog creation
+use one database transaction, so any catalog conflict rolls back the new project and
+all rows. `POST /api/datasets` accepts the validated rows in its optional `catalog`
+array and returns `imported_skus`.
+
+After creation, the web app opens the new project overview and shows a first-image
+checklist. The checklist leads the owner to upload a shelf image, open it, correct and
+decide its boxes, assign identities as needed, wait for saved changes, and mark the
+image reviewed. Matching guidance on the Images page disappears after a reviewed
+image is present.
+
+## Project progress
+
+The project overview reads bounded progress totals from:
+
+```text
+GET /api/dataset-versions/{version_id}/progress
+```
+
+The summary reports box decisions, known, Unknown, and unassigned accepted product
+identities, reviewed images, and flagged annotations. Open versions use current
+annotation revisions. Frozen versions use their immutable snapshot, so later edits
+cannot change released progress.
+
+## Project versions and releases
+
+Owners can open the project release history at:
+
+```text
+http://127.0.0.1:5173/projects/{project_id}/versions
+```
+
+The page separates the current working version from immutable releases. It shows the
+current review queue status, reviewer sign-off for each release, and deterministic
+detection and recognition downloads. A frozen snapshot created outside Review QA is
+shown separately and is never presented as reviewer-approved.
+
+Version management routes:
+
+- `GET /api/datasets/{dataset_id}/versions` lists working and immutable versions.
+- `POST /api/datasets/{dataset_id}/versions` starts the next owner-only working version.
+
+Starting the next working version is allowed only when no open version exists. It uses
+the latest immutable version as its parent and copies that release's image membership.
+The parent snapshot and its exports remain unchanged.
+
 ## Dataset exports
 
 Only immutable, snapshotted dataset versions can be exported:
@@ -655,10 +705,10 @@ Delete only the rebuildable projection with:
 
 ## Quality review and snapshot sign-off
 
-Open the risk-ranked review workspace for an open dataset version with:
+Open the risk-ranked review workspace for a project with:
 
 ```text
-http://127.0.0.1:5173/?version={dataset_version_id}
+http://127.0.0.1:5173/projects/{project_id}/review
 ```
 
 Select **Review QA**. Each queue item shows every blocking reason and its combined
@@ -687,13 +737,24 @@ cannot later be assigned a review sign-off.
 Open an ingested image and its current database-backed annotations with:
 
 ```text
-http://127.0.0.1:5173/?image={image_id}
+http://127.0.0.1:5173/projects/{project_id}/annotate/{image_id}
 ```
 
 The workspace loads the canonical managed image and current annotation revisions.
 Verification, geometry edits, and SKU assignment use the API autosave path. Reloading
 the same URL restores server state, with an image-specific local draft used only for
 interrupted saves.
+
+Workspace routes are bookmarkable:
+
+- Verify: `/projects/{project_id}/annotate/{image_id}`
+- Assign: `/projects/{project_id}/annotate/{image_id}/assign`
+- Propagate: `/projects/{project_id}/annotate/{image_id}/propagate`
+- Review: `/projects/{project_id}/review`
+- Catalog: `/projects/{project_id}/catalog`
+- Analytics: `/projects/{project_id}/analytics`
+
+Legacy `?image=`, `?version=`, `?fixture=`, and `?benchmark=` URLs remain supported.
 
 ## Annotation canvas
 

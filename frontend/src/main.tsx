@@ -1,8 +1,8 @@
 import { StrictMode } from "react";
 import { createRoot } from "react-dom/client";
 
-import App from "./App";
 import { AuthGate } from "./auth/AuthGate";
+import { ProjectRouter } from "./projects/ProjectRouter";
 import "./styles.css";
 
 const root = document.querySelector("#root");
@@ -15,7 +15,7 @@ createRoot(root).render(
   <StrictMode>
     <AuthGate>
       {(session, signOut) => (
-        <App currentUser={session} onLogout={signOut} />
+        <ProjectRouter currentUser={session} onLogout={signOut} />
       )}
     </AuthGate>
   </StrictMode>,
