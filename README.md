@@ -6,8 +6,8 @@ PostgreSQL connectivity, and an Alembic migration path.
 
 ## Interface
 
-The shelf photos below are synthetic renders used for the demo project, so the
-screenshots contain no store imagery.
+The shelf photos below are field captures from the CVSight shelf audit program. The
+annotated frames use ground-truth facings from the QPDS-Seg dataset.
 
 Projects dashboard. Each tile previews the project's first shelf photos.
 
@@ -22,8 +22,8 @@ Images. Upload shelf photos, filter by labeling state, and open one for annotati
 
 ![Project images grid with status chips](docs/screenshots/images.jpg)
 
-Verify boxes. Model proposals, verified facings, flagged boxes, and gaps sit on the
-canvas with a decision panel and keyboard shortcuts.
+Verify boxes. Verified facings in mint, proposals in dashed cyan, and flagged boxes in
+yellow sit on the canvas with a decision panel and keyboard shortcuts.
 
 ![Verify boxes workspace with a selected facing](docs/screenshots/verify-boxes.jpg)
 

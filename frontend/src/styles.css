@@ -68,9 +68,9 @@
   --danger: var(--magenta);
   --info: #38bdf8;
   --ov-unverified: #22d3ee;
-  --ov-verified: #e9e4ff;
-  --ov-verified-op: 0.6;
-  --ov-propagated: #b794ff;
+  --ov-verified: #16c784;
+  --ov-verified-op: 0.92;
+  --ov-propagated: #8b5cf6;
   --ov-flagged: #ffc53d;
   --ov-selected: #ffffff;
   --ov-selected-fill-op: 0.08;
@@ -79,7 +79,7 @@
   --ov-halo: #0e0c14;
   --ov-halo-op: 0.65;
   --ov-halo-w: 4px;
-  --ov-core-w: 1.5px;
+  --ov-core-w: 2px;
   --ov-dim-op: 0.35;
   --glass-surface: var(--ws-panel);
   --glass-surface-strong: var(--ws-panel);
