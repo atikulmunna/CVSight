@@ -4,7 +4,7 @@ from collections.abc import Mapping
 from typing import Any
 from uuid import UUID, uuid4
 
-from sqlalchemy import Connection, and_, func, insert, literal, select
+from sqlalchemy import Connection, Select, and_, func, insert, literal, select
 from sqlalchemy.sql.selectable import Subquery
 
 from shelfsight_api.models import (
@@ -35,7 +35,31 @@ class DatasetOpenVersionExistsError(ValueError):
     """Raised when a dataset already has a working version."""
 
 
+class DatasetCatalogUpcConflictError(ValueError):
+    """Raised when a catalog import repeats a UPC that the shared catalog already holds."""
+
+    def __init__(self, upcs: list[str]) -> None:
+        super().__init__("catalog import repeats existing UPC values")
+        self.upcs = upcs
+
+
 def list_datasets(connection: Connection) -> list[dict[str, Any]]:
+    rows = connection.execute(_dataset_summary_query()).mappings()
+    return [dict(row) for row in rows]
+
+
+def get_dataset(connection: Connection, dataset_id: UUID) -> dict[str, Any]:
+    row = (
+        connection.execute(_dataset_summary_query().where(datasets.c.id == dataset_id))
+        .mappings()
+        .one_or_none()
+    )
+    if row is None:
+        raise DatasetNotFoundError("dataset does not exist")
+    return dict(row)
+
+
+def _dataset_summary_query() -> Select[Any]:
     open_versions = dataset_versions.alias("open_versions")
     latest_version_id = (
         select(dataset_versions.c.id)
@@ -52,7 +76,7 @@ def list_datasets(connection: Connection) -> list[dict[str, Any]]:
         .group_by(images.c.dataset_id)
         .subquery()
     )
-    rows = connection.execute(
+    return (
         select(
             datasets.c.id,
             datasets.c.name,
@@ -71,8 +95,7 @@ def list_datasets(connection: Connection) -> list[dict[str, Any]]:
         )
         .outerjoin(image_counts, image_counts.c.dataset_id == datasets.c.id)
         .order_by(datasets.c.created_at.desc(), datasets.c.name)
-    ).mappings()
-    return [dict(row) for row in rows]
+    )
 
 
 def create_dataset_with_open_version(
@@ -81,6 +104,16 @@ def create_dataset_with_open_version(
     description: str | None,
     catalog: list[Mapping[str, Any]] | None = None,
 ) -> dict[str, Any]:
+    # The catalog is shared by every dataset, so a repeated UPC is reported with its
+    # value instead of surfacing as a bare constraint violation.
+    requested_upcs = [sku["upc"] for sku in catalog or [] if sku.get("upc") is not None]
+    if requested_upcs:
+        existing = connection.execute(
+            select(skus.c.upc).where(skus.c.upc.in_(requested_upcs)).order_by(skus.c.upc)
+        ).scalars().all()
+        if existing:
+            raise DatasetCatalogUpcConflictError([str(upc) for upc in existing])
+
     dataset_id = uuid4()
     version_id = uuid4()
     connection.execute(

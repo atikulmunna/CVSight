@@ -253,7 +253,11 @@ function CreateProjectForm({
           <div className="catalog-import-field">
             <div>
               <strong>SKU catalog CSV <span>Optional</span></strong>
-              <p>Headers: name, upc, category, subcategory, brand, variant. Name is required.</p>
+              <p>
+                Headers: name, upc, category, subcategory, brand, variant. Name is required.
+                Imported SKUs join the catalog shared by every project, so a UPC that already
+                exists is rejected.
+              </p>
             </div>
             <label>
               <input
@@ -341,8 +345,21 @@ function ProjectMessage({
 }
 
 function projectCreateError(error: unknown): string {
-  if (error instanceof ProjectApiError && error.code === "dataset_name_conflict") {
+  if (!(error instanceof ProjectApiError)) {
+    return "The project could not be created. Try again.";
+  }
+  if (error.code === "dataset_name_conflict") {
     return "A project with this name already exists.";
+  }
+  if (error.code === "duplicate_upc") {
+    const upcs = Array.isArray(error.details.upcs)
+      ? error.details.upcs.filter((value): value is string => typeof value === "string")
+      : [];
+    const listed = upcs.length > 0 ? ` (${upcs.join(", ")})` : "";
+    return `The catalog is shared by every project, and some UPC values already exist${listed}. Remove or change those rows.`;
+  }
+  if (error.code === "catalog_constraint_violation") {
+    return "The catalog CSV breaks a catalog rule. Check the rows and try again.";
   }
   return "The project could not be created. Try again.";
 }

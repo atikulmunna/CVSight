@@ -123,6 +123,7 @@ def test_project_catalog_import_is_validated_and_transactional(
     assert repeated_payload.status_code == 422
     assert existing_conflict.status_code == 409
     assert existing_conflict.json()["detail"]["code"] == "duplicate_upc"
+    assert existing_conflict.json()["detail"]["upcs"] == ["012345678905"]
     assert invalid_upc.status_code == 422
     with database_engine.connect() as connection:
         rolled_back = connection.execute(
@@ -135,7 +136,7 @@ def test_project_catalog_import_is_validated_and_transactional(
         connection.execute(delete(skus).where(skus.c.is_unknown.is_(False)))
 
 
-def test_list_datasets_returns_project_summary(
+def test_list_and_detail_datasets_return_project_summary(
     database_engine: Engine,
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
@@ -170,6 +171,14 @@ def test_list_datasets_returns_project_summary(
     assert project["latest_version_id"] == created["open_version_id"]
     assert project["image_count"] == 1
     assert project["created_at"]
+
+    detail = client.get(f"/api/datasets/{created['id']}")
+    assert detail.status_code == 200
+    assert detail.json() == project
+
+    missing = client.get(f"/api/datasets/{uuid4()}")
+    assert missing.status_code == 404
+    assert missing.json()["detail"]["code"] == "dataset_not_found"
 
     with database_engine.begin() as connection:
         connection.execute(delete(datasets).where(datasets.c.id == created["id"]))

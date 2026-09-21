@@ -8,7 +8,7 @@ import {
 } from "react";
 
 import type { AuthSession } from "../auth/api";
-import { loadProjects, type ProjectSummary } from "./api";
+import { isMissingProject, loadProject, type ProjectSummary } from "./api";
 import {
   loadProjectImages,
   ProjectImageApiError,
@@ -64,19 +64,20 @@ export function ProjectImagesPage({
 
   useEffect(() => {
     let active = true;
-    loadProjects()
-      .then((projects) => {
+    loadProject(projectId)
+      .then((selected) => {
         if (!active) {
           return;
         }
-        const selected = projects.find((item) => item.id === projectId) ?? null;
         setProject(selected);
-        setProjectStatus(selected ? "ready" : "missing");
+        setProjectStatus("ready");
       })
-      .catch(() => {
-        if (active) {
-          setProjectStatus("error");
+      .catch((error: unknown) => {
+        if (!active) {
+          return;
         }
+        setProject(null);
+        setProjectStatus(isMissingProject(error) ? "missing" : "error");
       });
     return () => {
       active = false;

@@ -433,8 +433,9 @@ Domain errors use a stable response shape:
 
 ## SKU catalog
 
-The catalog stores the product hierarchy as category, subcategory, brand, and variant,
-with an optional unique UPC. Migration `0004_sku_catalog` creates the explicit
+One catalog is shared by every project. It stores the product hierarchy as category,
+subcategory, brand, and variant, with an optional UPC that is unique across the whole
+catalog. Migration `0004_sku_catalog` creates the explicit
 `Unknown / Other` target. The unknown target remains active and cannot be edited,
 deprecated, or merged.
 
@@ -464,7 +465,8 @@ search and rendering checks.
 Owners can optionally attach a CSV catalog while creating a project. The file must be
 2 MiB or smaller and contain no more than 2,500 SKU rows. The `name` header is required;
 `upc`, `category`, `subcategory`, `brand`, and `variant` are optional. UPC values must
-contain 8, 12, 13, or 14 digits and cannot repeat in the file or existing catalog.
+contain 8, 12, 13, or 14 digits and cannot repeat in the file or the shared catalog; a
+conflict returns `duplicate_upc` with the clashing values.
 Quoted commas and UTF-8 byte-order marks are supported. Project and catalog creation
 use one database transaction, so any catalog conflict rolls back the new project and
 all rows. `POST /api/datasets` accepts the validated rows in its optional `catalog`
@@ -502,8 +504,10 @@ current review queue status, reviewer sign-off for each release, and determinist
 detection and recognition downloads. A frozen snapshot created outside Review QA is
 shown separately and is never presented as reviewer-approved.
 
-Version management routes:
+Project and version routes:
 
+- `GET /api/datasets` lists every project with its open and latest version and image count.
+- `GET /api/datasets/{dataset_id}` returns one project summary, or 404 when it does not exist.
 - `GET /api/datasets/{dataset_id}/versions` lists working and immutable versions.
 - `POST /api/datasets/{dataset_id}/versions` starts the next owner-only working version.
 

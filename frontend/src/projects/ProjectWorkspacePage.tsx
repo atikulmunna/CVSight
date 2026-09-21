@@ -3,7 +3,7 @@ import { useEffect, useState } from "react";
 import App from "../App";
 import type { AuthSession } from "../auth/api";
 import type { Workspace } from "../workspace";
-import { loadProjects, type ProjectSummary } from "./api";
+import { isMissingProject, loadProject, type ProjectSummary } from "./api";
 import { ProjectsHeader } from "./ProjectsHeader";
 
 type ProjectWorkspacePageProps = {
@@ -32,19 +32,20 @@ export function ProjectWorkspacePage({
 
   useEffect(() => {
     let active = true;
-    loadProjects()
-      .then((projects) => {
+    loadProject(projectId)
+      .then((selected) => {
         if (!active) {
           return;
         }
-        const selected = projects.find((item) => item.id === projectId) ?? null;
         setProject(selected);
-        setStatus(selected ? "ready" : "missing");
+        setStatus("ready");
       })
-      .catch(() => {
-        if (active) {
-          setStatus("error");
+      .catch((error: unknown) => {
+        if (!active) {
+          return;
         }
+        setProject(null);
+        setStatus(isMissingProject(error) ? "missing" : "error");
       });
     return () => {
       active = false;

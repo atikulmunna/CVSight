@@ -1,7 +1,7 @@
 import { useEffect, useState, type ReactNode } from "react";
 
 import type { AuthSession } from "../auth/api";
-import { loadProjects, type ProjectSummary } from "./api";
+import { isMissingProject, loadProject, type ProjectSummary } from "./api";
 import { ProjectNavigation } from "./ProjectNavigation";
 import { ProjectsHeader } from "./ProjectsHeader";
 import {
@@ -47,15 +47,8 @@ export function ProjectVersionsPage({
 
   useEffect(() => {
     let active = true;
-    Promise.all([loadProjects(), loadProjectVersions(projectId)])
-      .then(async ([projects, versions]) => {
-        const project = projects.find((item) => item.id === projectId) ?? null;
-        if (!project) {
-          if (active) {
-            setStatus("missing");
-          }
-          return;
-        }
+    Promise.all([loadProject(projectId), loadProjectVersions(projectId)])
+      .then(async ([project, versions]) => {
         const working = versions.find((version) => version.status === "working") ?? null;
         let review: WorkingVersionReview | null = null;
         let reviewAvailable = working === null;
@@ -72,9 +65,9 @@ export function ProjectVersionsPage({
           setStatus("ready");
         }
       })
-      .catch(() => {
+      .catch((error: unknown) => {
         if (active) {
-          setStatus("error");
+          setStatus(isMissingProject(error) ? "missing" : "error");
         }
       });
     return () => {

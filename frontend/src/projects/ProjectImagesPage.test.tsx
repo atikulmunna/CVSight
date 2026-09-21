@@ -30,6 +30,9 @@ describe("ProjectImagesPage", () => {
       if (url === "/api/datasets") {
         return Promise.resolve(response(200, [PROJECT]));
       }
+      if (url === `/api/datasets/${PROJECT_ID}`) {
+        return Promise.resolve(response(200, PROJECT));
+      }
       if (url.includes("status=reviewed")) {
         return Promise.resolve(response(200, imagePage("reviewed")));
       }
@@ -64,6 +67,9 @@ describe("ProjectImagesPage", () => {
         const url = String(input);
         if (url === "/api/datasets") {
           return Promise.resolve(response(200, [PROJECT]));
+        }
+        if (url === `/api/datasets/${PROJECT_ID}`) {
+          return Promise.resolve(response(200, PROJECT));
         }
         if (init?.method === "POST") {
           uploaded = true;
@@ -114,6 +120,9 @@ describe("ProjectImagesPage", () => {
         const url = String(input);
         if (url === "/api/datasets") {
           return Promise.resolve(response(200, [PROJECT]));
+        }
+        if (url === `/api/datasets/${PROJECT_ID}`) {
+          return Promise.resolve(response(200, PROJECT));
         }
         if (url.includes(`/datasets/${PROJECT_ID}/versions/${VERSION_ID}/images?`)) {
           return Promise.resolve(response(200, imagePage("unlabeled")));

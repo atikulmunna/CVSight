@@ -14,6 +14,7 @@ const PROJECT = {
   latest_version_id: VERSION_ID,
   image_count: 24,
 };
+const NOT_FOUND = { detail: { code: "dataset_not_found", message: "dataset does not exist" } };
 
 afterEach(() => {
   window.history.replaceState({}, "", "/");
@@ -59,6 +60,11 @@ describe("ProjectRouter", () => {
         }
         if (String(_input) === `/api/dataset-versions/${VERSION_ID}/progress`) {
           return Promise.resolve(response(200, emptyProgressResponse()));
+        }
+        if (String(_input) === `/api/datasets/${PROJECT_ID}`) {
+          return Promise.resolve(
+            projectCreated ? response(200, PROJECT) : response(404, NOT_FOUND),
+          );
         }
         return Promise.resolve({
           ok: true,
@@ -144,6 +150,38 @@ describe("ProjectRouter", () => {
     ).toBeInTheDocument();
   });
 
+  it("names the clashing UPC values when the shared catalog rejects an import", async () => {
+    vi.stubGlobal(
+      "fetch",
+      vi.fn().mockImplementation((_input: RequestInfo | URL, init?: RequestInit) => {
+        if (init?.method === "POST") {
+          return Promise.resolve(response(409, {
+            detail: { code: "duplicate_upc", message: "hidden", upcs: ["012345678905", "4006381333931"] },
+          }));
+        }
+        return Promise.resolve({ ok: true, json: async () => [] });
+      }),
+    );
+
+    render(
+      <ProjectRouter
+        currentUser={{ username: "owner", role: "owner" }}
+        onLogout={vi.fn()}
+      />,
+    );
+    await screen.findByText("Create your first project");
+    fireEvent.click(screen.getAllByRole("button", { name: "New project" })[0]!);
+    fireEvent.change(screen.getByLabelText("Project name"), {
+      target: { value: "Second store" },
+    });
+    fireEvent.click(screen.getByRole("button", { name: "Create project" }));
+
+    const alert = await screen.findByRole("alert");
+    expect(alert).toHaveTextContent("The catalog is shared by every project");
+    expect(alert).toHaveTextContent("012345678905, 4006381333931");
+    expect(alert).not.toHaveTextContent("hidden");
+  });
+
   it("does not show project creation to an annotator", async () => {
     vi.stubGlobal(
       "fetch",
@@ -185,6 +223,9 @@ describe("ProjectRouter", () => {
       vi.fn().mockImplementation((input: RequestInfo | URL) => {
         if (String(input) === "/api/datasets") {
           return Promise.resolve({ ok: true, json: async () => [PROJECT] });
+        }
+        if (String(input) === `/api/datasets/${PROJECT_ID}`) {
+          return Promise.resolve(response(200, PROJECT));
         }
         if (String(input) === `/api/dataset-versions/${VERSION_ID}/review-queue`) {
           return Promise.resolve({
@@ -247,6 +288,9 @@ describe("ProjectRouter", () => {
         if (String(input) === "/api/datasets") {
           return Promise.resolve({ ok: true, json: async () => [PROJECT] });
         }
+        if (String(input) === `/api/datasets/${PROJECT_ID}`) {
+          return Promise.resolve(response(200, PROJECT));
+        }
         if (String(input) === `/api/dataset-versions/${VERSION_ID}/review-queue`) {
           return Promise.resolve({
             ok: true,
@@ -303,7 +347,10 @@ describe("ProjectRouter", () => {
     window.history.replaceState({}, "", `/projects/${PROJECT_ID}`);
     vi.stubGlobal(
       "fetch",
-      vi.fn().mockResolvedValue({ ok: true, json: async () => [] }),
+      vi.fn().mockImplementation((input: RequestInfo | URL) =>
+        Promise.resolve(
+          String(input) === "/api/datasets" ? response(200, []) : response(404, NOT_FOUND),
+        )),
     );
 
     render(
@@ -325,6 +372,9 @@ describe("ProjectRouter", () => {
       vi.fn().mockImplementation((input: RequestInfo | URL) => {
         if (String(input) === "/api/datasets") {
           return Promise.resolve({ ok: true, json: async () => [PROJECT] });
+        }
+        if (String(input) === `/api/datasets/${PROJECT_ID}`) {
+          return Promise.resolve(response(200, PROJECT));
         }
         progressAttempts += 1;
         return Promise.resolve(
@@ -357,6 +407,9 @@ describe("ProjectRouter", () => {
         const url = String(input);
         if (url === "/api/datasets") {
           return Promise.resolve(response(200, [PROJECT]));
+        }
+        if (url === `/api/datasets/${PROJECT_ID}`) {
+          return Promise.resolve(response(200, PROJECT));
         }
         if (url === `/api/dataset-versions/${VERSION_ID}/progress`) {
           return Promise.resolve(response(200, progressResponse()));
@@ -412,6 +465,9 @@ describe("ProjectRouter", () => {
         const url = String(input);
         if (url === "/api/datasets") {
           return Promise.resolve(response(200, [created ? PROJECT : frozenProject]));
+        }
+        if (url === `/api/datasets/${PROJECT_ID}`) {
+          return Promise.resolve(response(200, created ? PROJECT : frozenProject));
         }
         if (url === `/api/datasets/${PROJECT_ID}/versions` && init?.method === "POST") {
           created = true;

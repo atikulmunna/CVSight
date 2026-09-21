@@ -1,7 +1,7 @@
 import { useEffect, useState, type ReactNode } from "react";
 
 import type { AuthSession } from "../auth/api";
-import { loadProjects, type ProjectSummary } from "./api";
+import { isMissingProject, loadProject, type ProjectSummary } from "./api";
 import { ProjectsHeader } from "./ProjectsHeader";
 import { ProjectNavigation } from "./ProjectNavigation";
 import { loadProjectProgress, type ProjectProgress } from "./progressApi";
@@ -37,19 +37,20 @@ export function ProjectOverviewPage({
 
   useEffect(() => {
     let active = true;
-    loadProjects()
-      .then((projects) => {
+    loadProject(projectId)
+      .then((selected) => {
         if (!active) {
           return;
         }
-        const selected = projects.find((item) => item.id === projectId) ?? null;
         setProject(selected);
-        setStatus(selected ? "ready" : "missing");
+        setStatus("ready");
       })
-      .catch(() => {
-        if (active) {
-          setStatus("error");
+      .catch((error: unknown) => {
+        if (!active) {
+          return;
         }
+        setProject(null);
+        setStatus(isMissingProject(error) ? "missing" : "error");
       });
     return () => {
       active = false;

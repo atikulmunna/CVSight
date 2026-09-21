@@ -22,11 +22,13 @@ from shelfsight_api.data_model import (
 )
 from shelfsight_api.database import get_engine
 from shelfsight_api.dataset_service import (
+    DatasetCatalogUpcConflictError,
     DatasetNotFoundError,
     DatasetOpenVersionExistsError,
     DatasetVersionProgressNotFoundError,
     create_dataset_with_open_version,
     create_next_dataset_version,
+    get_dataset,
     get_dataset_version_progress,
     list_dataset_versions,
     list_datasets,
@@ -256,6 +258,13 @@ def create_dataset(request: CreateDatasetRequest, user: OwnerUser) -> DatasetRes
                 [sku.model_dump() for sku in request.catalog],
             )
         return DatasetResponse.model_validate(created)
+    except DatasetCatalogUpcConflictError as error:
+        raise api_error(
+            status.HTTP_409_CONFLICT,
+            "duplicate_upc",
+            "a catalog UPC already exists",
+            upcs=error.upcs[:20],
+        ) from error
     except IntegrityError as error:
         constraint = _constraint_name(error)
         if constraint == "uq_skus_upc":
@@ -278,6 +287,26 @@ def create_dataset(request: CreateDatasetRequest, user: OwnerUser) -> DatasetRes
             status.HTTP_409_CONFLICT,
             code,
             message,
+        ) from error
+    except SQLAlchemyError as error:
+        raise api_error(
+            status.HTTP_503_SERVICE_UNAVAILABLE,
+            "dataset_service_unavailable",
+            "dataset service is unavailable",
+        ) from error
+
+
+@router.get("/datasets/{dataset_id}", response_model=DatasetSummaryResponse)
+def dataset_detail(dataset_id: UUID) -> DatasetSummaryResponse:
+    try:
+        with get_engine().connect() as connection:
+            project = get_dataset(connection, dataset_id)
+        return DatasetSummaryResponse.model_validate(project)
+    except DatasetNotFoundError as error:
+        raise api_error(
+            status.HTTP_404_NOT_FOUND,
+            "dataset_not_found",
+            "dataset does not exist",
         ) from error
     except SQLAlchemyError as error:
         raise api_error(

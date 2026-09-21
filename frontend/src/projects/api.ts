@@ -20,9 +20,14 @@ export class ProjectApiError extends Error {
   constructor(
     readonly status: number,
     readonly code: string,
+    readonly details: Record<string, unknown> = {},
   ) {
     super("project request failed");
   }
+}
+
+export function isMissingProject(error: unknown): boolean {
+  return error instanceof ProjectApiError && error.status === 404;
 }
 
 export async function loadProjects(
@@ -39,6 +44,20 @@ export async function loadProjects(
     throw new ProjectApiError(502, "invalid_response");
   }
   return body.map(parseProject);
+}
+
+export async function loadProject(
+  projectId: string,
+  fetcher: typeof fetch = fetch,
+): Promise<ProjectSummary> {
+  const response = await fetcher(`/api/datasets/${encodeURIComponent(projectId)}`, {
+    headers: { Accept: "application/json" },
+  });
+  const body = await responseBody(response);
+  if (!response.ok) {
+    throw requestError(response.status, body);
+  }
+  return parseProject(body);
 }
 
 export async function createProject(
@@ -97,10 +116,12 @@ function requestError(status: number, value: unknown): ProjectApiError {
   if (!detail || typeof detail !== "object" || Array.isArray(detail)) {
     return new ProjectApiError(status, "request_failed");
   }
-  const code = (detail as Record<string, unknown>).code;
+  const { code, ...rest } = detail as Record<string, unknown>;
+  delete rest.message;
   return new ProjectApiError(
     status,
     typeof code === "string" ? code : "request_failed",
+    rest,
   );
 }
 
