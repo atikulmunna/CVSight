@@ -1,5 +1,8 @@
 # License and artifact policy
 
+CVSight itself is released under the MIT License in `LICENSE`. This document covers the
+third-party components, datasets, and checkpoints the release depends on.
+
 This document records the CVSight 0.1.0 release posture. It is an engineering inventory,
 not legal advice.
 

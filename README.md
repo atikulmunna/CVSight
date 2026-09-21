@@ -4,6 +4,41 @@ CVSight is a self-hosted image annotation platform for dense retail shelves. The
 current application shell contains a React and TypeScript frontend, a FastAPI backend,
 PostgreSQL connectivity, and an Alembic migration path.
 
+## Contents
+
+- [Interface](#interface)
+- [Quick start](#quick-start)
+- [How work flows](#how-work-flows)
+- [Roles and screens](#roles-and-screens)
+- [Troubleshooting](#troubleshooting)
+- [Reference](#reference)
+  - [Requirements](#requirements)
+  - [First-time setup](#first-time-setup)
+  - [Quality checks](#quality-checks)
+  - [Database migrations](#database-migrations)
+  - [Authentication and roles](#authentication-and-roles)
+  - [Background jobs](#background-jobs)
+  - [Model boundary](#model-boundary)
+  - [Pre-labeling](#pre-labeling)
+  - [Recognition embeddings and SKU candidates](#recognition-embeddings-and-sku-candidates)
+  - [Similarity propagation](#similarity-propagation)
+  - [Managed image storage](#managed-image-storage)
+  - [Annotation API](#annotation-api)
+  - [SKU catalog](#sku-catalog)
+  - [Project progress](#project-progress)
+  - [Project versions and releases](#project-versions-and-releases)
+  - [Dataset exports](#dataset-exports)
+  - [RF-DETR training from reviewed snapshots](#rf-detr-training-from-reviewed-snapshots)
+  - [Evaluated model registry](#evaluated-model-registry)
+  - [Realogram reconstruction](#realogram-reconstruction)
+  - [Gap and availability analysis](#gap-and-availability-analysis)
+  - [FiftyOne projection](#fiftyone-projection)
+  - [Quality review and snapshot sign-off](#quality-review-and-snapshot-sign-off)
+  - [Live annotation workspace](#live-annotation-workspace)
+  - [Annotation canvas](#annotation-canvas)
+- [Contributing](#contributing)
+- [License](#license)
+
 ## Interface
 
 The shelf photos below are field captures from the CVSight shelf audit program. The
@@ -30,6 +65,102 @@ yellow sit on the canvas with a decision panel and keyboard shortcuts.
 Assign SKUs. Number keys assign catalog candidates to the selected verified facing.
 
 ![Assign SKUs workspace with the catalog picker open](docs/screenshots/assign-skus.jpg)
+
+## Quick start
+
+Five steps take a clean machine to a signed-in owner. The
+[first-time setup](#first-time-setup) section explains each one.
+
+1. Copy `.env.example` to `.env`, set a local database password, and paste at least one
+   owner account hash from `uv run python -m shelfsight_api.auth_cli` into
+   `SHELFSIGHT_AUTH_USERS`.
+2. Install dependencies: `uv sync` and `npm --prefix frontend install`.
+3. Start PostgreSQL and create the test database:
+
+```powershell
+docker compose --env-file .env -f compose.dev.yaml up -d database
+docker compose --env-file .env -f compose.dev.yaml exec database createdb -U shelfsight shelfsight_test
+```
+
+4. Load the environment into the terminal and migrate:
+
+```powershell
+. ./scripts/load-env.ps1
+uv run alembic upgrade head
+```
+
+5. Run `./scripts/dev.ps1` and sign in at `http://127.0.0.1:5173`.
+
+`./scripts/check.ps1` confirms the installation by running every test and check.
+
+## How work flows
+
+A project holds one collection of shelf photos and every annotation version made from
+it. Work moves through the stages below; the first cycle is entirely human, and each
+later cycle starts from the promoted model's proposals.
+
+1. **Create a project** (owner). Choose **New project**, name it, and optionally attach
+   a SKU catalog CSV. The overview shows a first-image checklist until the first image
+   is reviewed.
+2. **Add photos** (owner). Upload JPEG or PNG files on the Images page, up to 50 MiB
+   each, or bulk import up to 250 files per request from the operator import root
+   with `POST /api/datasets/{dataset_id}/versions/{version_id}/images/import`. Capture
+   metadata such as `split`, capture session, and store travels with each image and
+   later keeps related photos on the same side of the train, validation, and test
+   boundary.
+3. **Label** (annotator). Open an image. Draw boxes, or queue detector proposals with
+   `POST /api/prelabels/batch` when a detect worker is running. Accept, reject, flag,
+   or duplicate each box, assign SKUs from the catalog, confirm propagation suggestions
+   for visually similar crops, and choose **Mark reviewed** once every box has a
+   decision. Autosave keeps the server current and a local draft covers interruptions.
+4. **Review and release** (reviewer or owner). **Review QA** lists the riskiest
+   annotations first. Approve or flag each one, then **Sign off** to freeze the version
+   into an immutable snapshot. The Versions page offers the detection and recognition
+   exports for every release, and the owner starts the next working version from it.
+5. **Train, evaluate, promote** (owner, separate GPU environment). Download the
+   detection export, prepare the training set with a license approval file, train
+   RF-DETR, evaluate on the frozen test split, register the checkpoint and its report
+   as a model candidate, and promote it. Point the detect worker at the promoted
+   checkpoint and the next batch opens with proposals instead of a blank canvas.
+6. **Analyze** (owner). Realogram, gap, and share-of-shelf results read only from
+   immutable snapshots, so numbers never change after a release.
+
+## Roles and screens
+
+| Role | Sees | Can | Cannot |
+| --- | --- | --- | --- |
+| `owner` | Every project page and workspace | Create projects, upload and import images, edit the catalog, queue jobs, review and sign off, export, manage models, read analytics | |
+| `annotator` | Projects, overview, images, Verify boxes, Assign SKUs, Propagate | Draw and decide boxes, assign SKUs, confirm propagation, mark images reviewed, read the catalog | Upload, create projects, review QA, export, run jobs, read analytics |
+| `reviewer` | Projects, overview, images, Verify boxes, Assign SKUs, Review QA | Everything an annotator can do on the canvas, plus approve or flag queue items and sign off releases | Upload, create projects, propagate, export, run jobs, read analytics |
+
+The API enforces the same boundaries: owner-only routers cover analytics, exports, jobs,
+the model registry, and pre-labeling; review routes accept owners and reviewers; every
+other route needs a signed-in user of any role. Denied requests are recorded as audit
+events.
+
+## Troubleshooting
+
+- `SHELFSIGHT_DATABASE_URL is required` when starting `dev.ps1` or Alembic: the
+  variables are not in this terminal. Run `. ./scripts/load-env.ps1` with the leading
+  dot, once per terminal.
+- `Bind for 0.0.0.0:5432 failed` when starting the database: another PostgreSQL owns
+  the port. Set `SHELFSIGHT_DB_PORT=5433` in `.env` and use `:5433` in both database
+  URLs.
+- `check.ps1` stops with `SHELFSIGHT_TEST_DATABASE_URL is required`: create
+  `shelfsight_test` as in the quick start and add the URL to `.env`. The check migrates
+  that database itself.
+- `/api/health/database` reports `unavailable` while the API is up: PostgreSQL went
+  away, usually because Docker restarted. Run the `up -d database` command again; the
+  API reconnects without a restart.
+- Creating a project fails on a UPC: the catalog is shared by every project, and the
+  message lists the clashing values. Remove or change those CSV rows.
+
+## Reference
+
+The sections below document each subsystem and its API in the order the platform
+processes work: setup and checks, authentication, jobs and models, images and
+annotations, catalog, versions and exports, training and registry, analytics, and the
+review and annotation workspaces.
 
 ## Requirements
 
@@ -837,3 +968,25 @@ npm --prefix frontend run dev
 Open `http://127.0.0.1:5173/?fixture=local`, then use the Measure button to collect
 p50, p95, and maximum frame, selection, and input timings. The staged real images and
 fixture JSON remain local under the ignored `frontend/public/local-fixtures` directory.
+
+## Contributing
+
+- Run `./scripts/check.ps1` before every commit. It runs the Python tests against the
+  test database, Ruff, mypy, the frontend tests, ESLint, TypeScript, and the production
+  build, and fails closed when the test database is not configured.
+- Run `./scripts/security-check.ps1` and `./scripts/license-check.ps1` before a
+  release.
+- Write unit tests for new logic, including failure paths, and keep tests independent
+  of network, time, and order.
+- Keep interface copy in sentence case, and do not use the em dash anywhere in code or
+  documentation.
+- Commit with your own name and email. Local planning notes, `.env`, media, imports,
+  backups, and checkpoints stay out of the repository.
+
+## License
+
+CVSight is released under the MIT License. See [LICENSE](LICENSE). Third-party
+components, datasets, and checkpoints are inventoried in
+[LICENSE_POLICY.md](LICENSE_POLICY.md). The screenshots use field captures from the
+CVSight shelf audit program and ground-truth labels from the QPDS-Seg dataset, which
+is published under CC BY 4.0.
