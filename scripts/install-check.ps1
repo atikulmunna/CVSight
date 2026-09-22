@@ -223,10 +223,30 @@ try {
             -ContentType "application/json" `
             -Body '{"name":"Clean install verification"}' `
             -WebSession $webSession
-        $workerHealth = Invoke-RestMethod `
-            -Uri "http://127.0.0.1:$apiPort/api/workers/health" `
-            -WebSession $webSession
-        if ($workerId -notin $workerHealth.workers.worker_id) {
+        # The worker registers its heartbeat only after Python starts, imports its
+        # dependencies, and connects to the database, so poll instead of sampling once.
+        # The endpoint answers 503 until a worker is live, which Invoke-RestMethod
+        # raises, so each attempt is isolated.
+        $workerVisible = $false
+        for ($attempt = 0; $attempt -lt 60; $attempt++) {
+            try {
+                $workerHealth = Invoke-RestMethod `
+                    -Uri "http://127.0.0.1:$apiPort/api/workers/health" `
+                    -WebSession $webSession
+                if ($workerId -in $workerHealth.workers.worker_id) {
+                    $workerVisible = $true
+                    break
+                }
+            }
+            catch {
+                $workerHealth = $null
+            }
+            if ($workerProcess.HasExited) {
+                throw "Clean-install worker exited before registering a heartbeat"
+            }
+            Start-Sleep -Milliseconds 500
+        }
+        if (-not $workerVisible) {
             throw "Clean-install worker heartbeat was not visible"
         }
 

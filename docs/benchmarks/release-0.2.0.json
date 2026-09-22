@@ -1,0 +1,94 @@
+{
+  "schema_version": "cvsight-release-evidence/v2",
+  "release": "0.2.0",
+  "source_commit": "abc540eace7c770bcbca15a842f984d689a87738",
+  "captured_on": "2026-09-22",
+  "passed": true,
+  "functional_checks": {
+    "passed": true,
+    "python_tests_passed": 307,
+    "python_tests_skipped": 0,
+    "frontend_tests_passed": 158,
+    "clean_install_seconds": 87.52,
+    "ruff_passed": true,
+    "mypy_passed": true,
+    "eslint_passed": true,
+    "typescript_passed": true,
+    "frontend_build_passed": true,
+    "analytics_gate": "passed"
+  },
+  "security": {
+    "python_dependency_audit": true,
+    "frontend_dependency_audit": true,
+    "fixable_high_or_critical_container_findings": 0,
+    "resolved_this_release": [
+      "CVE-2026-86145",
+      "CVE-2026-89157",
+      "CVE-2026-89161"
+    ],
+    "resolution": "A cacheless image rebuild upgraded libpcre2-8-0 from 10.42-1 to 10.42-1+deb12u1. The findings were present because the previous build reused a cached apt-get upgrade layer."
+  },
+  "scale": {
+    "passed": true,
+    "gate_count": 18,
+    "errors": 0,
+    "fixture": {
+      "catalog_skus": 2000,
+      "dense_image_boxes": 300,
+      "export_annotations": 3000,
+      "export_images": 250,
+      "gallery_embeddings": 2000,
+      "image_metadata_records": 100000,
+      "queued_jobs": 1000
+    },
+    "catalog_full_p95_ms": 550.3861999995934,
+    "catalog_full_measurement_note": "Sampled over 100 requests. An earlier 20 request sample produced a p95 between 410 ms and 777 ms across five runs of identical code, because at that size the estimator resolves to the second slowest request."
+  },
+  "canvas": {
+    "host_validity": "Valid",
+    "build": "production build served by vite preview on port 4173",
+    "passed": true,
+    "gates": [
+      {
+        "name": "browser_frame_baseline.p95_ms",
+        "measured": 16.8,
+        "operator": "<=",
+        "threshold": 20.0,
+        "passed": true
+      },
+      {
+        "name": "canvas_frame_interval.p95_ms",
+        "measured": 16.9,
+        "operator": "<=",
+        "threshold": 25.0,
+        "passed": true
+      },
+      {
+        "name": "selection_update.p95_ms",
+        "measured": 3.5,
+        "operator": "<=",
+        "threshold": 8.0,
+        "passed": true
+      },
+      {
+        "name": "input_latency.p95_ms",
+        "measured": 16.8,
+        "operator": "<=",
+        "threshold": 25.0,
+        "passed": true
+      }
+    ]
+  },
+  "recovery": {
+    "passed": true,
+    "duration_seconds": 33.073
+  },
+  "boundary": {
+    "single_project": true,
+    "self_hosted": true,
+    "image_annotation_only": true,
+    "automatic_sku_assignment": false,
+    "selective_dataset_deletion": false,
+    "internet_edge": false
+  }
+}

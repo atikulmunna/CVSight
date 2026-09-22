@@ -1,5 +1,6 @@
 param(
-    [string]$Output
+    [string]$Output,
+    [string]$DatabaseDownloadTimeout = "45m"
 )
 
 $ErrorActionPreference = "Stop"
@@ -51,8 +52,13 @@ try {
     Assert-NativeSuccess "Frontend dependency audit"
     $checks.frontend_dependency_audit = $true
 
+    # The base image is pinned by digest, so --pull never invalidates anything and
+    # Docker reuses the apt-get upgrade layer from whenever it was first built. The
+    # scan would then describe an image that stopped receiving security updates on
+    # that date, so the build has to start from scratch every time.
     docker build `
         --pull `
+        --no-cache `
         --file docker/postgres/Dockerfile `
         --tag $databaseImage `
         $projectRoot
@@ -63,6 +69,19 @@ try {
     docker save --output $imageArchive $databaseImage
     Assert-NativeSuccess "Database image export"
 
+    # The vulnerability database is around 116 MiB and the default five minute
+    # scan timeout covers the download, so a slow link fails the gate before any
+    # scanning starts. Fetch the database first, with room to finish.
+    docker run `
+        --rm `
+        --volume trivy-cache:/root/.cache/ `
+        $trivyImage `
+        image `
+        --download-db-only `
+        --timeout $DatabaseDownloadTimeout `
+        --skip-version-check
+    Assert-NativeSuccess "Vulnerability database download"
+
     docker run `
         --rm `
         --volume "${projectRoot}:/scan:ro" `
@@ -70,6 +89,7 @@ try {
         $trivyImage `
         image `
         --input "/scan/$imageArchiveName" `
+        --skip-db-update `
         --scanners vuln `
         --severity HIGH,CRITICAL `
         --ignore-unfixed `

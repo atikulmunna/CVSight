@@ -127,6 +127,6 @@ and analytics checks, audits dependency licenses and shipped artifacts, runs dep
 and container security scans, repeats scale and recovery drills, and consolidates ignored
 local evidence at `benchmark-local/t039-release-report.json`. The curated public summary
 is in [BENCHMARKS.md](BENCHMARKS.md), with sanitized machine-readable evidence at
-[`docs/benchmarks/release-0.1.0.json`](docs/benchmarks/release-0.1.0.json). Raw local
+[`docs/benchmarks/release-0.2.0.json`](docs/benchmarks/release-0.2.0.json). Raw local
 reports remain ignored because they can contain paths, infrastructure fingerprints, and
 private identifiers.

@@ -86,6 +86,21 @@ updates, and scans the resulting local image with pinned Trivy 0.74.0. Any fixab
 or critical finding fails the command. The script requires network access and Docker.
 Passing evidence is retained locally at `benchmark-local/t039-security-report.json`.
 
+The image build passes `--no-cache`, and that flag carries the gate's meaning. The base
+image is pinned by digest, so `--pull` never invalidates anything and Docker will reuse
+the `apt-get upgrade` layer from whenever it was first built. A cached layer stops
+receiving Debian security updates on that date while the scan still reports on it, so
+the gate would keep passing against an image that no longer reflects the Dockerfile. The
+vulnerability database is downloaded in its own step with a long timeout, because it is
+around 116 MiB and a slow link otherwise exhausts the scan timeout before any scanning
+starts. Operators running the image outside the gate must rebuild it the same way rather
+than trusting a locally cached build.
+
+On 2026-09-22 a cacheless rebuild removed three fixable high findings in `libpcre2-8-0`
+(CVE-2026-86145, CVE-2026-89157, CVE-2026-89161) by upgrading the package from `10.42-1`
+to `10.42-1+deb12u1`. They were present because the previous build reused a cached
+upgrade layer.
+
 On 2026-08-24 the gate fixed five Starlette advisories by upgrading FastAPI and
 Starlette, fixed two high npm transitive advisories, and removed 22 fixable high or
 critical findings from the upstream pgvector Bookworm image. The hardened image

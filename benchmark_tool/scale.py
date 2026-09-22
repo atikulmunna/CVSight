@@ -258,9 +258,14 @@ def _measure_api(base_url: str, password: str, fixture: ScaleFixture) -> dict[st
             count_field="annotations",
             expected_count=DENSE_BOX_COUNT,
         )
+        # The full catalog response is the largest payload measured here, so it needs
+        # enough samples for a p95 to mean anything. With 20 samples the estimator
+        # lands on the second-slowest request and one hiccup defines the result: the
+        # same unchanged build measured between 410 ms and 777 ms across five runs
+        # against a 750 ms gate.
         catalog_full = _measure_http(
             client,
-            ["/api/skus?limit=2500"] * 20,
+            ["/api/skus?limit=2500"] * 100,
             200,
             concurrency=4,
             count_field="skus",
