@@ -120,8 +120,9 @@ later cycle starts from the promoted model's proposals.
 5. **Train, evaluate, promote** (owner, separate GPU environment). Download the
    detection export, prepare the training set with a license approval file, train
    RF-DETR, evaluate on the frozen test split, register the checkpoint and its report
-   as a model candidate, and promote it. Point the detect worker at the promoted
-   checkpoint and the next batch opens with proposals instead of a blank canvas.
+   as a model candidate, and promote it on the project's **Models** page. Point the
+   detect worker at the promoted checkpoint and the next batch opens with proposals
+   instead of a blank canvas.
 6. **Analyze** (owner). Realogram, gap, and share-of-shelf results read only from
    immutable snapshots, so numbers never change after a release.
 
@@ -129,7 +130,7 @@ later cycle starts from the promoted model's proposals.
 
 | Role | Sees | Can | Cannot |
 | --- | --- | --- | --- |
-| `owner` | Every project page and workspace | Create projects, upload and import images, edit the catalog, queue jobs, review and sign off, export, manage models, read analytics | |
+| `owner` | Every project page and workspace, including Models and Analytics | Create projects, upload and import images, edit the catalog, queue jobs, review and sign off, export, promote and roll back models, read analytics | |
 | `annotator` | Projects, overview, images, Verify boxes, Assign SKUs, Propagate | Draw and decide boxes, assign SKUs, confirm propagation, mark images reviewed, read the catalog | Upload, create projects, review QA, export, run jobs, read analytics |
 | `reviewer` | Projects, overview, images, Verify boxes, Assign SKUs, Review QA | Everything an annotator can do on the canvas, plus approve or flag queue items and sign off releases | Upload, create projects, propagate, export, run jobs, read analytics |
 
@@ -784,6 +785,11 @@ configuration, and runtime compatibility. Evaluation metadata must bind the exac
 model checksum and frozen evaluation snapshot checksum, use the same code version and
 seed, and include mAP, product recall, duplicate rate, dense-scene recall, and
 overlapping-product recall.
+
+Owners can browse candidates, the active deployment, and its rollback target for every
+model role at `http://127.0.0.1:5173/projects/{project_id}/models`, and promote or roll
+back from there. The registry is shared by every project. Candidate registration stays
+an API operation because it references uploaded artifacts.
 
 Registry routes:
 

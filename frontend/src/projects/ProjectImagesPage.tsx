@@ -27,6 +27,8 @@ type ProjectImagesPageProps = {
   onOpenOverview: () => void;
   onOpenReview: (project: ProjectSummary) => void;
   onOpenVersions: (project: ProjectSummary) => void;
+  onOpenModels: (project: ProjectSummary) => void;
+  onOpenAnalytics: (project: ProjectSummary) => void;
   onLogout: () => Promise<void>;
 };
 
@@ -50,6 +52,8 @@ export function ProjectImagesPage({
   onOpenOverview,
   onOpenReview,
   onOpenVersions,
+  onOpenModels,
+  onOpenAnalytics,
   onLogout,
 }: ProjectImagesPageProps) {
   const [project, setProject] = useState<ProjectSummary | null>(null);
@@ -189,6 +193,8 @@ export function ProjectImagesPage({
           onImages={() => undefined}
           onReview={() => onOpenReview(project)}
           onVersions={() => onOpenVersions(project)}
+          onModels={() => onOpenModels(project)}
+          onAnalytics={() => onOpenAnalytics(project)}
         />
 
         <section className="project-images-heading">

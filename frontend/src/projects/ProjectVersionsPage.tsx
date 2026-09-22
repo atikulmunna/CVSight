@@ -20,6 +20,8 @@ type ProjectVersionsPageProps = {
   onOpenOverview: () => void;
   onOpenImages: () => void;
   onOpenReview: (project: ProjectSummary) => void;
+  onOpenModels: (project: ProjectSummary) => void;
+  onOpenAnalytics: (project: ProjectSummary) => void;
   onLogout: () => Promise<void>;
 };
 
@@ -37,6 +39,8 @@ export function ProjectVersionsPage({
   onOpenOverview,
   onOpenImages,
   onOpenReview,
+  onOpenModels,
+  onOpenAnalytics,
   onLogout,
 }: ProjectVersionsPageProps) {
   const [view, setView] = useState<VersionsView | null>(null);
@@ -130,6 +134,8 @@ export function ProjectVersionsPage({
           onOpenOverview={onOpenOverview}
           onOpenImages={onOpenImages}
           onOpenReview={() => onOpenReview(view.project)}
+          onOpenModels={() => onOpenModels(view.project)}
+          onOpenAnalytics={() => onOpenAnalytics(view.project)}
           onStartWorkingVersion={() => void startWorkingVersion()}
         />
       )}
@@ -146,6 +152,8 @@ function VersionsContent({
   onOpenOverview,
   onOpenImages,
   onOpenReview,
+  onOpenModels,
+  onOpenAnalytics,
   onStartWorkingVersion,
 }: {
   view: VersionsView;
@@ -156,6 +164,8 @@ function VersionsContent({
   onOpenOverview: () => void;
   onOpenImages: () => void;
   onOpenReview: () => void;
+  onOpenModels: () => void;
+  onOpenAnalytics: () => void;
   onStartWorkingVersion: () => void;
 }) {
   const working = view.versions.find((version) => version.status === "working") ?? null;
@@ -182,6 +192,8 @@ function VersionsContent({
         onImages={onOpenImages}
         onReview={onOpenReview}
         onVersions={() => undefined}
+        onModels={onOpenModels}
+        onAnalytics={onOpenAnalytics}
       />
 
       <section className="project-versions-heading">

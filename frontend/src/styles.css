@@ -1752,6 +1752,75 @@ code {
 }
 
 /* ==========================================================================
+   Models
+   ========================================================================== */
+
+.models-roles {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  margin-top: 20px;
+}
+
+.models-roles button {
+  min-height: 32px;
+  padding: 0 12px;
+  border-radius: 999px;
+  background: transparent;
+  font-size: 14px;
+}
+
+.models-roles button.is-active {
+  background: var(--ink);
+  border-color: var(--ink);
+  color: #fff;
+}
+
+.models-message {
+  margin-top: 24px;
+  color: var(--muted);
+}
+
+.models-active-card {
+  border-left-color: var(--violet);
+}
+
+.models-metrics {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(150px, 1fr));
+  gap: 12px;
+  margin: 18px 0 0;
+}
+
+.models-metrics div {
+  display: grid;
+  gap: 2px;
+  padding: 12px 14px;
+  border: 1px solid var(--line);
+  border-radius: 10px;
+}
+
+.models-metrics dt {
+  color: var(--muted);
+  font-size: 12px;
+}
+
+.models-metrics dd {
+  margin: 0;
+  font-family: var(--font-display);
+  font-size: 22px;
+  font-weight: 800;
+  letter-spacing: -0.02em;
+  font-variant-numeric: tabular-nums;
+}
+
+.models-deployment-note {
+  margin-top: 14px;
+  color: var(--muted);
+  font-size: 14px;
+}
+
+/* ==========================================================================
    Shell responsive
    ========================================================================== */
 

@@ -6,6 +6,7 @@ import { workspaceAllowed, type Workspace } from "../workspace";
 import type { ProjectSummary } from "./api";
 import type { ProjectImage } from "./imagesApi";
 import { ProjectImagesPage } from "./ProjectImagesPage";
+import { ProjectModelsPage } from "./ProjectModelsPage";
 import { ProjectOverviewPage } from "./ProjectOverviewPage";
 import { ProjectVersionsPage } from "./ProjectVersionsPage";
 import { ProjectWorkspacePage } from "./ProjectWorkspacePage";
@@ -37,6 +38,7 @@ export function ProjectRouter({ currentUser, onLogout }: ProjectRouterProps) {
   const projectId = projectIdFromPath(location.pathname);
   const imagesProjectId = projectImagesIdFromPath(location.pathname);
   const versionsProjectId = projectVersionsIdFromPath(location.pathname);
+  const modelsProjectId = projectModelsIdFromPath(location.pathname);
   const workspaceRoute = projectWorkspaceFromPath(location.pathname);
 
   function navigate(path: string) {
@@ -56,6 +58,14 @@ export function ProjectRouter({ currentUser, onLogout }: ProjectRouterProps) {
 
   function openVersions(project: ProjectSummary) {
     navigate(`/projects/${encodeURIComponent(project.id)}/versions`);
+  }
+
+  function openModels(project: ProjectSummary) {
+    navigate(`/projects/${encodeURIComponent(project.id)}/models`);
+  }
+
+  function openAnalytics(project: ProjectSummary) {
+    navigate(`/projects/${encodeURIComponent(project.id)}/analytics`);
   }
 
   function openImage(project: ProjectSummary, image: ProjectImage) {
@@ -98,20 +108,10 @@ export function ProjectRouter({ currentUser, onLogout }: ProjectRouterProps) {
     );
   }
 
-  if (workspaceRoute) {
-    return (
-      <ProjectOverviewPage
-        key={workspaceRoute.projectId}
-        projectId={workspaceRoute.projectId}
-        currentUser={currentUser}
-        onBack={() => navigate("/projects")}
-        onOpenImages={(project) => navigate(`/projects/${encodeURIComponent(project.id)}/images`)}
-        onOpenReview={openReview}
-        onOpenVersions={openVersions}
-        onLogout={onLogout}
-      />
-    );
-  }
+  // Any project-scoped route the role cannot open falls back to the overview.
+  const overviewProjectId =
+    workspaceRoute?.projectId ?? versionsProjectId ?? modelsProjectId ?? projectId;
+
 
   if (imagesProjectId) {
     return (
@@ -123,6 +123,8 @@ export function ProjectRouter({ currentUser, onLogout }: ProjectRouterProps) {
         onOpenOverview={() => navigate(`/projects/${encodeURIComponent(imagesProjectId)}`)}
         onOpenReview={openReview}
         onOpenVersions={openVersions}
+        onOpenModels={openModels}
+        onOpenAnalytics={openAnalytics}
         onLogout={onLogout}
       />
     );
@@ -138,36 +140,43 @@ export function ProjectRouter({ currentUser, onLogout }: ProjectRouterProps) {
         onOpenOverview={() => navigate(`/projects/${encodeURIComponent(versionsProjectId)}`)}
         onOpenImages={() => navigate(`/projects/${encodeURIComponent(versionsProjectId)}/images`)}
         onOpenReview={openReview}
+        onOpenModels={openModels}
+        onOpenAnalytics={openAnalytics}
         onLogout={onLogout}
       />
     );
   }
 
-  if (versionsProjectId) {
+  if (modelsProjectId && currentUser.role === "owner") {
     return (
-      <ProjectOverviewPage
-        key={versionsProjectId}
-        projectId={versionsProjectId}
+      <ProjectModelsPage
+        key={modelsProjectId}
+        projectId={modelsProjectId}
         currentUser={currentUser}
         onBack={() => navigate("/projects")}
-        onOpenImages={(project) => navigate(`/projects/${encodeURIComponent(project.id)}/images`)}
+        onOpenOverview={() => navigate(`/projects/${encodeURIComponent(modelsProjectId)}`)}
+        onOpenImages={() => navigate(`/projects/${encodeURIComponent(modelsProjectId)}/images`)}
         onOpenReview={openReview}
         onOpenVersions={openVersions}
+        onOpenAnalytics={openAnalytics}
         onLogout={onLogout}
       />
     );
   }
 
-  if (projectId) {
+
+  if (overviewProjectId) {
     return (
       <ProjectOverviewPage
-        key={projectId}
-        projectId={projectId}
+        key={overviewProjectId}
+        projectId={overviewProjectId}
         currentUser={currentUser}
         onBack={() => navigate("/projects")}
         onOpenImages={(project) => navigate(`/projects/${encodeURIComponent(project.id)}/images`)}
         onOpenReview={openReview}
         onOpenVersions={openVersions}
+        onOpenModels={openModels}
+        onOpenAnalytics={openAnalytics}
         onLogout={onLogout}
       />
     );
@@ -221,6 +230,11 @@ function projectWorkspaceFromPath(pathname: string): ProjectWorkspaceRoute | nul
 
 function projectImagesIdFromPath(pathname: string): string | null {
   const match = /^\/projects\/([^/]+)\/images$/.exec(pathname);
+  return match ? validProjectId(match[1]!) : null;
+}
+
+function projectModelsIdFromPath(pathname: string): string | null {
+  const match = /^\/projects\/([^/]+)\/models$/.exec(pathname);
   return match ? validProjectId(match[1]!) : null;
 }
 

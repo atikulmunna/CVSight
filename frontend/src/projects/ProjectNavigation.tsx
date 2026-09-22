@@ -2,13 +2,15 @@ import type { AuthSession } from "../auth/api";
 import type { ProjectSummary } from "./api";
 
 type ProjectNavigationProps = {
-  active: "overview" | "images" | "versions";
+  active: "overview" | "images" | "versions" | "models";
   currentUser: AuthSession;
   project: ProjectSummary;
   onImages: () => void;
   onOverview: () => void;
   onReview: () => void;
   onVersions: () => void;
+  onModels: () => void;
+  onAnalytics: () => void;
 };
 
 export function ProjectNavigation({
@@ -19,6 +21,8 @@ export function ProjectNavigation({
   onOverview,
   onReview,
   onVersions,
+  onModels,
+  onAnalytics,
 }: ProjectNavigationProps) {
   const canReview = currentUser.role === "owner" || currentUser.role === "reviewer";
 
@@ -45,9 +49,14 @@ export function ProjectNavigation({
           >
             Versions
           </button>
-          <button type="button" disabled>Models</button>
-          <button type="button" disabled>Analytics</button>
-          <button type="button" disabled>Settings</button>
+          <button
+            className={active === "models" ? "is-active" : ""}
+            type="button"
+            onClick={onModels}
+          >
+            Models
+          </button>
+          <button type="button" onClick={onAnalytics}>Analytics</button>
         </>
       )}
     </nav>

@@ -343,6 +343,137 @@ describe("ProjectRouter", () => {
     expect(screen.queryByText("SKU catalog management")).not.toBeInTheDocument();
   });
 
+  it("opens the models page and promotes a candidate with the expected-active guard", async () => {
+    window.history.replaceState({}, "", `/projects/${PROJECT_ID}/models`);
+    const candidate = {
+      id: "44444444-4444-4444-8444-444444444444",
+      model_role: "known_sku_detector",
+      model_id: "shelf-detector",
+      model_version: "cycle-1",
+      model_artifact_id: VERSION_ID,
+      evaluation_artifact_id: VERSION_ID,
+      model_artifact_key: "artifacts/model.pth",
+      evaluation_artifact_key: "artifacts/evaluation.json",
+      training_dataset_version_id: VERSION_ID,
+      evaluation_dataset_version_id: VERSION_ID,
+      model_artifact_sha256: "a".repeat(64),
+      evaluation_artifact_sha256: "b".repeat(64),
+      configuration: {},
+      compatibility: {},
+      metrics: { map_50_95: 0.61, product_recall_at_iou_50: 0.93 },
+      registered_by: "owner:owner",
+      registered_at: "2026-09-22T08:00:00Z",
+      deployment_status: "candidate",
+    };
+    let promoted = false;
+    let promoteBody: Record<string, unknown> | null = null;
+    vi.stubGlobal(
+      "fetch",
+      vi.fn().mockImplementation((input: RequestInfo | URL, init?: RequestInit) => {
+        const url = String(input);
+        if (url === `/api/datasets/${PROJECT_ID}`) {
+          return Promise.resolve(response(200, PROJECT));
+        }
+        if (url.startsWith("/api/model-registry?")) {
+          return Promise.resolve(response(200, {
+            models: [{ ...candidate, deployment_status: promoted ? "default" : "candidate" }],
+          }));
+        }
+        if (url === "/api/model-deployments/known_sku_detector/promote" && init?.method === "POST") {
+          promoted = true;
+          promoteBody = JSON.parse(String(init.body)) as Record<string, unknown>;
+        }
+        if (url.startsWith("/api/model-deployments/known_sku_detector")) {
+          return Promise.resolve(promoted
+            ? response(200, {
+              model_role: "known_sku_detector",
+              active: { ...candidate, deployment_status: "default" },
+              previous: null,
+              updated_by: "owner:owner",
+              updated_at: "2026-09-22T09:00:00Z",
+            })
+            : response(404, { detail: { code: "model_deployment_not_found", message: "none" } }));
+        }
+        return Promise.resolve(response(404, { detail: { code: "not_found" } }));
+      }),
+    );
+
+    render(
+      <ProjectRouter
+        currentUser={{ username: "owner", role: "owner" }}
+        onLogout={vi.fn()}
+      />,
+    );
+
+    expect(await screen.findByRole("heading", { name: "Models" })).toBeInTheDocument();
+    expect(await screen.findByText("No model promoted for this role")).toBeInTheDocument();
+    expect(screen.getByText("61.0%")).toBeInTheDocument();
+
+    fireEvent.click(screen.getByRole("button", { name: "Promote" }));
+    fireEvent.click(screen.getByRole("button", { name: "Confirm promote cycle-1" }));
+
+    expect(await screen.findByText(/Promoted by owner:owner/)).toBeInTheDocument();
+    expect(promoteBody).toEqual({ entry_id: candidate.id, expected_active_id: null });
+    expect(screen.queryByRole("button", { name: "Promote" })).not.toBeInTheDocument();
+  });
+
+  it("keeps the models route and the analytics tab away from annotators", async () => {
+    window.history.replaceState({}, "", `/projects/${PROJECT_ID}/models`);
+    vi.stubGlobal(
+      "fetch",
+      vi.fn().mockImplementation((input: RequestInfo | URL) => Promise.resolve(
+        String(input) === `/api/datasets/${PROJECT_ID}`
+          ? response(200, PROJECT)
+          : response(404, { detail: { code: "not_found" } }),
+      )),
+    );
+
+    render(
+      <ProjectRouter
+        currentUser={{ username: "labeler", role: "annotator" }}
+        onLogout={vi.fn()}
+      />,
+    );
+
+    expect(await screen.findByRole("heading", { name: "Retail Q3 audit" })).toBeInTheDocument();
+    expect(screen.queryByRole("heading", { name: "Models" })).not.toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: "Analytics" })).not.toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: "Settings" })).not.toBeInTheDocument();
+  });
+
+  it("opens the analytics workspace from the project tabs", async () => {
+    window.history.replaceState({}, "", `/projects/${PROJECT_ID}`);
+    vi.stubGlobal(
+      "fetch",
+      vi.fn().mockImplementation((input: RequestInfo | URL) => {
+        const url = String(input);
+        if (url === "/api/datasets") {
+          return Promise.resolve(response(200, [PROJECT]));
+        }
+        if (url === `/api/datasets/${PROJECT_ID}`) {
+          return Promise.resolve(response(200, PROJECT));
+        }
+        if (url === `/api/dataset-versions/${VERSION_ID}/progress`) {
+          return Promise.resolve(response(200, progressResponse()));
+        }
+        return Promise.resolve(response(409, { detail: { code: "dataset_version_not_frozen", message: "no" } }));
+      }),
+    );
+
+    render(
+      <ProjectRouter
+        currentUser={{ username: "owner", role: "owner" }}
+        onLogout={vi.fn()}
+      />,
+    );
+
+    await screen.findByRole("heading", { name: "Retail Q3 audit" });
+    fireEvent.click(screen.getByRole("button", { name: "Analytics" }));
+
+    expect(window.location.pathname).toBe(`/projects/${PROJECT_ID}/analytics`);
+    expect(await screen.findByRole("heading", { name: "Analytics unavailable" })).toBeInTheDocument();
+  });
+
   it("shows a safe not-found state for an absent project", async () => {
     window.history.replaceState({}, "", `/projects/${PROJECT_ID}`);
     vi.stubGlobal(

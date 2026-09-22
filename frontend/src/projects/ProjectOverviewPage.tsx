@@ -13,6 +13,8 @@ type ProjectOverviewPageProps = {
   onOpenImages: (project: ProjectSummary) => void;
   onOpenReview: (project: ProjectSummary) => void;
   onOpenVersions: (project: ProjectSummary) => void;
+  onOpenModels: (project: ProjectSummary) => void;
+  onOpenAnalytics: (project: ProjectSummary) => void;
   onLogout: () => Promise<void>;
 };
 
@@ -23,6 +25,8 @@ export function ProjectOverviewPage({
   onOpenImages,
   onOpenReview,
   onOpenVersions,
+  onOpenModels,
+  onOpenAnalytics,
   onLogout,
 }: ProjectOverviewPageProps) {
   const [project, setProject] = useState<ProjectSummary | null>(null);
@@ -105,6 +109,8 @@ export function ProjectOverviewPage({
           onOpenImages={onOpenImages}
           onOpenReview={onOpenReview}
           onOpenVersions={onOpenVersions}
+          onOpenModels={onOpenModels}
+          onOpenAnalytics={onOpenAnalytics}
           progress={progress}
           progressStatus={progressStatus}
           onRetryProgress={() => {
@@ -124,6 +130,8 @@ function ProjectOverview({
   onOpenImages,
   onOpenReview,
   onOpenVersions,
+  onOpenModels,
+  onOpenAnalytics,
   progress,
   progressStatus,
   onRetryProgress,
@@ -134,6 +142,8 @@ function ProjectOverview({
   onOpenImages: (project: ProjectSummary) => void;
   onOpenReview: (project: ProjectSummary) => void;
   onOpenVersions: (project: ProjectSummary) => void;
+  onOpenModels: (project: ProjectSummary) => void;
+  onOpenAnalytics: (project: ProjectSummary) => void;
   progress: ProjectProgress | null;
   progressStatus: "loading" | "ready" | "error";
   onRetryProgress: () => void;
@@ -162,6 +172,8 @@ function ProjectOverview({
         onImages={() => onOpenImages(project)}
         onReview={() => onOpenReview(project)}
         onVersions={() => onOpenVersions(project)}
+        onModels={() => onOpenModels(project)}
+        onAnalytics={() => onOpenAnalytics(project)}
       />
 
       {currentUser.role === "owner" &&

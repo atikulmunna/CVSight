@@ -7,7 +7,7 @@ import { ProjectNavigation } from "./ProjectNavigation";
 type ProjectBandProps = {
   project: ProjectSummary;
   currentUser: AuthSession;
-  active: "overview" | "images" | "versions";
+  active: "overview" | "images" | "versions" | "models";
   status?: ReactNode;
   rail?: ShelfRailProps | null;
   onBack: () => void;
@@ -15,6 +15,8 @@ type ProjectBandProps = {
   onImages: () => void;
   onReview: () => void;
   onVersions: () => void;
+  onModels: () => void;
+  onAnalytics: () => void;
 };
 
 export function ProjectBand({
@@ -28,6 +30,8 @@ export function ProjectBand({
   onImages,
   onReview,
   onVersions,
+  onModels,
+  onAnalytics,
 }: ProjectBandProps) {
   return (
     <section className="project-band">
@@ -49,6 +53,8 @@ export function ProjectBand({
           onImages={onImages}
           onReview={onReview}
           onVersions={onVersions}
+          onModels={onModels}
+          onAnalytics={onAnalytics}
         />
       </div>
     </section>
