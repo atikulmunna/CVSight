@@ -1,5 +1,7 @@
 # CVSight
 
+[![check](https://github.com/atikulmunna/CVSight/actions/workflows/check.yml/badge.svg?branch=main)](https://github.com/atikulmunna/CVSight/actions/workflows/check.yml)
+
 CVSight is a self-hosted image annotation platform for dense retail shelves. The
 current application shell contains a React and TypeScript frontend, a FastAPI backend,
 PostgreSQL connectivity, and an Alembic migration path.
@@ -979,7 +981,8 @@ fixture JSON remain local under the ignored `frontend/public/local-fixtures` dir
 
 - Run `./scripts/check.ps1` before every commit. It runs the Python tests against the
   test database, Ruff, mypy, the frontend tests, ESLint, TypeScript, and the production
-  build, and fails closed when the test database is not configured.
+  build, and fails closed when the test database is not configured. GitHub Actions runs
+  the same script on every push and pull request.
 - Run `./scripts/security-check.ps1` and `./scripts/license-check.ps1` before a
   release.
 - Write unit tests for new logic, including failure paths, and keep tests independent
