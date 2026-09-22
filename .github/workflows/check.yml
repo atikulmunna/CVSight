@@ -1,0 +1,67 @@
+name: check
+
+on:
+  push:
+    branches: ["main", "ci"]
+  pull_request:
+    branches: ["main"]
+
+concurrency:
+  group: check-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  check:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+
+    services:
+      database:
+        image: pgvector/pgvector:0.8.6-pg17
+        env:
+          POSTGRES_DB: shelfsight
+          POSTGRES_USER: shelfsight
+          POSTGRES_PASSWORD: shelfsight-ci
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U shelfsight -d shelfsight"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 20
+
+    env:
+      SHELFSIGHT_DATABASE_URL: postgresql+psycopg://shelfsight:shelfsight-ci@127.0.0.1:5432/shelfsight
+      SHELFSIGHT_TEST_DATABASE_URL: postgresql+psycopg://shelfsight:shelfsight-ci@127.0.0.1:5432/shelfsight_test
+      SHELFSIGHT_MEDIA_ROOT: ${{ github.workspace }}/ci-media
+      SHELFSIGHT_IMPORT_ROOT: ${{ github.workspace }}/ci-import
+      SHELFSIGHT_SESSION_COOKIE_SECURE: "false"
+
+    steps:
+      - uses: actions/checkout@v5
+
+      - uses: astral-sh/setup-uv@v7
+        with:
+          enable-cache: true
+
+      - uses: actions/setup-node@v5
+        with:
+          node-version: 24
+          cache: npm
+          cache-dependency-path: frontend/package-lock.json
+
+      - name: Install dependencies
+        run: |
+          uv sync --frozen --all-groups
+          npm --prefix frontend ci
+
+      - name: Create the test database and managed roots
+        run: |
+          PGPASSWORD=shelfsight-ci createdb -h 127.0.0.1 -U shelfsight shelfsight_test
+          mkdir -p "$SHELFSIGHT_MEDIA_ROOT" "$SHELFSIGHT_IMPORT_ROOT"
+
+      - name: Migrate the application database
+        run: uv run alembic upgrade head
+
+      - name: Run the quality gate
+        run: pwsh ./scripts/check.ps1

@@ -1,5 +1,5 @@
 $ErrorActionPreference = "Stop"
-$env:UV_CACHE_DIR = Join-Path $PSScriptRoot "..\.uv-cache"
+$env:UV_CACHE_DIR = Join-Path $PSScriptRoot ".." ".uv-cache"
 
 function Assert-NativeSuccess {
     param([Parameter(Mandatory)][string]$Step)
