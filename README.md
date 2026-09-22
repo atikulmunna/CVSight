@@ -976,7 +976,9 @@ with:
 ```
 
 The script stages the fixture, builds the frontend, prints the processes currently
-using the most CPU, and serves the build at `http://127.0.0.1:4173/?fixture=local`.
+using the most CPU, then leaves the build served at
+`http://127.0.0.1:4173/?fixture=local` and prints the command that stops it. Pass
+`-Wait` to hold the terminal until you stop the server with Ctrl+C.
 Close other applications, then use the Measure button to collect p50, p95, and maximum
 frame, selection, and input timings.
 
