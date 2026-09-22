@@ -1751,6 +1751,21 @@ code {
   margin-top: 12px;
 }
 
+.benchmark-invalid {
+  margin-bottom: 12px;
+  padding: 10px 12px;
+  border: 1px solid var(--yellow);
+  border-radius: 8px;
+  background: var(--yellow-soft);
+  color: var(--yellow-text);
+  font-size: 12px;
+  line-height: 1.45;
+}
+
+.benchmark-invalid strong {
+  display: block;
+}
+
 /* ==========================================================================
    Models
    ========================================================================== */
@@ -4614,6 +4629,15 @@ kbd {
 .assignment-search input::placeholder,
 .catalog-search input::placeholder {
   color: var(--ws-muted);
+}
+
+/* Selection is keyboard-driven and measured, so rows in the hot lists repaint
+   immediately instead of animating their colours. */
+.box-row,
+.catalog-row,
+.review-item,
+.candidate-list > button {
+  transition: none;
 }
 
 .box-row {

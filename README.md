@@ -966,16 +966,26 @@ focuses catalog search, `S` repeats the previous assignment, and `U` assigns Unk
 Other. Assignment advances to the next verified product box and uses the same local
 draft, retry, and conflict behavior as box verification.
 
-To stage and open the retained local 354-box performance fixture:
+Canvas timings are measured against the production build, because the development
+server serves unminified modules and React double-renders every component under
+`StrictMode`. Stage the retained local 354-box fixture and start the preview server
+with:
 
 ```powershell
-./scripts/stage-canvas-fixture.ps1
-npm --prefix frontend run dev
+./scripts/canvas-check.ps1
 ```
 
-Open `http://127.0.0.1:5173/?fixture=local`, then use the Measure button to collect
-p50, p95, and maximum frame, selection, and input timings. The staged real images and
-fixture JSON remain local under the ignored `frontend/public/local-fixtures` directory.
+The script stages the fixture, builds the frontend, prints the processes currently
+using the most CPU, and serves the build at `http://127.0.0.1:4173/?fixture=local`.
+Close other applications, then use the Measure button to collect p50, p95, and maximum
+frame, selection, and input timings.
+
+Every run measures an idle animation loop first and reports it as the browser frame
+baseline. That baseline is the control: when the host cannot hold a steady cadence with
+no canvas work, or when the canvas measurement comes out faster than the idle loop, the
+panel marks the run **not valid** and the timings describe the machine rather than the
+canvas. Only a valid run is evidence. The staged real images and fixture JSON remain
+local under the ignored `frontend/public/local-fixtures` directory.
 
 ## Contributing
 

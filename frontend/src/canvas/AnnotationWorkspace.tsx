@@ -9,6 +9,7 @@ import { flushSync } from "react-dom";
 
 import { AnnotationOverlay } from "./AnnotationOverlay";
 import {
+  assessHost,
   measureFrameIntervals,
   nextFrame,
   summarizeTimings,
@@ -588,12 +589,15 @@ export function AnnotationWorkspace({
         await nextFrame();
         inputLatencies.push(performance.now() - startedAt);
       }
+      const baselineSummary = summarizeTimings(browserFrameBaseline);
+      const frameSummary = summarizeTimings(frameIntervals);
       setBenchmark({
-        browserFrameBaseline: summarizeTimings(browserFrameBaseline),
-        frameInterval: summarizeTimings(frameIntervals),
+        browserFrameBaseline: baselineSummary,
+        frameInterval: frameSummary,
         selectionUpdate: summarizeTimings(selectionUpdates),
         inputLatency: summarizeTimings(inputLatencies),
         measuredAt: new Date().toISOString(),
+        host: assessHost(baselineSummary, frameSummary),
       });
     } catch {
       setBenchmarkError("Measurement failed. Reload the page and try again.");
@@ -1124,7 +1128,15 @@ function BenchmarkOutput({
     );
   }
   return (
-    <dl className="benchmark-output" data-testid="benchmark-results">
+    <div className="benchmark-output" data-testid="benchmark-results">
+      {!benchmark.host.valid && (
+        <p className="benchmark-invalid" role="alert" data-testid="benchmark-invalid">
+          <strong>Run not valid on this machine.</strong> The timings below describe the
+          host, not the canvas: {benchmark.host.reasons.join("; ")}. Close other
+          applications and measure again.
+        </p>
+      )}
+      <dl>
       <Metric
         label="Browser frame baseline"
         value={benchmark.browserFrameBaseline}
@@ -1138,7 +1150,12 @@ function BenchmarkOutput({
           {new Date(benchmark.measuredAt).toLocaleTimeString()}
         </dd>
       </div>
-    </dl>
+      <div>
+        <dt>Host</dt>
+        <dd data-testid="benchmark-host">{benchmark.host.valid ? "Valid" : "Not valid"}</dd>
+      </div>
+      </dl>
+    </div>
   );
 }
 
