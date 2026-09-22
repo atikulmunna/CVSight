@@ -1,3 +1,5 @@
+from pathlib import Path
+
 import pytest
 
 from shelfsight_api.config import (
@@ -52,5 +54,9 @@ def test_media_and_import_roots_are_required_and_resolved(tmp_path) -> None:
 
 
 def test_managed_roots_cannot_be_filesystem_roots() -> None:
+    # The anchor of the current working directory is the filesystem root on any platform.
+    filesystem_root = Path.cwd().anchor
     with pytest.raises(ConfigurationError, match="cannot be a filesystem root"):
-        get_media_root({"SHELFSIGHT_MEDIA_ROOT": "C:\\"})
+        get_media_root({"SHELFSIGHT_MEDIA_ROOT": filesystem_root})
+    with pytest.raises(ConfigurationError, match="cannot be a filesystem root"):
+        get_import_root({"SHELFSIGHT_IMPORT_ROOT": filesystem_root})
