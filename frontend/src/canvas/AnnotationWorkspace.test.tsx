@@ -183,7 +183,7 @@ describe("AnnotationWorkspace", () => {
     fireEvent.click(screen.getByRole("button", { name: "Measure" }));
 
     expect(
-      await screen.findByTestId("benchmark-results", {}, { timeout: 5_000 }),
+      await screen.findByTestId("benchmark-results", {}, { timeout: 15_000 }),
     ).toHaveTextContent("Browser frame baseline");
     expect(screen.getByTestId("benchmark-results")).toHaveTextContent(
       "Canvas frame interval",
@@ -193,7 +193,11 @@ describe("AnnotationWorkspace", () => {
     );
     expect(screen.getByTestId("benchmark-results")).toHaveTextContent("Input latency");
     expect(screen.getByTestId("benchmark-timestamp")).not.toBeEmptyDOMElement();
-  });
+    // The benchmark runs roughly 240 animation frames and 245 synchronous renders,
+    // so the test needs a budget larger than the wait above. The default 5 second
+    // test timeout matched that wait exactly, which left the wait unusable and made
+    // the test fail on slower machines.
+  }, 30_000);
 
   it("operates accept, flag, duplicate, geometry, and reject from the keyboard", async () => {
     vi.useFakeTimers();
