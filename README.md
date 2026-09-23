@@ -44,7 +44,7 @@ PostgreSQL connectivity, and an Alembic migration path.
 ## Interface
 
 The shelf photos below are field captures from the CVSight shelf audit program. The
-annotated frames use ground-truth facings from the QPDS-Seg dataset.
+Verify boxes frame shows proposals from a two-stage product detector and SKU classifier.
 
 Projects dashboard. Each tile previews the project's first shelf photos.
 
@@ -59,14 +59,14 @@ Images. Upload shelf photos, filter by labeling state, and open one for annotati
 
 ![Project images grid with status chips](docs/screenshots/images.jpg)
 
-Verify boxes. Verified facings in mint, proposals in dashed cyan, and flagged boxes in
-yellow sit on the canvas with a decision panel and keyboard shortcuts.
+Verify boxes. Model proposals arrive with a suggested SKU and a confidence score. Press
+A to accept, R to reject, or click a box to change its SKU; each decision moves on to
+the next undecided box. B draws a product the model missed, and Mark reviewed unlocks
+once every box is decided. The Assign SKUs tab lists only accepted products for naming
+in a run: number keys pick a catalog candidate, S repeats the previous SKU, and U marks
+an unknown product.
 
-![Verify boxes workspace with a selected facing](docs/screenshots/verify-boxes.jpg)
-
-Assign SKUs. Number keys assign catalog candidates to the selected verified facing.
-
-![Assign SKUs workspace with the catalog picker open](docs/screenshots/assign-skus.jpg)
+![Verify boxes workspace with model proposals, SKU names, and the review bar](docs/screenshots/verify-boxes.jpg)
 
 ## Quick start
 
