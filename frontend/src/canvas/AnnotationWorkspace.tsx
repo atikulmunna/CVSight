@@ -19,12 +19,13 @@ import {
   acceptBox,
   assignSku,
   changeBoxClass,
-  createGapBox,
+  createDrawnBox,
   duplicateBox,
   flagBox,
   nudgeBox,
   rejectBox,
   resizeBox,
+  type DrawnClass,
 } from "./editing";
 import { SkuAssignmentPanel } from "./SkuAssignmentPanel";
 import type { AnnotationBox, AnnotationClass, CanvasFixture } from "./model";
@@ -65,6 +66,7 @@ type PanStart = {
 
 type DrawStart = {
   pointerId: number;
+  classType: DrawnClass;
   id: string;
   imageIndex: number;
   shelfRow: number;
@@ -130,16 +132,16 @@ export function AnnotationWorkspace({
   const [viewportDimensions, setViewportDimensions] = useState(DEFAULT_VIEWPORT);
   const [spaceHeld, setSpaceHeld] = useState(false);
   const [panStart, setPanStart] = useState<PanStart | null>(null);
-  const [drawGapMode, setDrawGapMode] = useState(false);
+  const [drawMode, setDrawMode] = useState<DrawnClass | null>(null);
   const [drawStart, setDrawStart] = useState<DrawStart | null>(null);
-  const [draftGap, setDraftGap] = useState<AnnotationBox | null>(null);
+  const [draftBox, setDraftBox] = useState<AnnotationBox | null>(null);
   const [benchmark, setBenchmark] = useState<CanvasBenchmark | null>(null);
   const [benchmarkError, setBenchmarkError] = useState<string | null>(null);
   const [benchmarking, setBenchmarking] = useState(false);
   const viewportRef = useRef<HTMLDivElement>(null);
   const listRef = useRef<HTMLDivElement>(null);
   const duplicateCounterRef = useRef(0);
-  const gapCounterRef = useRef(0);
+  const drawCounterRef = useRef(0);
 
   const selectedBox =
     orderedAnnotations.find((annotation) => annotation.id === selectedId) ?? null;
@@ -235,6 +237,13 @@ export function AnnotationWorkspace({
     }
   }, [assignmentCatalog.searchInputRef, showSkuPicker]);
 
+  // Verification opens on its first box, so shortcuts work before any click.
+  useEffect(() => {
+    if (mode === "verify") {
+      viewportRef.current?.focus({ preventScroll: true });
+    }
+  }, [mode]);
+
   function zoomBy(multiplier: number) {
     const viewport = viewportSize(viewportRef.current);
     setTransform((current) =>
@@ -250,9 +259,14 @@ export function AnnotationWorkspace({
       return;
     }
     autosave.edit(selectedId, "accept", acceptBox);
-    if (isGapReview) {
-      setSelectedId(nextUnresolvedId(orderedAnnotations, selectedId));
-    }
+    moveToNextDecision(selectedId);
+  }
+
+  // Every decision moves on to the next undecided box, so a reviewer can work through a
+  // shelf with repeated A presses or Accept clicks instead of selecting each box.
+  function moveToNextDecision(fromId: string) {
+    setSelectedId(nextUnresolvedId(orderedAnnotations, fromId));
+    closeSkuPicker();
   }
 
   function flagSelected() {
@@ -265,18 +279,8 @@ export function AnnotationWorkspace({
     if (!selectedId) {
       return;
     }
-    const currentIndex = orderedAnnotations.findIndex(
-      (box) => box.id === selectedId,
-    );
-    const next = isGapReview
-      ? nextUnresolvedId(orderedAnnotations, selectedId)
-      : (
-          orderedAnnotations[currentIndex + 1] ??
-          orderedAnnotations[currentIndex - 1] ??
-          null
-        )?.id ?? null;
     autosave.edit(selectedId, "reject", rejectBox);
-    setSelectedId(next);
+    moveToNextDecision(selectedId);
   }
 
   function duplicateSelected() {
@@ -333,10 +337,30 @@ export function AnnotationWorkspace({
     );
     assignmentCatalog.remember(sku);
     setLastAssignedSku(sku);
-    const next = orderedAnnotations[currentIndex + 1];
-    if (next) {
-      setSelectedId(next.id);
+    if (mode === "assign") {
+      const next = orderedAnnotations[currentIndex + 1];
+      if (next) {
+        setSelectedId(next.id);
+      }
+    } else if (drawMode === "product") {
+      // Stay on the box just named instead of jumping (and panning) elsewhere.
+      closeSkuPicker();
+    } else {
+      moveToNextDecision(selectedId);
     }
+  }
+
+  // The verify picker is a popover over the shelf, so it closes once used and hands the
+  // keyboard back to the canvas shortcuts.
+  function closeSkuPicker() {
+    setSkuPickerOpen(false);
+    viewportRef.current?.focus();
+  }
+
+  function toggleDrawMode(classType: DrawnClass) {
+    setDrawMode((active) => (active === classType ? null : classType));
+    setDrawStart(null);
+    setDraftBox(null);
   }
 
   function editGeometry(
@@ -405,11 +429,12 @@ export function AnnotationWorkspace({
     } else if (mode === "verify" && key === "d") {
       event.preventDefault();
       duplicateSelected();
+    } else if (mode === "verify" && key === "b" && !isGapReview) {
+      event.preventDefault();
+      toggleDrawMode("product");
     } else if (mode === "verify" && key === "g") {
       event.preventDefault();
-      setDrawGapMode((active) => !active);
-      setDrawStart(null);
-      setDraftGap(null);
+      toggleDrawMode("gap");
     } else if (key === "arrowright" || key === "j") {
       event.preventDefault();
       selectRelative(1);
@@ -417,9 +442,9 @@ export function AnnotationWorkspace({
       event.preventDefault();
       selectRelative(-1);
     } else if (key === "escape") {
-      setDrawGapMode(false);
+      setDrawMode(null);
       setDrawStart(null);
-      setDraftGap(null);
+      setDraftBox(null);
       setSelectedId(null);
       setSkuPickerOpen(false);
     } else if (key === "+" || key === "=") {
@@ -435,7 +460,7 @@ export function AnnotationWorkspace({
     const shouldPan = event.button === 1 || (event.button === 0 && spaceHeld);
     if (
       mode === "verify" &&
-      drawGapMode &&
+      drawMode &&
       event.button === 0 &&
       !spaceHeld &&
       !isControlTarget(event.target)
@@ -447,27 +472,17 @@ export function AnnotationWorkspace({
         return;
       }
       event.currentTarget.setPointerCapture(event.pointerId);
-      const shelfRow = nearestShelfRow(activeAnnotations, point.y);
-      gapCounterRef.current += 1;
-      const id = `gap-${Date.now()}-${gapCounterRef.current}`;
-      setDrawStart({
+      drawCounterRef.current += 1;
+      const start: DrawStart = {
         pointerId: event.pointerId,
-        id,
+        classType: drawMode,
+        id: `${drawMode}-${Date.now()}-${drawCounterRef.current}`,
         imageIndex,
-        shelfRow,
+        shelfRow: nearestShelfRow(activeAnnotations, point.y),
         ...point,
-      });
-      setDraftGap(
-        createGapBox(
-          id,
-          fixture.images[imageIndex]!.id,
-          imageIndex,
-          point,
-          { x: point.x + 4, y: point.y + 4 },
-          fixture,
-          shelfRow,
-        ),
-      );
+      };
+      setDrawStart(start);
+      setDraftBox(drawnBox(start, { x: point.x + 4, y: point.y + 4 }));
       return;
     }
     if (!shouldPan) {
@@ -488,19 +503,22 @@ export function AnnotationWorkspace({
     });
   }
 
+  function drawnBox(start: DrawStart, end: { x: number; y: number }) {
+    return createDrawnBox(
+      start.classType,
+      start.id,
+      fixture.images[start.imageIndex]!.id,
+      start.imageIndex,
+      start,
+      end,
+      fixture,
+      start.shelfRow,
+    );
+  }
+
   function handlePointerMove(event: React.PointerEvent<HTMLDivElement>) {
     if (drawStart?.pointerId === event.pointerId) {
-      setDraftGap(
-        createGapBox(
-          drawStart.id,
-          fixture.images[drawStart.imageIndex]!.id,
-          drawStart.imageIndex,
-          drawStart,
-          scenePoint(event, transform),
-          fixture,
-          drawStart.shelfRow,
-        ),
-      );
+      setDraftBox(drawnBox(drawStart, scenePoint(event, transform)));
       return;
     }
     if (!panStart || panStart.pointerId !== event.pointerId) {
@@ -515,21 +533,15 @@ export function AnnotationWorkspace({
 
   function finishPointerAction(event: React.PointerEvent<HTMLDivElement>) {
     if (drawStart?.pointerId === event.pointerId) {
-      const completed = createGapBox(
-        drawStart.id,
-        fixture.images[drawStart.imageIndex]!.id,
-        drawStart.imageIndex,
-        drawStart,
-        scenePoint(event, transform),
-        fixture,
-        drawStart.shelfRow,
-      );
+      const completed = drawnBox(drawStart, scenePoint(event, transform));
       if (completed) {
         autosave.add(completed);
         setSelectedId(completed.id);
+        // A drawn product needs its SKU next, so the picker opens on it straight away.
+        setSkuPickerOpen(completed.classType === "product");
       }
       setDrawStart(null);
-      setDraftGap(null);
+      setDraftBox(null);
       return;
     }
     if (panStart?.pointerId === event.pointerId) {
@@ -699,8 +711,7 @@ export function AnnotationWorkspace({
         <div
           className={`canvas-viewport${panStart ? " is-panning" : ""}${
             spaceHeld ? " is-pan-ready" : ""
-          }${drawGapMode ? " is-drawing-gap" : ""
-          }`}
+          }${drawMode ? ` is-drawing is-drawing-${drawMode}` : ""}`}
           ref={viewportRef}
           tabIndex={0}
           aria-label="Shelf annotation canvas"
@@ -742,11 +753,11 @@ export function AnnotationWorkspace({
               ))}
             </div>
             <AnnotationOverlay
-              annotations={draftGap ? [...activeAnnotations, draftGap] : activeAnnotations}
+              annotations={draftBox ? [...activeAnnotations, draftBox] : activeAnnotations}
               width={fixture.width}
               height={fixture.height}
               selectedId={selectedId}
-              interactive={!spaceHeld && !drawGapMode}
+              interactive={!spaceHeld && !drawMode}
               onSelect={selectAnnotation}
             />
           </div>
@@ -773,7 +784,7 @@ export function AnnotationWorkspace({
                 onAssign={assignSelectedSku}
                 onClose={() => {
                   setSelectedId(null);
-                  setSkuPickerOpen(false);
+                  closeSkuPicker();
                 }}
               />
             </div>
@@ -791,18 +802,26 @@ export function AnnotationWorkspace({
             </button>
           </div>
           {mode === "verify" && (
-            <button
-              type="button"
-              className={`draw-gap-control${drawGapMode ? " is-active" : ""}`}
-              aria-pressed={drawGapMode}
-              onClick={() => {
-                setDrawGapMode((active) => !active);
-                setDrawStart(null);
-                setDraftGap(null);
-              }}
-            >
-              {drawGapMode ? "Drawing gaps" : "Draw gap"} <kbd>G</kbd>
-            </button>
+            <div className="draw-controls">
+              {!isGapReview && (
+                <button
+                  type="button"
+                  className={`draw-control${drawMode === "product" ? " is-active" : ""}`}
+                  aria-pressed={drawMode === "product"}
+                  onClick={() => toggleDrawMode("product")}
+                >
+                  {drawMode === "product" ? "Drawing boxes" : "Draw box"} <kbd>B</kbd>
+                </button>
+              )}
+              <button
+                type="button"
+                className={`draw-control${drawMode === "gap" ? " is-active" : ""}`}
+                aria-pressed={drawMode === "gap"}
+                onClick={() => toggleDrawMode("gap")}
+              >
+                {drawMode === "gap" ? "Drawing gaps" : "Draw gap"} <kbd>G</kbd>
+              </button>
+            </div>
           )}
           <div className="shortcut-strip">
             {mode === "assign" ? (
@@ -813,7 +832,8 @@ export function AnnotationWorkspace({
               </>
             ) : (
               <>
-                <span>A accept · R reject · F flag · D duplicate · G draw gap</span>
+                <span>A accept · R reject · F flag · D duplicate</span>
+                <span>{isGapReview ? "G draw gap" : "B draw box · G draw gap"} · Esc stop</span>
                 <span>Alt + arrows nudge · add Shift to resize</span>
               </>
             )}

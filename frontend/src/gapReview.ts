@@ -30,37 +30,6 @@ export async function loadGapReviewManifest(
   return parseGapReviewManifest(await response.json());
 }
 
-export async function loadGapReviewImageStatus(
-  imageId: string,
-  fetcher: typeof fetch = fetch,
-): Promise<boolean> {
-  const response = await fetcher(`/api/images/${encodeURIComponent(uuid(imageId))}`, {
-    headers: { Accept: "application/json" },
-  });
-  const body: unknown = await response.json().catch(() => null);
-  if (!response.ok) {
-    throw new Error("gap review image status is unavailable");
-  }
-  return record(body).status === "reviewed";
-}
-
-export async function markGapReviewImage(
-  imageId: string,
-  fetcher: typeof fetch = fetch,
-): Promise<void> {
-  const response = await fetcher(
-    `/api/images/${encodeURIComponent(uuid(imageId))}/reviewed`,
-    { method: "POST", headers: { Accept: "application/json" } },
-  );
-  if (!response.ok) {
-    throw new Error(
-      response.status === 409
-        ? "Accept or reject every active box first."
-        : "Image review could not be saved.",
-    );
-  }
-}
-
 export function parseGapReviewManifest(value: unknown): GapReviewManifest {
   const body = record(value);
   if (

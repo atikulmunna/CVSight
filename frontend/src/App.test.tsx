@@ -220,6 +220,36 @@ describe("App health", () => {
     expect(screen.queryByText("Image workspace unavailable")).not.toBeInTheDocument();
   });
 
+  it("marks a routed project image reviewed once every box is decided", async () => {
+    const imageId = "11111111-1111-4111-8111-111111111111";
+    const fetcher = liveImageFetch(imageId, "verified", "accepted");
+    vi.stubGlobal("fetch", fetcher);
+
+    render(<App imageId={imageId} />);
+
+    const button = await screen.findByRole("button", { name: "Mark reviewed" });
+    fireEvent.click(button);
+
+    expect(
+      await screen.findByRole("button", { name: "Image reviewed" }),
+    ).toBeDisabled();
+    expect(fetcher).toHaveBeenCalledWith(
+      `/api/images/${imageId}/reviewed`,
+      expect.objectContaining({ method: "POST" }),
+    );
+  });
+
+  it("keeps review blocked while a routed image has undecided boxes", async () => {
+    const imageId = "11111111-1111-4111-8111-111111111111";
+    vi.stubGlobal("fetch", liveImageFetch(imageId, "proposed", "unreviewed"));
+
+    render(<App imageId={imageId} />);
+
+    expect(
+      await screen.findByRole("button", { name: "1 decisions remaining" }),
+    ).toBeDisabled();
+  });
+
   it("shows only workspaces allowed for an annotator", () => {
     vi.stubGlobal(
       "fetch",
@@ -239,3 +269,53 @@ describe("App health", () => {
     expect(screen.queryByRole("button", { name: "Analytics" })).not.toBeInTheDocument();
   });
 });
+
+function liveImageFetch(imageId: string, lifecycleState: string, reviewState: string) {
+  let reviewed = false;
+  return vi.fn().mockImplementation((input: RequestInfo | URL, init?: RequestInit) => {
+    const url = String(input);
+    const ok = (body: unknown) => Promise.resolve({ ok: true, status: 200, json: async () => body });
+    if (url === "/api/health") {
+      return ok({ status: "ok", service: "shelfsight-api" });
+    }
+    if (url === `/api/images/${imageId}/reviewed` && init?.method === "POST") {
+      reviewed = true;
+      return ok({ id: imageId, status: "reviewed" });
+    }
+    if (url === `/api/images/${imageId}`) {
+      return ok({
+        id: imageId,
+        original_filename: "pilot-shelf.jpg",
+        width: 100,
+        height: 80,
+        status: reviewed ? "reviewed" : "in_progress",
+        canonical_url: `/api/images/${imageId}/media/canonical`,
+      });
+    }
+    if (url === `/api/images/${imageId}/annotations`) {
+      return ok({
+        annotations: [
+          {
+            id: "22222222-2222-4222-8222-222222222222",
+            image_id: imageId,
+            revision: 1,
+            x: 10,
+            y: 10,
+            width: 20,
+            height: 30,
+            class_type: "product",
+            lifecycle_state: lifecycleState,
+            review_state: reviewState,
+            source: "model",
+            sku_id: null,
+            confidence: 0.8,
+            occluded: false,
+            truncated: false,
+            shelf_row: 0,
+          },
+        ],
+      });
+    }
+    return Promise.reject(new Error(`unexpected request: ${url}`));
+  });
+}

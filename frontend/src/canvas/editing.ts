@@ -141,7 +141,10 @@ export function duplicateBox(
   };
 }
 
-export function createGapBox(
+export type DrawnClass = Extract<AnnotationClass, "product" | "gap">;
+
+export function createDrawnBox(
+  classType: DrawnClass,
   id: string,
   imageId: string,
   imageIndex: number,
@@ -166,11 +169,11 @@ export function createGapBox(
     y: top,
     width: right - left,
     height: bottom - top,
-    classType: "gap",
+    classType,
     state: "unverified",
     lifecycleState: "proposed",
     reviewState: "unreviewed",
-    sku: "Visible gap",
+    sku: classType === "gap" ? "Visible gap" : "Unknown SKU",
     skuId: null,
     confidence: null,
     occluded: false,

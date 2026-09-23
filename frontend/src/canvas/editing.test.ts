@@ -4,7 +4,7 @@ import {
   acceptBox,
   assignSku,
   changeBoxClass,
-  createGapBox,
+  createDrawnBox,
   duplicateBox,
   flagBox,
   nudgeBox,
@@ -39,7 +39,8 @@ const BOUNDS = { width: 100, height: 80 };
 
 describe("annotation editing", () => {
   it("creates a bounded unreviewed gap from either drag direction", () => {
-    const gap = createGapBox(
+    const gap = createDrawnBox(
+      "gap",
       "new-gap",
       "image-1",
       0,
@@ -63,18 +64,47 @@ describe("annotation editing", () => {
     });
   });
 
-  it("ignores accidental gap clicks smaller than the minimum box size", () => {
-    expect(
-      createGapBox(
-        "new-gap",
-        "image-1",
-        0,
-        { x: 10, y: 10 },
-        { x: 12, y: 12 },
-        { width: 100, height: 100 },
-        0,
-      ),
-    ).toBeNull();
+  it("creates a drawn product without an SKU so assignment still has to happen", () => {
+    const product = createDrawnBox(
+      "product",
+      "new-product",
+      "image-1",
+      0,
+      { x: 10, y: 20 },
+      { x: 150, y: 90 },
+      { width: 100, height: 100 },
+      1,
+    );
+
+    expect(product).toMatchObject({
+      classType: "product",
+      x: 10,
+      y: 20,
+      width: 90,
+      height: 70,
+      sku: "Unknown SKU",
+      skuId: null,
+      confidence: null,
+      lifecycleState: "proposed",
+      reviewState: "unreviewed",
+    });
+  });
+
+  it("ignores accidental clicks smaller than the minimum box size", () => {
+    for (const classType of ["gap", "product"] as const) {
+      expect(
+        createDrawnBox(
+          classType,
+          "new-box",
+          "image-1",
+          0,
+          { x: 10, y: 10 },
+          { x: 12, y: 12 },
+          { width: 100, height: 100 },
+          0,
+        ),
+      ).toBeNull();
+    }
   });
 
   it("clears stale confidence when a human changes geometry", () => {

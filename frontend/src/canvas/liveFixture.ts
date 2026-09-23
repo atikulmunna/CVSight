@@ -2,6 +2,8 @@ import { parseCanvasFixture, type CanvasFixture, type OverlayState } from "./mod
 
 type Fetcher = typeof fetch;
 
+const UNAVAILABLE_SKU_NAME = "SKU name unavailable";
+
 export class LiveFixtureError extends Error {
   constructor(
     readonly status: number,
@@ -45,6 +47,7 @@ export async function loadLiveFixture(
   if (loadedImageId !== imageId) {
     throw new LiveFixtureError(502, "invalid_response");
   }
+  const skuNames = await loadSkuNames(annotationList, fetcher);
 
   try {
     return parseCanvasFixture({
@@ -63,7 +66,7 @@ export async function loadLiveFixture(
           height: image.height,
         },
       ],
-      boxes: annotationList.map((value) => liveAnnotation(value, loadedImageId)),
+      boxes: annotationList.map((value) => liveAnnotation(value, loadedImageId, skuNames)),
     });
   } catch (error) {
     if (error instanceof LiveFixtureError) {
@@ -73,11 +76,45 @@ export async function loadLiveFixture(
   }
 }
 
-function liveAnnotation(value: unknown, imageId: string): Record<string, unknown> {
+// Annotations carry SKU ids only, so the names a reviewer checks against are looked up
+// once per distinct SKU in the image. A failed lookup is shown, not hidden.
+async function loadSkuNames(
+  annotations: unknown[],
+  fetcher: Fetcher,
+): Promise<Map<string, string>> {
+  const ids = new Set<string>();
+  for (const value of annotations) {
+    const skuId = value && typeof value === "object" ? (value as Record<string, unknown>).sku_id : null;
+    if (typeof skuId === "string" && isUuid(skuId)) {
+      ids.add(skuId);
+    }
+  }
+  const entries = await Promise.all(
+    [...ids].map(async (skuId) => {
+      const response = await fetcher(`/api/skus/${encodeURIComponent(skuId)}`, {
+        headers: { Accept: "application/json" },
+      });
+      const body = await responseBody(response);
+      const name =
+        response.ok && body && typeof body === "object"
+          ? (body as Record<string, unknown>).name
+          : null;
+      return [skuId, typeof name === "string" && name ? name : UNAVAILABLE_SKU_NAME] as const;
+    }),
+  );
+  return new Map(entries);
+}
+
+function liveAnnotation(
+  value: unknown,
+  imageId: string,
+  skuNames: Map<string, string>,
+): Record<string, unknown> {
   const annotation = record(value);
   if (requiredString(annotation.image_id) !== imageId) {
     throw new LiveFixtureError(502, "invalid_response");
   }
+  const skuId = annotation.sku_id;
   return {
     id: requiredString(annotation.id),
     server_id: annotation.id,
@@ -95,8 +132,11 @@ function liveAnnotation(value: unknown, imageId: string): Record<string, unknown
     ),
     lifecycle_state: annotation.lifecycle_state,
     review_state: annotation.review_state,
-    sku: annotation.sku_id === null ? "Unknown SKU" : "Assigned SKU",
-    sku_id: annotation.sku_id,
+    sku:
+      typeof skuId === "string"
+        ? (skuNames.get(skuId) ?? UNAVAILABLE_SKU_NAME)
+        : "Unknown SKU",
+    sku_id: skuId,
     confidence: annotation.confidence,
     occluded: annotation.occluded,
     truncated: annotation.truncated,
@@ -122,7 +162,7 @@ function overlayState(
   return "unverified";
 }
 
-function isUuid(value: string): boolean {
+export function isUuid(value: string): boolean {
   return /^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(
     value,
   );

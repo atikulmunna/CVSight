@@ -1,11 +1,6 @@
 import { describe, expect, it, vi } from "vitest";
 
-import {
-  loadGapReviewManifest,
-  loadGapReviewImageStatus,
-  markGapReviewImage,
-  parseGapReviewManifest,
-} from "./gapReview";
+import { loadGapReviewManifest, parseGapReviewManifest } from "./gapReview";
 
 describe("gap review manifest", () => {
   it("parses the frozen 50-image navigation contract", () => {
@@ -43,29 +38,6 @@ describe("gap review manifest", () => {
     );
     expect(fetcher).not.toHaveBeenCalled();
   });
-
-  it("loads and updates the explicit image review state", async () => {
-    const imageId = "00000000-0000-4000-8000-000000000002";
-    const fetcher = vi
-      .fn()
-      .mockResolvedValueOnce(response(200, { status: "reviewed" }))
-      .mockResolvedValueOnce(response(200, { status: "reviewed" }));
-
-    await expect(loadGapReviewImageStatus(imageId, fetcher)).resolves.toBe(true);
-    await expect(markGapReviewImage(imageId, fetcher)).resolves.toBeUndefined();
-    expect(fetcher).toHaveBeenLastCalledWith(
-      `/api/images/${imageId}/reviewed`,
-      expect.objectContaining({ method: "POST" }),
-    );
-  });
-
-  it("explains why incomplete images cannot be marked reviewed", async () => {
-    const fetcher = vi.fn().mockResolvedValue(response(409, {}));
-
-    await expect(
-      markGapReviewImage("00000000-0000-4000-8000-000000000002", fetcher),
-    ).rejects.toThrow("Accept or reject every active box first.");
-  });
 });
 
 function manifest() {
@@ -82,13 +54,5 @@ function manifest() {
       capture_group: `capture-${index + 1}`,
       candidate_count: index % 4,
     })),
-  };
-}
-
-function response(status: number, body: unknown) {
-  return {
-    ok: status >= 200 && status < 300,
-    status,
-    json: vi.fn().mockResolvedValue(body),
   };
 }

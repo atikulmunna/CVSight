@@ -1985,6 +1985,39 @@ code {
   color: var(--danger);
 }
 
+/* Anchored beside the detail panel so the photo name on the left stays readable. */
+.image-review-bar {
+  position: absolute;
+  z-index: 12;
+  top: 68px;
+  right: calc(320px + 14px);
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px 14px;
+  align-items: center;
+  max-width: 420px;
+  padding: 8px 10px 8px 14px;
+  border: 1px solid var(--ws-line);
+  border-radius: 14px;
+}
+
+.image-review-bar p {
+  margin: 0;
+  font-size: 12px;
+  line-height: 1.35;
+}
+
+.image-review-bar button {
+  min-height: 36px;
+  padding: 0 12px;
+  white-space: nowrap;
+}
+
+.image-review-error {
+  flex-basis: 100%;
+  color: var(--danger);
+}
+
 .brand-block,
 .topbar-status,
 .mode-tabs {
@@ -2340,7 +2373,7 @@ code {
   cursor: grabbing;
 }
 
-.canvas-viewport.is-drawing-gap {
+.canvas-viewport.is-drawing {
   cursor: crosshair;
 }
 
@@ -2482,11 +2515,17 @@ code {
   text-align: center;
 }
 
-.draw-gap-control {
+.draw-controls {
   position: absolute;
   z-index: 5;
   top: 150px;
   right: 14px;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.draw-control {
   min-height: 38px;
   padding: 0 13px;
   background:
@@ -2496,7 +2535,7 @@ code {
   box-shadow: 0 12px 34px rgb(0 0 0 / 25%);
 }
 
-.draw-gap-control.is-active {
+.draw-control.is-active {
   color: #ffffff;
   background: var(--brand);
   border-color: var(--ws-violet);
@@ -3423,6 +3462,10 @@ kbd {
     grid-template-columns: minmax(210px, 1fr) auto minmax(220px, 1fr);
   }
 
+  .image-review-bar {
+    right: calc(280px + 14px);
+  }
+
   .annotation-workspace {
     grid-template-columns: 210px minmax(360px, 1fr) 280px;
   }
@@ -3441,6 +3484,10 @@ kbd {
 @media (max-width: 820px) {
   .topbar {
     grid-template-columns: 1fr auto;
+  }
+
+  .image-review-bar {
+    right: calc(260px + 14px);
   }
 
   .mode-tabs {
@@ -4699,8 +4746,9 @@ kbd {
 .canvas-context,
 .shortcut-strip,
 .zoom-controls,
-.draw-gap-control,
+.draw-control,
 .gap-review-navigator,
+.image-review-bar,
 .sku-picker-popover {
   background: var(--surface);
   border-color: var(--ws-line);
@@ -4754,12 +4802,12 @@ kbd {
   font-size: 10px;
 }
 
-.draw-gap-control {
+.draw-control {
   color: var(--ink);
   font-weight: 600;
 }
 
-.draw-gap-control.is-active {
+.draw-control.is-active {
   background: var(--magenta);
   border-color: var(--magenta);
   color: #fff;
@@ -4770,7 +4818,8 @@ kbd {
 }
 
 .gap-review-navigator p,
-.gap-review-navigation-actions span {
+.gap-review-navigation-actions span,
+.image-review-bar p {
   color: var(--ws-text-2);
 }
 

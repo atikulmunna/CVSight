@@ -1,5 +1,6 @@
 import type { GapReviewManifest } from "./gapReview";
 import type { SaveStatus } from "./canvas/useAnnotationAutosave";
+import { reviewButtonState } from "./imageReview";
 
 type GapReviewNavigatorProps = {
   manifest: GapReviewManifest;
@@ -26,21 +27,10 @@ export function GapReviewNavigator({
 }: GapReviewNavigatorProps) {
   const item = manifest.items[index]!;
   const isBlindTruth = manifest.reviewMode === "blind-truth";
-  const canMarkReviewed =
-    !busy && !reviewed && unresolvedCount === 0 && saveStatus === "saved";
-  const markLabel = reviewed
-    ? "Image reviewed"
-    : unresolvedCount > 0
-      ? `${unresolvedCount} decisions remaining`
-      : saveStatus === "saving"
-        ? "Saving changes"
-        : saveStatus === "conflict"
-          ? "Resolve save conflict"
-          : saveStatus === "offline"
-            ? "Waiting for connection"
-            : isBlindTruth
-              ? "Confirm image reviewed"
-              : "Mark reviewed";
+  const review = reviewButtonState(
+    { reviewed, busy, unresolvedCount, saveStatus },
+    isBlindTruth ? "Confirm image reviewed" : "Mark reviewed",
+  );
   return (
     <section className="gap-review-navigator" aria-label="Gap evidence review">
       <div>
@@ -83,9 +73,9 @@ export function GapReviewNavigator({
         <button
           type="button"
           onClick={onMarkReviewed}
-          disabled={!canMarkReviewed}
+          disabled={!review.enabled}
         >
-          {markLabel}
+          {review.label}
         </button>
         <button
           type="button"

@@ -13,12 +13,9 @@ import {
 } from "./canvas/model";
 import { CatalogWorkspace } from "./catalog/CatalogWorkspace";
 import { GapReviewNavigator } from "./GapReviewNavigator";
-import {
-  loadGapReviewImageStatus,
-  loadGapReviewManifest,
-  markGapReviewImage,
-  type GapReviewManifest,
-} from "./gapReview";
+import { loadGapReviewManifest, type GapReviewManifest } from "./gapReview";
+import { ImageReviewBar } from "./ImageReviewBar";
+import { loadImageReviewed, markImageReviewed } from "./imageReview";
 import { ReviewWorkspace } from "./review/ReviewWorkspace";
 import type { SaveStatus } from "./canvas/useAnnotationAutosave";
 import { workspacesForRole, type Workspace } from "./workspace";
@@ -67,12 +64,12 @@ export default function App({
   const [fixtureError, setFixtureError] = useState(false);
   const [gapReview, setGapReview] = useState<GapReviewManifest | null>(null);
   const [gapReviewIndex, setGapReviewIndex] = useState(0);
-  const [gapReviewBusy, setGapReviewBusy] = useState(false);
-  const [gapReviewImageReviewed, setGapReviewImageReviewed] = useState(false);
-  const [gapReviewError, setGapReviewError] = useState<string | null>(null);
-  const [gapReviewSaveStatus, setGapReviewSaveStatus] =
+  const [reviewBusy, setReviewBusy] = useState(false);
+  const [imageReviewed, setImageReviewed] = useState(false);
+  const [reviewError, setReviewError] = useState<string | null>(null);
+  const [saveStatus, setSaveStatus] =
     useState<SaveStatus>("saved");
-  const gapReviewFlushRef = useRef<(() => Promise<void>) | null>(null);
+  const flushRef = useRef<(() => Promise<void>) | null>(null);
   const datasetVersionId = useMemo(() => {
     if (routedDatasetVersionId !== undefined) {
       return routedDatasetVersionId;
@@ -149,8 +146,8 @@ export default function App({
           );
           setGapReview(manifest);
           setGapReviewIndex(index);
-          setGapReviewImageReviewed(
-            await loadGapReviewImageStatus(
+          setImageReviewed(
+            await loadImageReviewed(
               manifest.items[index]!.imageId,
               (input, init) => fetch(input, { ...init, signal: controller.signal }),
             ),
@@ -159,6 +156,13 @@ export default function App({
           parsed = await loadLiveFixture(imageId, (input, init) =>
             fetch(input, { ...init, signal: controller.signal }),
           );
+          if (routedImageId) {
+            setImageReviewed(
+              await loadImageReviewed(routedImageId, (input, init) =>
+                fetch(input, { ...init, signal: controller.signal }),
+              ),
+            );
+          }
         } else {
           const response = await fetch("/local-fixtures/t007.json", {
             signal: controller.signal,
@@ -195,11 +199,11 @@ export default function App({
   }, []);
   const handleSaveStateChange = useCallback(
     (status: SaveStatus, flush: () => Promise<void>) => {
-      setGapReviewSaveStatus(status);
+      setSaveStatus(status);
       if (status === "saving") {
-        setGapReviewImageReviewed(false);
+        setImageReviewed(false);
       }
-      gapReviewFlushRef.current = flush;
+      flushRef.current = flush;
     },
     [],
   );
@@ -209,16 +213,16 @@ export default function App({
       return;
     }
     try {
-      setGapReviewBusy(true);
+      setReviewBusy(true);
       const parsed = await loadLiveFixture(gapReview.items[index]!.imageId);
-      const reviewed = await loadGapReviewImageStatus(
+      const reviewed = await loadImageReviewed(
         gapReview.items[index]!.imageId,
       );
       setFixture(parsed);
       setLiveAnnotations(parsed.annotations);
       setGapReviewIndex(index);
-      setGapReviewImageReviewed(reviewed);
-      setGapReviewError(null);
+      setImageReviewed(reviewed);
+      setReviewError(null);
       setFixtureError(false);
       const url = new URL(window.location.href);
       url.searchParams.set(
@@ -230,26 +234,33 @@ export default function App({
     } catch {
       setFixtureError(true);
     } finally {
-      setGapReviewBusy(false);
+      setReviewBusy(false);
     }
   }
 
-  async function markCurrentGapReviewImage() {
-    if (!gapReview) {
+  // The gap benchmark walks its own manifest; a project route reviews the image it opened.
+  const reviewImageId = gapReview
+    ? gapReview.items[gapReviewIndex]!.imageId
+    : routedImageId ?? null;
+  const reviewImageLoaded =
+    reviewImageId !== null && fixture.images.some((image) => image.id === reviewImageId);
+
+  async function markCurrentImageReviewed() {
+    if (!reviewImageId) {
       return;
     }
     try {
-      setGapReviewBusy(true);
-      await gapReviewFlushRef.current?.();
-      await markGapReviewImage(gapReview.items[gapReviewIndex]!.imageId);
-      setGapReviewImageReviewed(true);
-      setGapReviewError(null);
+      setReviewBusy(true);
+      await flushRef.current?.();
+      await markImageReviewed(reviewImageId);
+      setImageReviewed(true);
+      setReviewError(null);
     } catch (error) {
-      setGapReviewError(
+      setReviewError(
         error instanceof Error ? error.message : "Image review could not be saved.",
       );
     } finally {
-      setGapReviewBusy(false);
+      setReviewBusy(false);
     }
   }
 
@@ -276,7 +287,7 @@ export default function App({
       total: targets.length,
     };
   }, [liveAnnotations]);
-  const unresolvedGapCount = useMemo(
+  const unresolvedCount = useMemo(
     () =>
       liveAnnotations.filter(
         (box) =>
@@ -421,13 +432,23 @@ export default function App({
         <GapReviewNavigator
           manifest={gapReview}
           index={gapReviewIndex}
-          busy={gapReviewBusy}
-          reviewed={gapReviewImageReviewed}
-          unresolvedCount={unresolvedGapCount}
-          saveStatus={gapReviewSaveStatus}
-          error={gapReviewError}
+          busy={reviewBusy}
+          reviewed={imageReviewed}
+          unresolvedCount={unresolvedCount}
+          saveStatus={saveStatus}
+          error={reviewError}
           onSelect={(index) => void selectGapReviewImage(index)}
-          onMarkReviewed={() => void markCurrentGapReviewImage()}
+          onMarkReviewed={() => void markCurrentImageReviewed()}
+        />
+      )}
+      {!gapReview && reviewImageLoaded && (workspace === "verify" || workspace === "assign") && (
+        <ImageReviewBar
+          busy={reviewBusy}
+          reviewed={imageReviewed}
+          unresolvedCount={unresolvedCount}
+          saveStatus={saveStatus}
+          error={reviewError}
+          onMarkReviewed={() => void markCurrentImageReviewed()}
         />
       )}
       {workspace === "verify" || workspace === "assign" ? (
@@ -436,7 +457,7 @@ export default function App({
           mode={workspace}
           purpose={gapReview ? "gap-review" : "annotation"}
           onAnnotationsChange={handleAnnotationsChange}
-          onSaveStateChange={gapReview ? handleSaveStateChange : undefined}
+          onSaveStateChange={reviewImageId ? handleSaveStateChange : undefined}
           key={`${fixture.images.map((image) => image.id).join(",")}:${workspace}`}
         />
       ) : workspace === "propagate" ? (

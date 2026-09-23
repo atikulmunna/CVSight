@@ -315,7 +315,7 @@ function restoreWorkspace(fixture: CanvasFixture): {
     if (stored.version !== 1 || !Array.isArray(stored.annotations)) {
       throw new Error("invalid draft");
     }
-    const parsed = parseCanvasFixture({
+    const draft = parseCanvasFixture({
       name: fixture.name,
       image: { width: fixture.width, height: fixture.height },
       images: fixture.images,
@@ -331,20 +331,62 @@ function restoreWorkspace(fixture: CanvasFixture): {
         if (
           typeof candidate.id === "string" &&
           isEditIntent(candidate.intent) &&
-          parsed.some((box) => box.id === candidate.id)
+          draft.some((box) => box.id === candidate.id)
         ) {
           pending.push({
             id: candidate.id,
             intent: candidate.intent,
-            box: parsed.find((box) => box.id === candidate.id)!,
+            box: draft.find((box) => box.id === candidate.id)!,
           });
         }
       }
     }
-    return { annotations: parsed, pending, wasRestored: true };
+    const merged = mergeDraft(
+      fixture.annotations,
+      draft,
+      new Set(pending.map((edit) => edit.id)),
+    );
+    return { annotations: merged.boxes, pending, wasRestored: merged.usedDraft };
   } catch {
     return { annotations: fixture.annotations, pending: [], wasRestored: false };
   }
+}
+
+// The freshly loaded server copy wins unless the draft holds something the server does
+// not have yet: an unsaved edit, a box that exists only locally, or a newer revision.
+// Restoring the whole draft instead would hide server changes, such as SKU names.
+function mergeDraft(
+  serverBoxes: AnnotationBox[],
+  draftBoxes: AnnotationBox[],
+  pendingIds: Set<string>,
+): { boxes: AnnotationBox[]; usedDraft: boolean } {
+  const key = (box: AnnotationBox) => box.serverId ?? box.id;
+  const draftByKey = new Map(draftBoxes.map((box) => [key(box), box]));
+  let usedDraft = false;
+  const boxes = serverBoxes.map((server) => {
+    const draft = draftByKey.get(key(server));
+    const keepDraft =
+      draft !== undefined &&
+      (pendingIds.has(draft.id) ||
+        draft.serverId === null ||
+        (draft.revision ?? 0) > (server.revision ?? 0));
+    if (keepDraft) {
+      usedDraft = true;
+      return draft;
+    }
+    return server;
+  });
+  const serverKeys = new Set(serverBoxes.map(key));
+  for (const draft of draftBoxes) {
+    if (
+      !serverKeys.has(key(draft)) &&
+      (pendingIds.has(draft.id) || draft.serverId === null)
+    ) {
+      boxes.push(draft);
+      usedDraft = true;
+    }
+  }
+  return { boxes, usedDraft };
 }
 
 function storedBox(box: AnnotationBox): Record<string, unknown> {

@@ -111,6 +111,82 @@ describe("AnnotationWorkspace", () => {
     expect(control).toHaveAttribute("aria-pressed", "false");
   });
 
+  it("draws a product, opens its SKU picker, and stays on it after naming it", () => {
+    vi.stubGlobal("fetch", vi.fn().mockRejectedValue(new TypeError("offline")));
+    const existing = {
+      ...DEMO_FIXTURE.annotations[1]!,
+      state: "unverified" as const,
+      lifecycleState: "proposed" as const,
+      reviewState: "unreviewed" as const,
+    };
+    const fixture = {
+      ...DEMO_FIXTURE,
+      name: "Draw product fixture",
+      annotations: [existing],
+    };
+    const { container } = render(<AnnotationWorkspace fixture={fixture} />);
+    const viewport = screen.getByLabelText("Shelf annotation canvas");
+    Object.defineProperty(viewport, "setPointerCapture", { value: () => undefined });
+
+    fireEvent.keyDown(viewport, { key: "b" });
+    expect(screen.getByRole("button", { name: /Drawing boxes/ })).toHaveAttribute(
+      "aria-pressed",
+      "true",
+    );
+    expect(viewport).toHaveClass("is-drawing-product");
+
+    drag(viewport, { x: 200, y: 200 }, { x: 320, y: 330 });
+
+    const drawn = container.querySelector<HTMLElement>('.box-row[data-annotation-id^="product-"]');
+    expect(drawn).toHaveTextContent("Unassigned");
+    expect(drawn).toHaveAttribute("aria-selected", "true");
+    expect(screen.getByLabelText("SKU assignment")).toBeInTheDocument();
+
+    fireEvent.click(
+      screen.getAllByRole("button", { name: /Aurora Cola 250ml 1 pack/ })[0]!,
+    );
+
+    const named = container.querySelector<HTMLElement>('.box-row[data-annotation-id^="product-"]');
+    expect(named).toHaveTextContent("Aurora Cola 250ml 1 pack");
+    expect(named).toHaveAttribute("aria-selected", "true");
+    expect(viewport).toHaveClass("is-drawing-product");
+    expect(screen.queryByLabelText("SKU assignment")).not.toBeInTheDocument();
+    expect(viewport).toHaveFocus();
+
+    drag(viewport, { x: 420, y: 200 }, { x: 520, y: 330 });
+    expect(container.querySelectorAll('.box-row[data-annotation-id^="product-"]')).toHaveLength(2);
+    expect(screen.getByLabelText("SKU assignment")).toBeInTheDocument();
+
+    fireEvent.keyDown(viewport, { key: "Escape" });
+    expect(viewport).not.toHaveClass("is-drawing");
+  });
+
+  it("ignores a click that is too small to be a box", () => {
+    const fixture = { ...DEMO_FIXTURE, name: "Tiny drag fixture", annotations: [] };
+    const { container } = render(<AnnotationWorkspace fixture={fixture} />);
+    const viewport = screen.getByLabelText("Shelf annotation canvas");
+    Object.defineProperty(viewport, "setPointerCapture", { value: () => undefined });
+
+    fireEvent.click(screen.getByRole("button", { name: /Draw box/ }));
+    drag(viewport, { x: 200, y: 200 }, { x: 200, y: 200 });
+
+    expect(container.querySelectorAll(".box-row")).toHaveLength(0);
+  });
+
+  it("keeps product drawing out of gap review", () => {
+    render(
+      <AnnotationWorkspace
+        fixture={{ ...DEMO_FIXTURE, name: "Gap only fixture" }}
+        purpose="gap-review"
+      />,
+    );
+    const viewport = screen.getByLabelText("Shelf annotation canvas");
+
+    expect(screen.queryByRole("button", { name: /Draw box/ })).not.toBeInTheDocument();
+    fireEvent.keyDown(viewport, { key: "b" });
+    expect(viewport).not.toHaveClass("is-drawing");
+  });
+
   it("advances gap review to the next unresolved box after acceptance", () => {
     const annotations = DEMO_FIXTURE.annotations.slice(1, 3).map((box) => ({
       ...box,
@@ -248,6 +324,36 @@ describe("AnnotationWorkspace", () => {
       await vi.advanceTimersByTimeAsync(1_000);
     });
     expect(screen.getByText("saved", { selector: ".save-state" })).toBeInTheDocument();
+  });
+
+  it("moves to the next undecided box after every decision", () => {
+    const proposed = DEMO_FIXTURE.annotations.slice(1, 4).map((box) => ({
+      ...box,
+      state: "unverified" as const,
+      lifecycleState: "proposed" as const,
+      reviewState: "unreviewed" as const,
+    }));
+    const fixture = { ...DEMO_FIXTURE, name: "Decision flow fixture", annotations: proposed };
+    const { container } = render(<AnnotationWorkspace fixture={fixture} />);
+    const viewport = screen.getByLabelText("Shelf annotation canvas");
+    const selectedId = () =>
+      container.querySelector(".annotation.is-selected")?.getAttribute("data-annotation-id");
+    const [first, second, third] = [...container.querySelectorAll(".box-row")].map((row) =>
+      row.getAttribute("data-annotation-id"),
+    );
+
+    expect(selectedId()).toBe(first);
+    expect(viewport).toHaveFocus();
+    fireEvent.keyDown(viewport, { key: "a" });
+    expect(selectedId()).toBe(second);
+
+    fireEvent.keyDown(viewport, { key: "r" });
+    expect(selectedId()).toBe(third);
+
+    fireEvent.click(screen.getByRole("button", { name: /^Accept/ }));
+    expect(selectedId()).toBeUndefined();
+    expect(viewport).toHaveFocus();
+    expect(screen.getByText("Choose a box on the canvas or in the list.")).toBeInTheDocument();
   });
 
   it("does not run editing shortcuts from an input", () => {
@@ -418,6 +524,8 @@ describe("AnnotationWorkspace", () => {
     expect(
       container.querySelector('.box-row[data-annotation-id="B002"]'),
     ).toHaveTextContent("Aurora Cola 250ml 1 pack");
+    expect(screen.queryByLabelText("SKU assignment")).not.toBeInTheDocument();
+    expect(screen.getByLabelText("Shelf annotation canvas")).toHaveFocus();
   });
 
   it("focuses assignment search with slash and ignores shortcuts inside it", async () => {
@@ -543,6 +651,67 @@ describe("AnnotationWorkspace", () => {
       ),
     ).toBe(originalX + 1);
     expect(screen.getByText("Recovered local work")).toBeInTheDocument();
+  });
+
+  it("prefers a fresh server copy over a saved draft of the same revision", () => {
+    const saved = {
+      ...DEMO_FIXTURE.annotations[1]!,
+      id: "00000000-0000-4000-8000-000000000011",
+      serverId: "00000000-0000-4000-8000-000000000011",
+      revision: 2,
+      skuId: "00000000-0000-4000-8000-000000000031",
+    };
+    const added = {
+      ...DEMO_FIXTURE.annotations[2]!,
+      id: "00000000-0000-4000-8000-000000000012",
+      serverId: "00000000-0000-4000-8000-000000000012",
+      revision: 1,
+    };
+    const fixture = {
+      ...DEMO_FIXTURE,
+      name: "Stale draft fixture",
+      annotations: [{ ...saved, sku: "Horlicks Chocolate" }, added],
+    };
+    localStorage.setItem(
+      `shelfsight:annotation-draft:${fixture.images.map((image) => image.id).join(",")}`,
+      JSON.stringify({
+        version: 1,
+        annotations: [
+          {
+            id: saved.id,
+            server_id: saved.serverId,
+            image_id: saved.imageId,
+            revision: 2,
+            x: saved.x,
+            y: saved.y,
+            width: saved.width,
+            height: saved.height,
+            kind: "product",
+            state: saved.state,
+            lifecycle_state: saved.lifecycleState,
+            review_state: saved.reviewState,
+            sku: "Assigned SKU",
+            sku_id: saved.skuId,
+            confidence: saved.confidence,
+            occluded: false,
+            truncated: false,
+            shelf_row: saved.shelfRow,
+            image_index: 0,
+          },
+        ],
+        pending: [],
+      }),
+    );
+
+    const { container } = render(<AnnotationWorkspace fixture={fixture} />);
+
+    expect(
+      container.querySelector(`.box-row[data-annotation-id="${saved.id}"]`),
+    ).toHaveTextContent("Horlicks Chocolate");
+    expect(
+      container.querySelector(`.box-row[data-annotation-id="${added.id}"]`),
+    ).toBeInTheDocument();
+    expect(screen.queryByText("Recovered local work")).not.toBeInTheDocument();
   });
 
   it("keeps failed network edits locally and shows offline status", async () => {
@@ -697,4 +866,14 @@ function catalogSku(id: string, name: string, isUnknown: boolean) {
     merged_into_id: null,
     reference_images: [],
   };
+}
+
+function drag(
+  viewport: HTMLElement,
+  from: { x: number; y: number },
+  to: { x: number; y: number },
+) {
+  fireEvent.pointerDown(viewport, { button: 0, pointerId: 1, clientX: from.x, clientY: from.y });
+  fireEvent.pointerMove(viewport, { pointerId: 1, clientX: to.x, clientY: to.y });
+  fireEvent.pointerUp(viewport, { pointerId: 1, clientX: to.x, clientY: to.y });
 }
