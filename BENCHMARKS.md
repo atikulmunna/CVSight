@@ -1,10 +1,11 @@
 # CVSight benchmark evidence
 
 This document publishes a curated, reproducible summary of the evidence used for the
-CVSight 0.2.0 release. The machine-readable snapshot is
-[`docs/benchmarks/release-0.2.0.json`](docs/benchmarks/release-0.2.0.json). Raw reports,
+CVSight 0.3.0 release. The machine-readable snapshot is
+[`docs/benchmarks/release-0.3.0.json`](docs/benchmarks/release-0.3.0.json). Raw reports,
 datasets, images, database dumps, credentials, local paths, and private identifiers are
-not committed.
+not committed. The 0.2.0 snapshot remains at
+[`docs/benchmarks/release-0.2.0.json`](docs/benchmarks/release-0.2.0.json).
 
 ## Evidence boundary
 
@@ -14,23 +15,22 @@ are exploratory measurements on an incompletely labeled dataset with related sce
 across the original splits. CVSight therefore keeps model output suggestion-only and
 requires a human decision.
 
-This snapshot summarizes evidence collected from source commit `abc540eace7c770bcbca15a842f984d689a87738` on
-September 22, 2026. Every figure below was measured on that tree.
+This snapshot summarizes evidence collected from source commit `5163e9f81777b8c800288c853f2d4123a18cb180` on
+September 27, 2026. Every figure below was measured on that tree.
 
 ## How these numbers should be read
 
 Each measurement is one sample from one machine, and several of them move more than the
 code does. Where a figure is known to vary between runs, the variation is published
-beside it rather than hidden behind the best result. Two measurements were corrected
-during this release after they were found to describe the host rather than the
-application:
+beside it rather than hidden behind the best result.
 
-- Canvas timings now come from the production build and each run reports whether the
-  host held a steady frame cadence. A run that did not is marked invalid, and its
-  numbers are not evidence.
-- The full catalog latency is sampled over 100 requests rather than 20. At the smaller
-  size the p95 estimator resolved to the second slowest request, so the same unchanged
-  build measured between 410 ms and 777 ms across five runs against a 750 ms gate.
+- The full catalog latency failed its gate twice on this tree, at 792.6 ms and 860.4 ms against
+  750 ms, both on a loaded host: the first run started as the security gate's image
+  builds finished, the second overlapped an unrelated archive extraction. The run after
+  both had ended measured 399.8 ms. The gate was not changed.
+- Canvas timings come from the production build, and each run reports whether the host
+  held a steady frame cadence. A run that did not is marked invalid, and its numbers are
+  not evidence.
 
 ## Test environment
 
@@ -49,14 +49,14 @@ minimum hardware guarantees.
 
 ## Clean installation and correctness
 
-The isolated installation rehearsal completed in 87.520 seconds. It built a clean
+The isolated installation rehearsal completed in 157.324 seconds. It built a clean
 source copy, started the database, API, worker, and frontend, then ran the following
 checks:
 
 | Check | Result |
 | --- | ---: |
-| Python tests | 307 passed, 0 skipped |
-| Frontend tests | 158 passed |
+| Python tests | 340 passed, 0 skipped |
+| Frontend tests | 200 passed |
 | Ruff | Passed |
 | mypy | Passed |
 | ESLint | Passed |
@@ -64,12 +64,7 @@ checks:
 | Production frontend build | Passed |
 | API, database, worker, and frontend smoke checks | Passed |
 
-The 0.1.0 evidence reported 204 passing Python tests with 95 skipped. Those skips were
-the PostgreSQL-backed integration tests, which the rehearsal never configured a test
-database for. `scripts/check.ps1` now refuses to run without one, so the complete suite
-executes.
-
-The source file count was 243 when this evidence was captured. Later documentation
+The source file count was 269 when this evidence was captured. Later documentation
 and test additions can change that count without invalidating the measured release tree.
 
 ## Scale results
@@ -77,84 +72,96 @@ and test additions can change that count without invalidating the measured relea
 The deterministic fixture contained 100,000 image metadata rows, 2,000 catalog SKUs,
 300 annotations on one dense image, 1,000 queued jobs, 2,000 gallery embeddings, and an
 export snapshot with 250 images and 3,000 annotations. All 18 configured scale gates
-passed with zero API, job, similarity, or export errors.
+passed on the quieter run with zero API, job, similarity, or export errors.
 
 | Operation | Result | Gate |
 | --- | ---: | ---: |
-| Image metadata API p95 | 47.05 ms | at most 100 ms |
-| Dense annotation API p95 | 65.36 ms | at most 500 ms |
-| Full catalog API p95 | 550.39 ms | at most 750 ms |
-| Catalog search API p95 | 151.93 ms | at most 250 ms |
-| Expected failure paths p95 | 76.85 ms | at most 250 ms |
-| Four-worker job throughput | 110.24 jobs/s | at least 50 jobs/s |
-| Job duration p95 | 50.12 ms | at most 150 ms |
-| Similarity search p95 | 105.37 ms | at most 250 ms |
-| Detection export p95 | 1,050.82 ms | at most 3,000 ms |
-| Recognition export p95 | 3,578.66 ms | at most 12,000 ms |
+| Image metadata API p95 | 41.71 ms | at most 100 ms |
+| Dense annotation API p95 | 56.20 ms | at most 500 ms |
+| Full catalog API p95 | 399.84 ms | at most 750 ms |
+| Catalog search API p95 | 102.08 ms | at most 250 ms |
+| Expected failure paths p95 | 36.77 ms | at most 250 ms |
+| Four-worker job throughput | 131.25 jobs/s | at least 50 jobs/s |
+| Job duration p95 | 37.96 ms | at most 150 ms |
+| Similarity search p95 | 99.06 ms | at most 250 ms |
+| Detection export p95 | 881.46 ms | at most 3,000 ms |
+| Recognition export p95 | 3,350.50 ms | at most 12,000 ms |
 
-The full catalog figure is the least stable measurement in this table. Across four runs
-of this tree it ranged from 468 ms to 709 ms, so it carries roughly 13 percent headroom
-against its gate at the median and less on a loaded machine. The threshold was left
-unchanged when the sampling was corrected, because moving a gate to fit a measurement
-would make the result easier to pass rather than easier to trust.
+The full catalog figure remains the least stable measurement in this table. Across the
+0.2.0 runs it ranged from 468 ms to 709 ms, and on this tree it measured 792.6 ms and 860.4 ms on a
+busy host and 399.8 ms on a quieter one. It has little or no headroom against the
+750 ms gate on a loaded machine.
 
-The seed added 112,053,084 bytes to PostgreSQL, or 1,120.53 bytes per image metadata
-row. The measured workload added 603,300 bytes. Python traced peak memory was
-22,695,440 bytes, with 804,830 bytes retained after the workload.
+The seed added 112,192,348 bytes to PostgreSQL, or 1,121.92 bytes per image metadata
+row. The measured workload added 504,996 bytes. Python traced peak memory was
+23,012,168 bytes, with 808,790 bytes retained after the workload.
 
 ## Canvas responsiveness
 
-Canvas timings are measured against the production build, with 354 boxes loaded. The
-development server was used for the 0.1.0 evidence, where React double-renders every
-component under `StrictMode`, so those figures described a build no annotator runs.
+**Not re-measured for 0.3.0.** This release added the tool rail, box drawing, and eight
+resize handles on the selected box, so the canvas was due a fresh measurement. Four
+attempts on the 0.3.0 production build, with 354 boxes loaded, were all rejected by the host
+check and none of their timings is published.
 
 Every run first measures an idle animation loop and reports it as the browser frame
 baseline. That baseline is the control: a host that cannot hold a steady cadence with no
 canvas work, or a canvas measurement faster than the idle loop, marks the run invalid.
-This run reported the host as valid.
+On the measurement host the idle loop dropped frames in every run, with intervals up to
+183.6 ms, and in one run it fell to 15 frames per second while the canvas drew at 60.
+Display or browser power saving on idle frames is the likely cause. It was not isolated, so the
+runs are simply excluded.
 
-| Measurement | p95 | Gate | Maximum |
+The last valid measurement is the 0.2.0 build's, recorded on September 22, 2026. It is
+shown for reference and does not describe the 0.3.0 canvas:
+
+| 0.2.0 measurement | p95 | Gate | Maximum |
 | --- | ---: | ---: | ---: |
 | Browser frame baseline | 16.8 ms | at most 20 ms | 17.0 ms |
 | Canvas frame interval | 16.9 ms | at most 25 ms | 17.7 ms |
 | Selection update | 3.5 ms | at most 8 ms | 10.7 ms |
 | Input latency | 16.8 ms | at most 25 ms | 17.1 ms |
 
-The 0.1.0 evidence recorded isolated long frames of 66.9 ms and 46.2 ms. Those maxima do
-not appear here: the worst frame in this run was 17.7 ms against a 16.7 ms display
-floor.
-
-The interface overhaul in this release was checked for regression directly. The
-pre-overhaul build and the current build were measured back to back on the same busy
-host, giving a selection update p50 of 9.8 ms and 9.5 ms respectively, so the redesign
-did not change canvas cost. Both of those runs would now be rejected as invalid.
-
 ## Recovery evidence
 
-The recovery drill completed in 33.073 seconds. It verified a database backup and clean
+The recovery drill completed in 72.123 seconds. It verified a database backup and clean
 restore by comparing fixture state and checksums, preserved state through a database
 container restart, and confirmed that a restored deployment serves the same annotation
 and media content.
 
+## Deployment rehearsal
+
+The Docker Compose deployment is new in this release. It was rehearsed by hand on Docker
+Desktop's Linux engine rather than by a scripted gate, and not on a native Linux server.
+A fresh stack applied all 12 migrations; HTTPS sign-in set a Secure, HttpOnly session
+cookie; an upload was stored in the media volume and served back; Docker restarted the
+API and worker after their processes stopped; ten failed sign-ins were answered 401 and
+the next with 429 and `Retry-After`; and a backup, removal of every volume, and restore
+brought back a deployment that served the uploaded image again. The rehearsal found one
+defect before release: the restore could not read owner-only media files in a bundle.
+
 ## Security and licensing
 
 The dependency and container scan audits the frozen Python graph with pip-audit, the npm
-graph with `npm audit`, and the rebuilt database image with pinned Trivy 0.74.0. This
-release reports 0 fixable high or critical container findings.
+graph with `npm audit`, and every image the deployment runs (database, API and worker,
+and web proxy) with pinned Trivy 0.74.0. This release reports 0 fixable high or
+critical container findings.
 
-Three high severity findings were resolved during this release. `libpcre2-8-0` carried
-CVE-2026-86145, CVE-2026-89157, and CVE-2026-89161 at version 10.42-1 and now ships
-10.42-1+deb12u1. They were present because the image build reused a cached `apt-get
-upgrade` layer: the base image is pinned by digest, so nothing invalidated that layer and
-it had stopped receiving Debian security updates. The scan build now passes `--no-cache`.
-Operators running the image outside the gate must rebuild it the same way.
+The API and web images are scanned for the first time in this release. The API runtime
+stage no longer ships pip, whose vendored msgpack and setuptools code carried
+GHSA-6v7p-g79w-8964 and CVE-2025-47273, or the uv binary, which only the build stage
+needs. Stock Caddy images failed the gate: 2.10 carried 83 fixable high or critical
+findings, and 2.11.4, the latest release, carried 17 in its Go toolchain and modules. The
+web image therefore builds Caddy 2.11.4 with Go 1.26.6 and fixed `x/crypto`, `x/net`,
+`x/text`, and gRPC versions. Every image is built with `--no-cache`, so package upgrade
+layers are current when scanned.
 
 See [LICENSE_POLICY.md](LICENSE_POLICY.md) for component terms. The CVSight source is
 released under the MIT License.
 
 ## Exploratory model measurements
 
-These numbers are useful engineering baselines only. The selected QPDS-Seg annotations
+These numbers are carried over unchanged from 0.2.0; this release did not re-measure
+them. They are useful engineering baselines only. The selected QPDS-Seg annotations
 cover 48 SKUs rather than every visible product, and related scenes crossed the original
 splits. Generic precision is therefore withheld.
 

@@ -322,7 +322,7 @@ limitations are in [RELEASE.md](RELEASE.md). Dependency, model, dataset, and art
 licensing is recorded in [LICENSE_POLICY.md](LICENSE_POLICY.md). Curated release
 measurements, thresholds, limitations, and reproducibility commands are published in
 [BENCHMARKS.md](BENCHMARKS.md), with a sanitized machine-readable snapshot under
-[`docs/benchmarks`](docs/benchmarks/release-0.2.0.json).
+[`docs/benchmarks`](docs/benchmarks/release-0.3.0.json).
 
 ## Database migrations
 

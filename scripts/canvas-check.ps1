@@ -13,8 +13,9 @@ function Assert-NativeSuccess {
     }
 }
 
+# The staging script throws on failure; it runs no native command, so $LASTEXITCODE
+# says nothing about it and is unset in a fresh session.
 & (Join-Path $PSScriptRoot "stage-canvas-fixture.ps1")
-Assert-NativeSuccess "Canvas fixture staging"
 
 npm --prefix $frontend run build
 Assert-NativeSuccess "Production frontend build"
@@ -37,7 +38,7 @@ foreach ($process in $existing) {
 }
 
 $preview = Start-Process `
-    -FilePath "npm" `
+    -FilePath "npm.cmd" `
     -ArgumentList @("--prefix", $frontend, "run", "preview") `
     -NoNewWindow `
     -PassThru
