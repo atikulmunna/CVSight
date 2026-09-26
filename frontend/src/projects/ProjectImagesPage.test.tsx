@@ -1,6 +1,7 @@
 import { fireEvent, render, screen, waitFor } from "@testing-library/react";
 import { afterEach, describe, expect, it, vi } from "vitest";
 
+import { promotedDetectorDeployment } from "./modelFixtures";
 import { ProjectRouter } from "./ProjectRouter";
 
 const PROJECT_ID = "11111111-1111-4111-8111-111111111111";
@@ -76,6 +77,9 @@ describe("ProjectImagesPage", () => {
       if (url === "/api/workers/health") {
         return Promise.resolve(response(200, { status: "unavailable", workers: [] }));
       }
+      if (url === "/api/model-deployments/known_sku_detector") {
+        return Promise.resolve(response(200, promotedDetectorDeployment()));
+      }
       return Promise.resolve(response(200, imagePage("unlabeled")));
     });
     vi.stubGlobal("fetch", fetcher);
@@ -91,6 +95,35 @@ describe("ProjectImagesPage", () => {
     expect(fetcher).toHaveBeenCalledWith(
       "/api/prelabels/batch",
       expect.objectContaining({ method: "POST" }),
+    );
+  });
+
+  it("asks for a promoted detector before pre-labeling", async () => {
+    window.history.replaceState({}, "", `/projects/${PROJECT_ID}/images`);
+    vi.stubGlobal(
+      "fetch",
+      vi.fn().mockImplementation((input: RequestInfo | URL) => {
+        const url = String(input);
+        if (url === "/api/datasets") {
+          return Promise.resolve(response(200, [PROJECT]));
+        }
+        if (url === `/api/datasets/${PROJECT_ID}`) {
+          return Promise.resolve(response(200, PROJECT));
+        }
+        if (url === "/api/model-deployments/known_sku_detector") {
+          return Promise.resolve(response(404, { detail: { code: "model_deployment_not_found" } }));
+        }
+        return Promise.resolve(response(200, imagePage("unlabeled")));
+      }),
+    );
+
+    render(
+      <ProjectRouter currentUser={{ username: "owner", role: "owner" }} onLogout={vi.fn()} />,
+    );
+    fireEvent.click(await screen.findByRole("button", { name: "Pre-label unlabeled" }));
+
+    expect(await screen.findByRole("alert")).toHaveTextContent(
+      "No detector is promoted yet. Promote one on the Models page, then pre-label.",
     );
   });
 

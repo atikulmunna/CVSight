@@ -1,4 +1,5 @@
 import { loadProjectImages, ProjectImageApiError } from "./imagesApi";
+import { loadModelDeployment } from "./modelsApi";
 
 export type PrelabelSummary = {
   queued: number;
@@ -9,10 +10,11 @@ export type PrelabelSummary = {
 
 const PAGE_SIZE = 250;
 
-// One key per version: repeated clicks find the jobs already queued instead of adding
-// duplicate proposals. Photos leave "unlabeled" once their proposals land.
-export function prelabelKey(versionId: string): string {
-  return `ui-prelabel:${versionId}`;
+// One key per version and promoted detector: repeated clicks find the jobs already
+// queued instead of adding duplicate proposals, and promoting a different detector lets
+// photos that are still unlabeled be tried again.
+export function prelabelKey(versionId: string, detectorEntryId: string): string {
+  return `ui-prelabel:${versionId}:${detectorEntryId}`;
 }
 
 export async function prelabelUnlabeledImages(
@@ -20,6 +22,11 @@ export async function prelabelUnlabeledImages(
   versionId: string,
   fetcher: typeof fetch = fetch,
 ): Promise<PrelabelSummary> {
+  // Only the promoted detector may pre-label, so without one nothing would be stored.
+  const deployment = await loadModelDeployment("known_sku_detector", fetcher);
+  if (!deployment) {
+    throw new ProjectImageApiError(409, "no_promoted_detector");
+  }
   const imageIds: string[] = [];
   for (let offset = 0; ; offset += PAGE_SIZE) {
     const page = await loadProjectImages(projectId, versionId, "unlabeled", offset, PAGE_SIZE, fetcher);
@@ -35,7 +42,7 @@ export async function prelabelUnlabeledImages(
       headers: { Accept: "application/json", "Content-Type": "application/json" },
       body: JSON.stringify({
         image_ids: imageIds.slice(start, start + PAGE_SIZE),
-        idempotency_key: prelabelKey(versionId),
+        idempotency_key: prelabelKey(versionId, deployment.active.id),
       }),
     });
     const body: unknown = await response.json().catch(() => null);

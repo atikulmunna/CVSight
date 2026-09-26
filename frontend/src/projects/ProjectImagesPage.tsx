@@ -24,7 +24,7 @@ import { ProjectsHeader } from "./ProjectsHeader";
 type PrelabelState =
   | { phase: "idle" | "queuing" }
   | { phase: "done"; summary: PrelabelSummary; workers: number | null }
-  | { phase: "failed"; status: number };
+  | { phase: "failed"; status: number; code: string };
 
 type ProjectImagesPageProps = {
   projectId: string;
@@ -145,6 +145,7 @@ export function ProjectImagesPage({
       setPrelabel({
         phase: "failed",
         status: error instanceof ProjectImageApiError ? error.status : 0,
+        code: error instanceof ProjectImageApiError ? error.code : "request_failed",
       });
     }
   }
@@ -583,9 +584,11 @@ function PrelabelNotice({
   if (state.phase === "failed") {
     return (
       <p className="prelabel-notice is-error" role="alert">
-        {state.status === 403
-          ? "Only project owners can queue pre-labels."
-          : "Pre-labels could not be queued. Check that the API is running and try again."}
+        {state.code === "no_promoted_detector"
+          ? "No detector is promoted yet. Promote one on the Models page, then pre-label."
+          : state.status === 403
+            ? "Only project owners can queue pre-labels."
+            : "Pre-labels could not be queued. Check that the API is running and try again."}
       </p>
     );
   }
