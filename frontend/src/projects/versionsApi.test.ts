@@ -28,7 +28,7 @@ describe("project versions API", () => {
     expect(versions[1]).toMatchObject({
       id: RELEASE_ID,
       status: "released",
-      exportTypes: ["detection"],
+      exportTypes: ["detection", "yolo"],
       reviewSignoff: {
         signedBy: "reviewer:qa",
         reviewedAnnotationCount: 180,
@@ -123,7 +123,7 @@ function versionBody() {
         reviewed_annotation_count: 180,
         risk_item_count: 12,
       },
-      export_types: ["detection"],
+      export_types: ["detection", "yolo"],
     },
   ];
 }

@@ -318,6 +318,10 @@ function ReleaseCard({ version, number }: { version: ProjectVersion; number: num
           Recognition ZIP
           {version.exportTypes.includes("recognition") && <small>Previously generated</small>}
         </a>
+        <a href={versionExportUrl(version.id, "yolo")} download>
+          YOLO ZIP
+          {version.exportTypes.includes("yolo") && <small>Previously generated</small>}
+        </a>
       </div>
     </article>
   );

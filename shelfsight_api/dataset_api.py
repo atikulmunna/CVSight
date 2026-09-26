@@ -156,7 +156,7 @@ class DatasetVersionSummaryResponse(BaseModel):
     status: Literal["working", "released", "frozen"]
     image_count: int
     review_signoff: VersionReviewSignoffResponse | None
-    export_types: list[Literal["detection", "recognition"]]
+    export_types: list[Literal["detection", "recognition", "yolo"]]
 
 
 class WorkingVersionResponse(BaseModel):

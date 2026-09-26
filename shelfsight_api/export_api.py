@@ -17,6 +17,7 @@ from shelfsight_api.export_service import (
     ExportVersionNotFrozenError,
     build_detection_export,
     build_recognition_export,
+    build_yolo_export,
 )
 
 router = APIRouter(prefix="/api")
@@ -25,22 +26,17 @@ router = APIRouter(prefix="/api")
 @router.get("/dataset-versions/{dataset_version_id}/exports/{export_type}")
 def export_dataset_version(
     dataset_version_id: UUID,
-    export_type: Literal["detection", "recognition"],
+    export_type: Literal["detection", "recognition", "yolo"],
 ) -> Response:
     try:
         with get_engine().begin() as connection:
             if export_type == "detection":
-                archive = build_detection_export(
-                    connection,
-                    get_media_root(),
-                    dataset_version_id,
-                )
+                build = build_detection_export
+            elif export_type == "recognition":
+                build = build_recognition_export
             else:
-                archive = build_recognition_export(
-                    connection,
-                    get_media_root(),
-                    dataset_version_id,
-                )
+                build = build_yolo_export
+            archive = build(connection, get_media_root(), dataset_version_id)
             archive_sha256 = hashlib.sha256(archive).hexdigest()
             register_snapshot_artifact(
                 connection,

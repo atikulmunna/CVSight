@@ -16,6 +16,7 @@ import {
   type ProjectImage,
   type ProjectImageStatus,
 } from "./imagesApi";
+import { LabeledImportPanel } from "./LabeledImportPanel";
 import { ProjectBand } from "./ProjectBand";
 import { liveWorkerCount, prelabelUnlabeledImages, type PrelabelSummary } from "./prelabelApi";
 import { ProjectsHeader } from "./ProjectsHeader";
@@ -72,6 +73,7 @@ export function ProjectImagesPage({
   const [loadingMore, setLoadingMore] = useState(false);
   const [showUpload, setShowUpload] = useState(false);
   const [prelabel, setPrelabel] = useState<PrelabelState>({ phase: "idle" });
+  const [showLabeledImport, setShowLabeledImport] = useState(false);
 
   useEffect(() => {
     let active = true;
@@ -226,6 +228,9 @@ export function ProjectImagesPage({
           </div>
           {canUpload && project.openVersionId && (
             <div className="project-images-actions">
+              <button type="button" onClick={() => setShowLabeledImport(true)}>
+                Import labeled dataset
+              </button>
               <button
                 type="button"
                 disabled={prelabel.phase === "queuing"}
@@ -242,6 +247,15 @@ export function ProjectImagesPage({
 
         {(prelabel.phase === "done" || prelabel.phase === "failed") && (
           <PrelabelNotice state={prelabel} onRefresh={refreshImages} />
+        )}
+
+        {showLabeledImport && project.openVersionId && (
+          <LabeledImportPanel
+            projectId={project.id}
+            versionId={project.openVersionId}
+            onClose={() => setShowLabeledImport(false)}
+            onImported={refreshImages}
+          />
         )}
 
         {showUpload && project.openVersionId && (

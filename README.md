@@ -36,6 +36,7 @@ and a job worker for model inference.
   - [SKU catalog](#sku-catalog)
   - [Project progress](#project-progress)
   - [Project versions and releases](#project-versions-and-releases)
+  - [Labeled dataset import](#labeled-dataset-import)
   - [Dataset exports](#dataset-exports)
   - [RF-DETR training from reviewed snapshots](#rf-detr-training-from-reviewed-snapshots)
   - [Evaluated model registry](#evaluated-model-registry)
@@ -113,10 +114,11 @@ later cycle starts from the promoted model's proposals.
    is reviewed.
 2. **Add photos** (owner). Upload JPEG or PNG files on the Images page, up to 50 MiB
    each, or bulk import up to 250 files per request from the operator import root
-   with `POST /api/datasets/{dataset_id}/versions/{version_id}/images/import`. Capture
-   metadata such as `split`, capture session, and store travels with each image and
-   later keeps related photos on the same side of the train, validation, and test
-   boundary.
+   with `POST /api/datasets/{dataset_id}/versions/{version_id}/images/import`. An
+   already labeled YOLO or COCO dataset comes in with its boxes through **Import
+   labeled dataset**. Capture metadata such as `split`, capture session, and store
+   travels with each image and later keeps related photos on the same side of the
+   train, validation, and test boundary.
 3. **Label** (annotator). Owners can choose **Pre-label unlabeled** on the Images page
    to queue detector proposals when a detect worker is running. Open an image, draw
    boxes, accept, reject, flag, or duplicate each box, assign SKUs from the catalog,
@@ -694,6 +696,40 @@ Starting the next working version is allowed only when no open version exists. I
 the latest immutable version as its parent and copies that release's image membership.
 The parent snapshot and its exports remain unchanged.
 
+## Labeled dataset import
+
+Owners bring an existing labeled dataset into the open version from the import root,
+either with **Import labeled dataset** on the Images page or through the API:
+
+```text
+POST /api/datasets/{dataset_id}/versions/{version_id}/labeled-imports/preview
+{"format": "yolo", "path": "datasets/shelf-audit"}
+
+POST /api/datasets/{dataset_id}/versions/{version_id}/labeled-imports
+{"format": "yolo", "path": "datasets/shelf-audit",
+ "class_skus": {"cola": "sku-uuid", "chips": null},
+ "annotation_state": "verified", "offset": 0}
+```
+
+- **Formats.** A YOLO folder with `data.yaml` in either the Roboflow layout
+  (`train/images`, `train/labels`) or the Ultralytics layout (`images/train`,
+  `labels/train`); polygon labels become their bounding boxes. A COCO JSON file whose
+  image paths are relative to the file.
+- **Classes.** The preview suggests the active SKU whose name matches a class exactly.
+  The import requires every class to be mapped, to a SKU or to `null`, so no box gets a
+  silently wrong SKU.
+- **State.** `verified` imports ground truth (images become `labeled`); `proposed`
+  imports boxes for review (images become `pre_labeled`). Boxes are recorded with
+  source `imported`.
+- **Pages.** Each request imports up to 100 images and returns `next_offset`. Rerunning
+  is safe: an image already in the project keeps its labels, and one without labels is
+  completed.
+- **Splits.** A source dataset's train, valid, or test folder is stored as
+  `source_split`, not `split`, because random source splits can leak near-duplicate
+  photos into test.
+- **Rotation.** Labeled images with EXIF rotation are rejected, since the source does
+  not say whether its boxes refer to the stored or the rotated pixels.
+
 ## Dataset exports
 
 Only immutable, snapshotted dataset versions can be exported:
@@ -702,8 +738,9 @@ Only immutable, snapshotted dataset versions can be exported:
 - `POST /api/dataset-versions/{version_id}/snapshot` freezes the export input.
 - `GET /api/dataset-versions/{version_id}/exports/detection`
 - `GET /api/dataset-versions/{version_id}/exports/recognition`
+- `GET /api/dataset-versions/{version_id}/exports/yolo`
 
-Both routes return deterministic ZIP files with `manifest.json`. The manifest records
+Every route returns a deterministic ZIP file with `manifest.json`. The manifest records
 the dataset and version identifiers, snapshot timestamp, artifact schema, export
 policies, counts, and SHA-256 checksum and byte size for every payload file.
 
@@ -717,6 +754,12 @@ floating-point box, integer crop boundary, attributes, source, and provenance. A
 SKUs are trainable. Merged SKUs resolve to their final active target while retaining
 the source ID. Unknown, deprecated, and unassigned samples remain in the artifact with
 `trainable=false`.
+
+The YOLO artifact holds the same images and verified boxes as the detection artifact in
+the Ultralytics layout: `images/{train,val,test}`, `labels/{train,val,test}`, and
+`data.yaml` with zero-based classes (product `0`, gap `1`, shelf label `2`). Folders
+follow each image's snapshot split; images without a split go to `unsplit`, which
+`data.yaml` leaves out rather than inventing a split.
 
 ## RF-DETR training from reviewed snapshots
 

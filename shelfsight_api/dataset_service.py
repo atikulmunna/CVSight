@@ -192,7 +192,7 @@ def list_dataset_versions(
     exports_by_version: dict[UUID, set[str]] = {}
     for row in export_rows:
         export_type = row["metadata"].get("export_type")
-        if export_type in {"detection", "recognition"}:
+        if export_type in {"detection", "recognition", "yolo"}:
             exports_by_version.setdefault(row["dataset_version_id"], set()).add(export_type)
 
     for version in versions:

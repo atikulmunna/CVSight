@@ -118,6 +118,95 @@ describe("ProjectImagesPage", () => {
     expect(screen.queryByRole("button", { name: "Pre-label unlabeled" })).not.toBeInTheDocument();
   });
 
+  it("imports a labeled dataset after a preview, creating SKUs for new classes", async () => {
+    window.history.replaceState({}, "", `/projects/${PROJECT_ID}/images`);
+    const created = "44444444-4444-4444-8444-444444444444";
+    const suggested = "55555555-5555-4555-8555-555555555555";
+    const importBodies: Array<Record<string, unknown>> = [];
+    const fetcher = vi.fn().mockImplementation((input: RequestInfo | URL, init?: RequestInit) => {
+      const url = String(input);
+      const base = `/api/datasets/${PROJECT_ID}/versions/${VERSION_ID}/labeled-imports`;
+      if (url === "/api/datasets") {
+        return Promise.resolve(response(200, [PROJECT]));
+      }
+      if (url === `/api/datasets/${PROJECT_ID}`) {
+        return Promise.resolve(response(200, PROJECT));
+      }
+      if (url === `${base}/preview`) {
+        return Promise.resolve(
+          response(200, {
+            format: "yolo",
+            images: 2,
+            boxes: 3,
+            skipped_labels: 0,
+            classes: [
+              { name: "cola", boxes: 2, images: 2, suggested_sku_id: suggested },
+              { name: "chips", boxes: 1, images: 1, suggested_sku_id: null },
+            ],
+            source_splits: { train: 2 },
+          }),
+        );
+      }
+      if (url === "/api/skus" && init?.method === "POST") {
+        return Promise.resolve(
+          response(201, {
+            id: created,
+            name: "chips",
+            upc: null,
+            category: null,
+            subcategory: null,
+            brand: null,
+            variant: null,
+            is_unknown: false,
+            status: "active",
+            merged_into_id: null,
+            reference_images: [],
+          }),
+        );
+      }
+      if (url === base) {
+        const body = JSON.parse(String(init?.body)) as Record<string, unknown>;
+        importBodies.push(body);
+        const first = body.offset === 0;
+        return Promise.resolve(
+          response(200, {
+            results: [
+              {
+                path: first ? "shelf/a.jpg" : "shelf/b.jpg",
+                outcome: "imported",
+                code: "image_imported",
+                image_id: null,
+                boxes: first ? 2 : 1,
+              },
+            ],
+            next_offset: first ? 1 : null,
+            total_images: 2,
+          }),
+        );
+      }
+      return Promise.resolve(response(200, imagePage("unlabeled")));
+    });
+    vi.stubGlobal("fetch", fetcher);
+
+    render(
+      <ProjectRouter currentUser={{ username: "owner", role: "owner" }} onLogout={vi.fn()} />,
+    );
+    fireEvent.click(await screen.findByRole("button", { name: "Import labeled dataset" }));
+    fireEvent.change(screen.getByLabelText("Path inside the import folder"), {
+      target: { value: "shelf" },
+    });
+    fireEvent.click(screen.getByRole("button", { name: "Preview" }));
+
+    expect(await screen.findByLabelText("SKU for cola")).toHaveValue("suggested");
+    expect(screen.getByLabelText("SKU for chips")).toHaveValue("create");
+    fireEvent.click(screen.getByRole("button", { name: "Import 2 images" }));
+
+    expect(await screen.findByText("Imported 2 images with 3 boxes.")).toBeInTheDocument();
+    expect(importBodies.map((body) => body.offset)).toEqual([0, 1]);
+    expect(importBodies[0]!.class_skus).toEqual({ cola: suggested, chips: created });
+    expect(importBodies[0]!.annotation_state).toBe("verified");
+  });
+
   it("validates files and reports upload completion", async () => {
     window.history.replaceState({}, "", `/projects/${PROJECT_ID}/images`);
     let uploaded = false;

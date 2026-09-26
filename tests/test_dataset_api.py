@@ -224,13 +224,17 @@ def test_version_management_lists_releases_and_starts_the_next_working_version(
             )
         )
         connection.execute(
-            insert(snapshot_artifacts).values(
-                dataset_version_id=version_id,
-                artifact_type="export",
-                artifact_key=f"{version_id}:detection:test",
-                content_sha256="b" * 64,
-                metadata={"export_type": "detection"},
-            )
+            insert(snapshot_artifacts),
+            [
+                {
+                    "dataset_version_id": version_id,
+                    "artifact_type": "export",
+                    "artifact_key": f"{version_id}:{export_type}:test",
+                    "content_sha256": "b" * 64,
+                    "metadata": {"export_type": export_type},
+                }
+                for export_type in ("yolo", "detection")
+            ],
         )
 
     released = client.get(f"/api/datasets/{dataset_id}/versions")
@@ -239,7 +243,7 @@ def test_version_management_lists_releases_and_starts_the_next_working_version(
     assert release["status"] == "released"
     assert release["image_count"] == 1
     assert release["review_signoff"]["signed_by"] == "owner:release-test"
-    assert release["export_types"] == ["detection"]
+    assert release["export_types"] == ["detection", "yolo"]
 
     next_version = client.post(f"/api/datasets/{dataset_id}/versions")
     repeated = client.post(f"/api/datasets/{dataset_id}/versions")

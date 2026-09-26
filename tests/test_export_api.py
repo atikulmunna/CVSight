@@ -22,6 +22,7 @@ from shelfsight_api.export_service import (
     InvalidExportArchiveError,
     build_detection_export,
     build_recognition_export,
+    build_yolo_export,
     read_detection_export,
     read_recognition_export,
     validate_export_archive,
@@ -278,6 +279,42 @@ def test_exports_are_deterministic_and_importable(
     assert all(sample["crop_sha256"] for sample in samples)
     assert all(sample["annotation_revision"] == 1 for sample in samples)
     assert all(sample["provenance"] for sample in samples)
+
+
+def test_yolo_export_lays_out_verified_boxes_by_split(
+    database_engine: Engine,
+    export_target: ExportTarget,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    with database_engine.connect() as connection:
+        first = build_yolo_export(connection, export_target.media_root, export_target.version_id)
+        second = build_yolo_export(connection, export_target.media_root, export_target.version_id)
+
+    assert first == second
+    with ZipFile(BytesIO(first)) as bundle:
+        names = set(bundle.namelist())
+        labels = bundle.read(f"labels/train/{export_target.image_id}.txt").decode().splitlines()
+        data_yaml = bundle.read("data.yaml").decode()
+        manifest = json.loads(bundle.read("manifest.json"))
+    assert f"images/train/{export_target.image_id}.png" in names
+    assert len(labels) == 7
+    assert "0 0.087500 0.181250 0.137500 0.306250" in labels
+    assert sorted({line.split()[0] for line in labels}) == ["0", "1", "2"]
+    assert "train: images/train" in data_yaml
+    assert "val:" not in data_yaml
+    assert "0: product" in data_yaml and "2: shelf_label" in data_yaml
+    assert manifest["export_type"] == "yolo"
+    assert manifest["counts"]["annotations"] == 7
+    assert manifest["counts"]["excluded_annotations"] == 1
+    assert manifest["counts"]["images_by_folder"] == {"train": 1}
+
+    monkeypatch.setattr("shelfsight_api.export_api.get_engine", lambda: database_engine)
+    monkeypatch.setattr(
+        "shelfsight_api.export_api.get_media_root", lambda: export_target.media_root
+    )
+    response = client.get(f"/api/dataset-versions/{export_target.version_id}/exports/yolo")
+    assert response.status_code == 200
+    assert response.headers["content-disposition"].endswith('-yolo.zip"')
 
 
 def test_export_api_returns_zip_and_rejects_mutable_versions(

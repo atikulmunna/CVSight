@@ -5376,3 +5376,56 @@ kbd {
 .prelabel-notice.is-error {
   color: var(--danger);
 }
+
+.labeled-import-panel p {
+  margin: 4px 0 0;
+  color: var(--text-secondary);
+  font-size: 13px;
+}
+
+.labeled-import-source {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 12px;
+  align-items: flex-end;
+  margin: 14px 0;
+}
+
+.labeled-import-source label {
+  display: grid;
+  gap: 4px;
+  font-size: 12px;
+}
+
+.labeled-import-source input {
+  min-width: 320px;
+}
+
+.labeled-import-summary {
+  margin: 10px 0;
+  font-size: 13px;
+}
+
+.labeled-import-classes {
+  width: 100%;
+  margin-bottom: 12px;
+  border-collapse: collapse;
+  font-size: 13px;
+}
+
+.labeled-import-classes th,
+.labeled-import-classes td {
+  padding: 6px 8px;
+  border-bottom: 1px solid var(--line);
+  text-align: left;
+}
+
+.labeled-import-state {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 16px;
+  margin: 0 0 12px;
+  padding: 0;
+  border: 0;
+  font-size: 13px;
+}

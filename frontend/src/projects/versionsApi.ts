@@ -1,5 +1,5 @@
 export type ProjectVersionStatus = "working" | "released" | "frozen";
-export type ProjectExportType = "detection" | "recognition";
+export type ProjectExportType = "detection" | "recognition" | "yolo";
 
 export type VersionReviewSignoff = {
   signedBy: string;
@@ -126,7 +126,7 @@ function parseVersion(value: unknown): ProjectVersion {
     throw new ProjectVersionsApiError(502, "invalid_response");
   }
   const exportTypes = version.export_types.map((item) => {
-    if (item !== "detection" && item !== "recognition") {
+    if (item !== "detection" && item !== "recognition" && item !== "yolo") {
       throw new ProjectVersionsApiError(502, "invalid_response");
     }
     return item;

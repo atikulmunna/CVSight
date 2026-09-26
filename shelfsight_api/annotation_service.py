@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 import math
-from collections.abc import Mapping
+from collections.abc import Mapping, Sequence
 from typing import Any
 from uuid import UUID
 
@@ -153,6 +153,64 @@ def create_image_annotation(
     return get_current_annotation(connection, annotation_id)
 
 
+def import_image_annotations(
+    connection: Connection,
+    image_id: UUID,
+    boxes: Sequence[Mapping[str, Any]],
+    *,
+    verified: bool,
+    actor: str,
+    details: Mapping[str, Any],
+) -> int:
+    """Write imported product boxes as source "imported" and set the image's state.
+
+    The image size and each distinct SKU are checked once, not once per box, because a
+    labeled dataset can carry tens of thousands of boxes.
+    """
+    image_size = connection.execute(
+        select(images.c.canonical_width, images.c.canonical_height).where(
+            images.c.id == image_id
+        )
+    ).one_or_none()
+    if image_size is None:
+        raise AnnotationImageNotFoundError("image does not exist")
+    for sku_id in {box["sku_id"] for box in boxes if box.get("sku_id") is not None}:
+        _require_active_sku(connection, sku_id)
+    decision = (
+        {"lifecycle_state": "verified", "review_state": "accepted"}
+        if verified
+        else {"lifecycle_state": "proposed", "review_state": "unreviewed"}
+    )
+    for box in boxes:
+        _require_box_inside(box, image_size.canonical_width, image_size.canonical_height)
+        create_annotation(
+            connection,
+            image_id,
+            {
+                "x": box["x"],
+                "y": box["y"],
+                "width": box["width"],
+                "height": box["height"],
+                "class_type": "product",
+                "sku_id": box.get("sku_id"),
+                **decision,
+                "confidence": None,
+                "occluded": False,
+                "truncated": False,
+                "shelf_row": None,
+                "source": "imported",
+                "provenance": _provenance(actor, "import", **details),
+            },
+        )
+    if boxes:
+        connection.execute(
+            update(images)
+            .where(images.c.id == image_id)
+            .values(status="labeled" if verified else "pre_labeled")
+        )
+    return len(boxes)
+
+
 def update_image_annotation(
     connection: Connection,
     annotation_id: UUID,
@@ -301,6 +359,17 @@ def _validate_values(
     if image_size is None:
         raise AnnotationImageNotFoundError("image does not exist")
 
+    _require_box_inside(values, image_size.canonical_width, image_size.canonical_height)
+
+    sku_id = values.get("sku_id")
+    if values["class_type"] != "product" and sku_id is not None:
+        raise InvalidAnnotationSkuError("only product annotations may reference a SKU")
+    if sku_id is None:
+        return
+    _require_active_sku(connection, sku_id)
+
+
+def _require_box_inside(values: Mapping[str, Any], image_width: int, image_height: int) -> None:
     x = float(values["x"])
     y = float(values["y"])
     width = float(values["width"])
@@ -311,19 +380,12 @@ def _validate_values(
         or y < 0
         or width <= 0
         or height <= 0
-        or x + width > image_size.canonical_width
-        or y + height > image_size.canonical_height
+        or x + width > image_width
+        or y + height > image_height
     ):
         raise InvalidAnnotationGeometryError(
             "box must fit inside canonical image bounds"
         )
-
-    sku_id = values.get("sku_id")
-    if values["class_type"] != "product" and sku_id is not None:
-        raise InvalidAnnotationSkuError("only product annotations may reference a SKU")
-    if sku_id is None:
-        return
-    _require_active_sku(connection, sku_id)
 
 
 def _require_active_sku(connection: Connection, sku_id: UUID) -> None:

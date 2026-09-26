@@ -3,6 +3,7 @@ from __future__ import annotations
 import hashlib
 import json
 import math
+from collections import Counter, defaultdict
 from collections.abc import Mapping
 from dataclasses import dataclass
 from datetime import datetime
@@ -12,6 +13,7 @@ from typing import Any, Literal
 from uuid import UUID
 from zipfile import ZIP_DEFLATED, BadZipFile, ZipFile, ZipInfo
 
+import yaml
 from PIL import Image, UnidentifiedImageError
 from sqlalchemy import Connection, select
 
@@ -27,12 +29,18 @@ from shelfsight_api.models import (
 MANIFEST_SCHEMA = "shelfsight-export-manifest/v1"
 DETECTION_SCHEMA = "shelfsight-coco-detection/v1"
 RECOGNITION_SCHEMA = "shelfsight-recognition-jsonl/v1"
+YOLO_SCHEMA = "shelfsight-yolo-detection/v1"
 COCO_CATEGORIES = (
     {"id": 1, "name": "product", "supercategory": "shelf"},
     {"id": 2, "name": "gap", "supercategory": "shelf"},
     {"id": 3, "name": "shelf_label", "supercategory": "shelf"},
 )
 CATEGORY_IDS = {category["name"]: category["id"] for category in COCO_CATEGORIES}
+YOLO_FOLDERS = {"train": "train", "validation": "val", "test": "test"}
+# YOLO classes are zero-based and follow the COCO category order.
+YOLO_CLASS_INDEXES = {
+    str(category["name"]): index for index, category in enumerate(COCO_CATEGORIES)
+}
 ZIP_TIMESTAMP = (1980, 1, 1, 0, 0, 0)
 
 
@@ -124,6 +132,74 @@ def build_detection_export(
         },
     )
     return _zip_bytes(entries)
+
+
+def build_yolo_export(
+    connection: Connection,
+    media_root: Path,
+    dataset_version_id: UUID,
+) -> bytes:
+    """The detection export's images and verified boxes in the Ultralytics YOLO layout.
+
+    Images keep their snapshot split as train, val, and test folders. Images without a
+    split go to an unsplit folder that data.yaml leaves out, so no split is invented.
+    """
+    snapshot = _load_snapshot(connection, dataset_version_id)
+    accepted = [row for row in snapshot.annotations if _is_training_annotation(row)]
+    rows_by_image: dict[UUID, list[Mapping[str, Any]]] = defaultdict(list)
+    for row in accepted:
+        _validate_geometry(row)
+        rows_by_image[UUID(str(row["image_id"]))].append(row)
+
+    entries: dict[str, bytes] = {}
+    folders: Counter[str] = Counter()
+    for image in snapshot.images:
+        image_id = UUID(str(image["id"]))
+        folder = YOLO_FOLDERS.get(_evaluation_metadata(image).get("split", ""), "unsplit")
+        folders[folder] += 1
+        entries[f"images/{folder}/{image_id}.{_image_extension(image)}"] = (
+            _read_canonical_media(media_root, image)
+        )
+        entries[f"labels/{folder}/{image_id}.txt"] = "".join(
+            _yolo_line(row, image["canonical_width"], image["canonical_height"])
+            for row in rows_by_image[image_id]
+        ).encode("utf-8")
+
+    data = {
+        "path": ".",
+        **{key: f"images/{key}" for key in ("train", "val", "test") if folders[key]},
+        "names": {index: name for name, index in YOLO_CLASS_INDEXES.items()},
+    }
+    entries["data.yaml"] = yaml.safe_dump(data, sort_keys=False).encode("utf-8")
+    entries["manifest.json"] = _manifest_bytes(
+        snapshot,
+        "yolo",
+        YOLO_SCHEMA,
+        entries,
+        {
+            "images": len(snapshot.images),
+            "annotations": len(accepted),
+            "excluded_annotations": len(snapshot.annotations) - len(accepted),
+            "images_by_folder": dict(sorted(folders.items())),
+        },
+        {
+            "annotation_filter": "lifecycle_state=verified and review_state=accepted",
+            "class_indexes": YOLO_CLASS_INDEXES,
+            "product_category_is_sku_agnostic": True,
+            "split_source": "capture_metadata split; images without one are unsplit",
+        },
+    )
+    return _zip_bytes(entries)
+
+
+def _yolo_line(row: Mapping[str, Any], width: int, height: int) -> str:
+    x, y = float(row["x"]), float(row["y"])
+    box_width, box_height = float(row["width"]), float(row["height"])
+    return (
+        f"{YOLO_CLASS_INDEXES[str(row['class_type'])]} "
+        f"{(x + box_width / 2) / width:.6f} {(y + box_height / 2) / height:.6f} "
+        f"{box_width / width:.6f} {box_height / height:.6f}\n"
+    )
 
 
 def build_recognition_export(
@@ -536,7 +612,7 @@ def _read_canonical_media(
 
 def _manifest_bytes(
     snapshot: SnapshotData,
-    export_type: Literal["detection", "recognition"],
+    export_type: Literal["detection", "recognition", "yolo"],
     artifact_schema: str,
     entries: Mapping[str, bytes],
     counts: Mapping[str, Any],

@@ -209,13 +209,19 @@ def resolve_media_path(media_root: Path, media_key: str) -> Path:
 
 
 def resolve_import_path(import_root: Path, relative_path: str) -> Path:
+    resolved = resolve_import_location(import_root, relative_path)
+    if not resolved.is_file():
+        raise CorruptImageError("import image does not exist")
+    return resolved
+
+
+def resolve_import_location(import_root: Path, relative_path: str) -> Path:
+    """A file or folder path kept inside the import root; it need not exist yet."""
     relative = _safe_relative_path(relative_path)
     root = import_root.resolve()
     resolved = root.joinpath(*relative.parts).resolve()
     if not resolved.is_relative_to(root):
         raise UnsafePathError("import path leaves the configured root")
-    if not resolved.is_file():
-        raise CorruptImageError("import image does not exist")
     return resolved
 
 

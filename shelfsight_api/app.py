@@ -22,6 +22,7 @@ from shelfsight_api.dataset_api import router as dataset_router
 from shelfsight_api.export_api import router as export_router
 from shelfsight_api.image_api import router as image_router
 from shelfsight_api.job_api import router as job_router
+from shelfsight_api.labeled_import_api import router as labeled_import_router
 from shelfsight_api.model_registry_api import router as model_registry_router
 from shelfsight_api.prelabel_api import router as prelabel_router
 from shelfsight_api.propagation_api import router as propagation_router
@@ -51,6 +52,7 @@ app.include_router(export_router, dependencies=[Depends(require_owner)])
 app.include_router(job_router, dependencies=[Depends(require_owner)])
 app.include_router(model_registry_router, dependencies=[Depends(require_owner)])
 app.include_router(prelabel_router, dependencies=[Depends(require_owner)])
+app.include_router(labeled_import_router, dependencies=[Depends(require_owner)])
 app.include_router(propagation_router, dependencies=[Depends(require_annotation_user)])
 app.include_router(recognition_router, dependencies=[Depends(require_annotation_user)])
 app.include_router(review_router, dependencies=[Depends(require_reviewer)])
