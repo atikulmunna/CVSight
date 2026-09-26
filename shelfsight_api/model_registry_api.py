@@ -66,7 +66,9 @@ class ModelEntryResponse(BaseModel):
     evaluation_artifact_id: UUID
     model_artifact_key: str
     evaluation_artifact_key: str
-    training_dataset_version_id: UUID
+    lineage: Literal["snapshot", "external"]
+    source: str | None
+    training_dataset_version_id: UUID | None
     evaluation_dataset_version_id: UUID
     model_artifact_sha256: str
     evaluation_artifact_sha256: str

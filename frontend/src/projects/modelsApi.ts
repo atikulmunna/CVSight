@@ -15,7 +15,9 @@ export type ModelEntry = {
   modelVersion: string;
   modelArtifactSha256: string;
   evaluationArtifactSha256: string;
-  trainingDatasetVersionId: string;
+  lineage: "snapshot" | "external";
+  source: string | null;
+  trainingDatasetVersionId: string | null;
   evaluationDatasetVersionId: string;
   metrics: Record<string, number>;
   registeredBy: string;
@@ -151,13 +153,30 @@ function parseEntry(value: unknown): ModelEntry {
     modelVersion: requiredString(entry.model_version),
     modelArtifactSha256: requiredString(entry.model_artifact_sha256),
     evaluationArtifactSha256: requiredString(entry.evaluation_artifact_sha256),
-    trainingDatasetVersionId: uuid(entry.training_dataset_version_id),
+    ...lineage(entry),
     evaluationDatasetVersionId: uuid(entry.evaluation_dataset_version_id),
     metrics: numericMetrics,
     registeredBy: requiredString(entry.registered_by),
     registeredAt: date(entry.registered_at),
     deploymentStatus: status,
   };
+}
+
+// A snapshot-trained model names its training version; an external one names its source.
+function lineage(
+  entry: Record<string, unknown>,
+): Pick<ModelEntry, "lineage" | "source" | "trainingDatasetVersionId"> {
+  if (entry.lineage === "snapshot") {
+    return {
+      lineage: "snapshot",
+      source: null,
+      trainingDatasetVersionId: uuid(entry.training_dataset_version_id),
+    };
+  }
+  if (entry.lineage === "external" && entry.training_dataset_version_id === null) {
+    return { lineage: "external", source: requiredString(entry.source), trainingDatasetVersionId: null };
+  }
+  throw new ModelsApiError(502, "invalid_response");
 }
 
 function requestError(status: number, value: unknown): ModelsApiError {

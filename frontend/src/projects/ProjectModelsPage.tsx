@@ -331,9 +331,11 @@ function ModelSummary({ entry, badge }: { entry: ModelEntry; badge: string }) {
         ))}
       </dl>
       <p className="release-review-note">
-        Registered by {entry.registeredBy} on {formatDate(entry.registeredAt)}. Trained on
-        version {entry.trainingDatasetVersionId.slice(0, 8)}, evaluated on version{" "}
-        {entry.evaluationDatasetVersionId.slice(0, 8)}.
+        Registered by {entry.registeredBy} on {formatDate(entry.registeredAt)}.{" "}
+        {entry.trainingDatasetVersionId
+          ? `Trained on version ${entry.trainingDatasetVersionId.slice(0, 8)}`
+          : `Trained outside CVSight (${entry.source})`}
+        , evaluated on version {entry.evaluationDatasetVersionId.slice(0, 8)}.
       </p>
     </>
   );

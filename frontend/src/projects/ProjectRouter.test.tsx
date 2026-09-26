@@ -354,6 +354,8 @@ describe("ProjectRouter", () => {
       evaluation_artifact_id: VERSION_ID,
       model_artifact_key: "artifacts/model.pth",
       evaluation_artifact_key: "artifacts/evaluation.json",
+      lineage: "snapshot",
+      source: null,
       training_dataset_version_id: VERSION_ID,
       evaluation_dataset_version_id: VERSION_ID,
       model_artifact_sha256: "a".repeat(64),

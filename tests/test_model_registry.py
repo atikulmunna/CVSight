@@ -26,6 +26,7 @@ from shelfsight_api.model_registry_service import (
     register_model_candidate,
     rollback_model,
 )
+from shelfsight_api.model_runtime import promoted_detector_only
 from shelfsight_api.models import (
     dataset_snapshots,
     dataset_versions,
@@ -33,8 +34,24 @@ from shelfsight_api.models import (
     model_deployment_events,
     model_registry_entries,
 )
+from shelfsight_api.worker import JobExecutionError
 
 client = TestClient(app)
+
+
+def _external_metadata() -> dict[str, Any]:
+    return {
+        "lineage": "external",
+        "source": "Two-stage shelf detector trained by the retail CV team",
+        "licenses_approved": True,
+        "configuration": {"segmenter_size": 640, "classifier_size": 224},
+        "compatibility": {
+            "model_role": "known_sku_detector",
+            "contract_version": "shelfsight-model-contract/v1",
+            "input_geometry": "axis_aligned_box",
+            "runtime": "http-runtime-v1",
+        },
+    }
 
 
 @dataclass(frozen=True)
@@ -296,6 +313,118 @@ def test_registry_api_requires_evidence_and_explicit_promotion(
     )
     assert missing.status_code == 404
     assert missing.json()["detail"]["code"] == "model_artifact_not_found"
+
+
+def test_registry_accepts_an_externally_trained_model_with_its_source(
+    database_engine: Engine,
+    registry_evidence: RegistryEvidence,
+) -> None:
+    role = "known_sku_detector"
+    model_sha = "e" * 64
+    with database_engine.begin() as connection:
+        snapshot_sha = _snapshot_sha(connection, registry_evidence.evaluation_version_id)
+        model = register_snapshot_artifact(
+            connection,
+            registry_evidence.evaluation_version_id,
+            "model",
+            f"models/external-{uuid4()}.json",
+            content_sha256=model_sha,
+            metadata=_external_metadata(),
+        )
+        evaluation = register_snapshot_artifact(
+            connection,
+            registry_evidence.evaluation_version_id,
+            "evaluation",
+            f"evaluations/external-{uuid4()}.json",
+            content_sha256="f" * 64,
+            metadata={
+                **_evaluation_metadata(model_sha, snapshot_sha, _metrics(0.7)),
+                "random_seed": None,
+            },
+        )
+        entry = register_model_candidate(
+            connection,
+            model_role=role,
+            model_id="shelf-detector-external",
+            model_version="v1",
+            model_artifact_id=model["id"],
+            evaluation_artifact_id=evaluation["id"],
+            actor="operator:test",
+        )
+
+    assert entry["lineage"] == "external"
+    assert entry["training_dataset_version_id"] is None
+    assert entry["evaluation_dataset_version_id"] == registry_evidence.evaluation_version_id
+    assert entry["source"] == "Two-stage shelf detector trained by the retail CV team"
+    assert entry["model_artifact_sha256"] == model_sha
+
+
+@pytest.mark.parametrize(
+    ("metadata", "message"),
+    [
+        ({**_external_metadata(), "source": " "}, "must name its source"),
+        ({**_external_metadata(), "lineage": "copied"}, "lineage is invalid"),
+        ({**_external_metadata(), "licenses_approved": False}, "licenses are not approved"),
+    ],
+)
+def test_registry_refuses_external_models_without_honest_lineage(
+    database_engine: Engine,
+    registry_evidence: RegistryEvidence,
+    metadata: dict[str, Any],
+    message: str,
+) -> None:
+    with database_engine.begin() as connection:
+        snapshot_sha = _snapshot_sha(connection, registry_evidence.evaluation_version_id)
+        model = register_snapshot_artifact(
+            connection,
+            registry_evidence.evaluation_version_id,
+            "model",
+            f"models/external-{uuid4()}.json",
+            content_sha256="c" * 64,
+            metadata=metadata,
+        )
+        evaluation = register_snapshot_artifact(
+            connection,
+            registry_evidence.evaluation_version_id,
+            "evaluation",
+            f"evaluations/external-{uuid4()}.json",
+            content_sha256="b" * 64,
+            metadata=_evaluation_metadata("c" * 64, snapshot_sha, _metrics(0.7)),
+        )
+        with pytest.raises(ModelLineageError, match=message):
+            register_model_candidate(
+                connection,
+                model_role="known_sku_detector",
+                model_id="shelf-detector-external",
+                model_version="rejected",
+                model_artifact_id=model["id"],
+                evaluation_artifact_id=evaluation["id"],
+                actor="operator:test",
+            )
+
+
+def test_detector_proposals_are_stored_only_from_the_promoted_model(
+    database_engine: Engine,
+    registry_evidence: RegistryEvidence,
+) -> None:
+    written: list[dict[str, Any]] = []
+    guarded = promoted_detector_only(
+        lambda connection, claim, result: written.append(dict(result))
+    )
+    promoted_result = {"model_provenance": {"artifact_sha256": "1" * 64}}
+    other_result = {"model_provenance": {"artifact_sha256": "9" * 64}}
+    with database_engine.begin() as connection:
+        with pytest.raises(JobExecutionError, match="no detector is promoted"):
+            guarded(connection, None, promoted_result)  # type: ignore[arg-type]
+        entry = _register(connection, registry_evidence, "known_sku_detector", 0)
+        promote_model(connection, "known_sku_detector", entry["id"], None, "operator:test")
+        guarded(connection, None, promoted_result)  # type: ignore[arg-type]
+        with pytest.raises(JobExecutionError, match="not the promoted model") as refused:
+            guarded(connection, None, other_result)  # type: ignore[arg-type]
+
+    assert written == [promoted_result]
+    assert refused.value.code == "model_not_promoted"
+    assert refused.value.retryable is False
 
 
 def _register(

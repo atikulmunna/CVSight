@@ -2,10 +2,14 @@ from __future__ import annotations
 
 import hashlib
 import importlib
+import json
+import urllib.error
+import urllib.parse
+import urllib.request
 from collections.abc import Callable, Mapping, Sequence
 from pathlib import Path
 from typing import Any, Protocol
-from uuid import NAMESPACE_URL, uuid5
+from uuid import NAMESPACE_URL, uuid4, uuid5
 
 from shelfsight_api.geometry import pixel_crop_bounds
 from shelfsight_api.model_contract import (
@@ -136,6 +140,113 @@ ImageEmbedderPredictor = Callable[
     [Path, EmbedRequest],
     Sequence[float],
 ]
+
+
+# Transport cap on a runtime's answer; ModelService then applies the contract's limits.
+MAX_RUNTIME_RESPONSE_BYTES = 4 * 1024 * 1024
+
+
+class HttpModelAdapter:
+    """Send a model request and its image to an external runtime over HTTP.
+
+    The runtime receives multipart form data at {base_url}/v1/execute: a "request" part
+    holding the contract request as JSON and, for image operations, an "image" part with
+    the canonical image. It answers with the adapter output (model provenance plus the
+    operation result), which ModelService validates like any in-process adapter's. The
+    boundary keeps third-party runtimes, and their licenses, out of CVSight.
+    """
+
+    def __init__(
+        self,
+        base_url: str,
+        *,
+        timeout_seconds: float = 120.0,
+        opener: Callable[..., Any] = urllib.request.urlopen,
+    ) -> None:
+        parsed = urllib.parse.urlsplit(base_url)
+        if parsed.scheme not in {"http", "https"} or not parsed.netloc:
+            raise ValueError("model runtime URL must be an http or https URL")
+        self._url = base_url.rstrip("/") + "/v1/execute"
+        self._timeout = timeout_seconds
+        self._open = opener
+
+    def execute(
+        self,
+        request: ModelRequest,
+        image_path: Path | None,
+    ) -> Mapping[str, Any]:
+        try:
+            image = image_path.read_bytes() if image_path is not None else None
+        except OSError as error:
+            raise AdapterExecutionError(
+                "model_input_unavailable",
+                "canonical image is unavailable",
+                retryable=True,
+            ) from error
+        body, content_type = _multipart(
+            json.dumps(request.model_dump(mode="json")).encode("utf-8"),
+            image,
+        )
+        http_request = urllib.request.Request(
+            self._url,
+            data=body,
+            method="POST",
+            headers={"Content-Type": content_type, "Accept": "application/json"},
+        )
+        try:
+            with self._open(http_request, timeout=self._timeout) as response:
+                payload = response.read(MAX_RUNTIME_RESPONSE_BYTES + 1)
+        except urllib.error.HTTPError as error:
+            retryable = error.code >= 500 or error.code == 429
+            raise AdapterExecutionError(
+                "model_runtime_failed" if retryable else "model_runtime_rejected",
+                f"model runtime answered HTTP {error.code}",
+                retryable=retryable,
+            ) from error
+        except (urllib.error.URLError, OSError) as error:
+            raise AdapterExecutionError(
+                "model_runtime_unavailable",
+                "model runtime is unreachable",
+                retryable=True,
+            ) from error
+        if len(payload) > MAX_RUNTIME_RESPONSE_BYTES:
+            raise AdapterExecutionError(
+                "model_response_too_large",
+                "model runtime answer exceeds the size limit",
+                retryable=False,
+            )
+        try:
+            output = json.loads(payload)
+        except ValueError as error:
+            raise AdapterExecutionError(
+                "invalid_model_response",
+                "model runtime answer is not JSON",
+                retryable=False,
+            ) from error
+        if not isinstance(output, dict):
+            raise AdapterExecutionError(
+                "invalid_model_response",
+                "model runtime answer must be a JSON object",
+                retryable=False,
+            )
+        return output
+
+
+def _multipart(request_json: bytes, image: bytes | None) -> tuple[bytes, str]:
+    boundary = uuid4().hex.encode("ascii")
+    parts = [(b'name="request"\r\nContent-Type: application/json', request_json)]
+    if image is not None:
+        parts.append(
+            (b'name="image"; filename="image"\r\nContent-Type: application/octet-stream', image)
+        )
+    body = b"".join(
+        b"--" + boundary + b"\r\nContent-Disposition: form-data; " + head + b"\r\n\r\n"
+        + content
+        + b"\r\n"
+        for head, content in parts
+    )
+    content_type = f"multipart/form-data; boundary={boundary.decode()}"
+    return body + b"--" + boundary + b"--\r\n", content_type
 
 
 class RfdetrAdapter:

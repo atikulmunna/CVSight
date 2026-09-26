@@ -389,6 +389,15 @@ results pass through a validated transactional writer before becoming annotation
 proposals. Refinement results remain job suggestions until a user explicitly applies
 one through the revision-safe annotation API.
 
+A detector can also run outside CVSight. Set `SHELFSIGHT_DETECTOR_RUNTIME_URL` for the
+worker instead of `SHELFSIGHT_RFDETR_CHECKPOINT`, and the worker sends each detect
+request to `{url}/v1/execute` as multipart form data: a `request` part with the
+contract request as JSON and an `image` part with the canonical image. The runtime
+answers with JSON holding `model_provenance` and `predictions`, which pass the same
+validation as an in-process adapter's output. An unreachable runtime, HTTP 5xx, or 429
+is retried; HTTP 4xx and malformed or oversized answers fail the job. Third-party
+runtimes and their licenses stay outside this repository.
+
 ## Pre-labeling
 
 The Images page's **Pre-label unlabeled** action queues every unlabeled image in the
@@ -849,6 +858,14 @@ model checksum and frozen evaluation snapshot checksum, use the same code versio
 seed, and include mAP, product recall, duplicate rate, dense-scene recall, and
 overlapping-product recall.
 
+A model trained outside CVSight registers with `"lineage": "external"` in its model
+metadata, a `source` naming where it came from, the approved-license flag,
+configuration, and runtime compatibility; it has no training manifest or seed. Its
+artifact record sits on the frozen snapshot it was evaluated on, and its registry entry
+leaves the training version empty rather than claiming one. The evaluation must still
+bind its checksum and that snapshot and name the evaluator's code version. The Models
+page labels such entries as trained outside CVSight.
+
 Owners can browse candidates, the active deployment, and its rollback target for every
 model role at `http://127.0.0.1:5173/projects/{project_id}/models`, and promote or roll
 back from there. The registry is shared by every project. Candidate registration stays
@@ -870,9 +887,13 @@ or stale requests return a conflict instead of overwriting deployment state.
 Every promotion and rollback creates an immutable audit event. Deployment state keeps
 both active and previous candidates, so rollback swaps the pointers without a database
 migration or model re-registration. Responses expose artifact keys and SHA-256 values.
-The current GPU workers still load operator-mounted local checkpoint paths, so the
-operator must materialize the selected artifact and restart the corresponding worker
-after changing the deployment pointer.
+
+Promotion decides which detector may pre-label. A detect job stores proposals only
+when the model that produced them reports the artifact checksum of the promoted
+`known_sku_detector`; otherwise the job fails with `model_not_promoted` and writes
+nothing. The check runs in the transaction that stores the proposals, so a promotion or
+rollback governs every job that finishes after it. Workers still load the model they
+are configured with, so the operator points each worker at the promoted artifact.
 
 ## Realogram reconstruction
 

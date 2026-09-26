@@ -22,6 +22,8 @@ function entry(overrides: Record<string, unknown> = {}) {
     evaluation_artifact_id: ARTIFACT_ID,
     model_artifact_key: "artifacts/model.pth",
     evaluation_artifact_key: "artifacts/evaluation.json",
+    lineage: "snapshot",
+    source: null,
     training_dataset_version_id: VERSION_ID,
     evaluation_dataset_version_id: VERSION_ID,
     model_artifact_sha256: "a".repeat(64),
@@ -41,6 +43,38 @@ function response(status: number, body: unknown) {
 }
 
 describe("models API", () => {
+  it("reads an externally trained model's source instead of a training version", async () => {
+    const fetcher = vi.fn().mockResolvedValue(
+      response(200, {
+        models: [
+          entry({
+            lineage: "external",
+            source: "Two-stage shelf detector",
+            training_dataset_version_id: null,
+          }),
+        ],
+      }),
+    );
+
+    const [candidate] = await loadModelCandidates("known_sku_detector", fetcher);
+
+    expect(candidate).toMatchObject({
+      lineage: "external",
+      source: "Two-stage shelf detector",
+      trainingDatasetVersionId: null,
+    });
+  });
+
+  it("refuses an entry whose lineage does not add up", async () => {
+    const fetcher = vi.fn().mockResolvedValue(
+      response(200, { models: [entry({ lineage: "external", source: null })] }),
+    );
+
+    await expect(loadModelCandidates("known_sku_detector", fetcher)).rejects.toMatchObject({
+      code: "invalid_response",
+    });
+  });
+
   it("loads candidates and keeps only numeric metrics", async () => {
     const fetcher = vi.fn().mockResolvedValue(response(200, { models: [entry()] }));
 

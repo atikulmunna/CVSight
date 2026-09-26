@@ -625,7 +625,7 @@ model_registry_entries = Table(
         "training_dataset_version_id",
         identifier,
         ForeignKey("dataset_snapshots.dataset_version_id", ondelete="CASCADE"),
-        nullable=False,
+        nullable=True,
     ),
     Column(
         "evaluation_dataset_version_id",
@@ -640,9 +640,15 @@ model_registry_entries = Table(
     Column("metrics", json_document, nullable=False),
     Column("registered_by", String(128), nullable=False),
     Column("registered_at", DateTime(timezone=True), nullable=False, server_default=func.now()),
+    Column("lineage", String(16), nullable=False, server_default=text("'snapshot'")),
     CheckConstraint(
         "model_role ~ '^[a-z][a-z0-9_]{0,63}$'",
         name="ck_model_registry_role_format",
+    ),
+    CheckConstraint(
+        "(lineage = 'snapshot' AND training_dataset_version_id IS NOT NULL) "
+        "OR (lineage = 'external' AND training_dataset_version_id IS NULL)",
+        name="ck_model_registry_lineage",
     ),
     CheckConstraint(
         "btrim(model_id) <> '' AND btrim(model_version) <> ''",

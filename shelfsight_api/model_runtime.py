@@ -11,10 +11,15 @@ from shelfsight_api.config import get_media_root
 from shelfsight_api.database import get_engine
 from shelfsight_api.job_service import JobClaim
 from shelfsight_api.model_adapters import (
+    HttpModelAdapter,
     ModelAdapter,
     load_clip_image_embedder_adapter,
     load_rfdetr_adapter,
     load_sam3_box_refiner_adapter,
+)
+from shelfsight_api.model_registry_service import (
+    ModelDeploymentNotFoundError,
+    get_model_deployment,
 )
 from shelfsight_api.model_service import (
     ModelService,
@@ -26,13 +31,15 @@ from shelfsight_api.prelabel_service import write_detection_proposals
 from shelfsight_api.propagation_service import write_propagation_embedding
 from shelfsight_api.recognition_profile import T005_RECOGNITION_PROFILE
 from shelfsight_api.recognition_service import write_recognition_embedding
-from shelfsight_api.worker import JobDefinition
+from shelfsight_api.worker import JobDefinition, JobExecutionError, JobResultWriter
 
 RFDETR_CHECKPOINT_ENV = "SHELFSIGHT_RFDETR_CHECKPOINT"
 RFDETR_VERSION_ENV = "SHELFSIGHT_RFDETR_VERSION"
 SAM3_CHECKPOINT_ENV = "SHELFSIGHT_SAM3_CHECKPOINT"
 SAM3_VERSION_ENV = "SHELFSIGHT_SAM3_VERSION"
 CLIP_MODEL_ROOT_ENV = "SHELFSIGHT_CLIP_MODEL_ROOT"
+DETECTOR_RUNTIME_URL_ENV = "SHELFSIGHT_DETECTOR_RUNTIME_URL"
+DETECTOR_ROLE = "known_sku_detector"
 
 
 def configured_model_job_definitions() -> dict[str, JobDefinition]:
@@ -41,6 +48,13 @@ def configured_model_job_definitions() -> dict[str, JobDefinition]:
     detector_checkpoint = os.environ.get(RFDETR_CHECKPOINT_ENV, "").strip()
     refiner_checkpoint = os.environ.get(SAM3_CHECKPOINT_ENV, "").strip()
     clip_model_root = os.environ.get(CLIP_MODEL_ROOT_ENV, "").strip()
+    detector_runtime_url = os.environ.get(DETECTOR_RUNTIME_URL_ENV, "").strip()
+    if detector_runtime_url and detector_checkpoint:
+        raise ValueError(
+            f"set {DETECTOR_RUNTIME_URL_ENV} or {RFDETR_CHECKPOINT_ENV}, not both"
+        )
+    # A runtime reached over HTTP holds no model in this process, so it is not counted
+    # against the one-GPU-model-per-worker rule.
     configured_models = [
         value
         for value in (detector_checkpoint, refiner_checkpoint, clip_model_root)
@@ -54,6 +68,9 @@ def configured_model_job_definitions() -> dict[str, JobDefinition]:
             Path(detector_checkpoint),
             model_version=version,
         )
+        operations.append("detect")
+    elif detector_runtime_url:
+        adapters[DETECTOR_ROLE] = HttpModelAdapter(detector_runtime_url)
         operations.append("detect")
 
     if refiner_checkpoint:
@@ -87,11 +104,40 @@ def configured_model_job_definitions() -> dict[str, JobDefinition]:
             image_resolver,
         ),
         {
-            "detect": write_detection_proposals,
+            "detect": promoted_detector_only(write_detection_proposals),
             "embed": _write_embedding,
         },
     )
     return {operation: definitions[operation] for operation in operations}
+
+
+def promoted_detector_only(write: JobResultWriter) -> JobResultWriter:
+    """Store detector proposals only when they came from the promoted detector.
+
+    The check runs in the transaction that writes the proposals, so a promotion or
+    rollback takes effect for every job that finishes after it.
+    """
+
+    def guarded(connection: Connection, claim: JobClaim, result: Mapping[str, Any]) -> None:
+        provenance = result.get("model_provenance")
+        served = provenance.get("artifact_sha256") if isinstance(provenance, Mapping) else None
+        try:
+            promoted = get_model_deployment(connection, DETECTOR_ROLE)["active"]
+        except ModelDeploymentNotFoundError as error:
+            raise JobExecutionError(
+                "model_not_promoted",
+                "no detector is promoted for pre-labeling",
+                retryable=False,
+            ) from error
+        if served != promoted["model_artifact_sha256"]:
+            raise JobExecutionError(
+                "model_not_promoted",
+                "the worker's detector is not the promoted model",
+                retryable=False,
+            )
+        write(connection, claim, result)
+
+    return guarded
 
 
 def _write_embedding(

@@ -64,7 +64,7 @@ def register_model_candidate(
     evaluation_artifact = _artifact(connection, evaluation_artifact_id, "evaluation")
     model_metadata = _metadata(model_artifact)
     evaluation_metadata = _metadata(evaluation_artifact)
-    configuration, compatibility = _validate_model_metadata(
+    lineage, configuration, compatibility = _validate_model_metadata(
         model_metadata,
         model_role,
     )
@@ -73,6 +73,7 @@ def register_model_candidate(
         model_artifact,
         evaluation_artifact,
         model_metadata,
+        lineage,
     )
     values = {
         "model_role": model_role,
@@ -80,7 +81,12 @@ def register_model_candidate(
         "model_version": model_version,
         "model_artifact_id": model_artifact_id,
         "evaluation_artifact_id": evaluation_artifact_id,
-        "training_dataset_version_id": model_artifact["dataset_version_id"],
+        "lineage": lineage,
+        # An externally trained model has no CVSight training snapshot; its artifact
+        # record sits on the evaluation snapshot, so that version is not its training.
+        "training_dataset_version_id": (
+            model_artifact["dataset_version_id"] if lineage == "snapshot" else None
+        ),
         "evaluation_dataset_version_id": evaluation_artifact["dataset_version_id"],
         "model_artifact_sha256": model_artifact["content_sha256"],
         "evaluation_artifact_sha256": evaluation_artifact["content_sha256"],
@@ -260,18 +266,20 @@ def _artifact(
 def _validate_model_metadata(
     metadata: Mapping[str, Any],
     model_role: str,
-) -> tuple[dict[str, Any], dict[str, Any]]:
+) -> tuple[str, dict[str, Any], dict[str, Any]]:
     if metadata.get("licenses_approved") is not True:
         raise ModelLineageError("model artifact licenses are not approved")
-    _sha256(metadata.get("training_manifest_sha256"), "training manifest")
-    code_version = metadata.get("code_version")
-    seed = metadata.get("random_seed")
+    lineage = metadata.get("lineage", "snapshot")
+    if lineage == "snapshot":
+        _require_training_lineage(metadata)
+    elif lineage == "external":
+        source = metadata.get("source")
+        if not isinstance(source, str) or not source.strip() or len(source) > 500:
+            raise ModelLineageError("an externally trained model must name its source")
+    else:
+        raise ModelLineageError("model artifact lineage is invalid")
     configuration = metadata.get("configuration")
     compatibility = metadata.get("compatibility")
-    if not isinstance(code_version, str) or not code_version.strip():
-        raise ModelLineageError("model artifact code version is missing")
-    if not isinstance(seed, int) or isinstance(seed, bool) or seed < 0:
-        raise ModelLineageError("model artifact random seed is invalid")
     if not isinstance(configuration, dict) or not configuration:
         raise ModelLineageError("model artifact configuration is missing")
     if not isinstance(compatibility, dict):
@@ -286,7 +294,17 @@ def _validate_model_metadata(
     runtime = compatibility.get("runtime")
     if not isinstance(runtime, str) or not runtime.strip():
         raise ModelLineageError("model artifact runtime compatibility is missing")
-    return dict(configuration), dict(compatibility)
+    return str(lineage), dict(configuration), dict(compatibility)
+
+
+def _require_training_lineage(metadata: Mapping[str, Any]) -> None:
+    _sha256(metadata.get("training_manifest_sha256"), "training manifest")
+    code_version = metadata.get("code_version")
+    seed = metadata.get("random_seed")
+    if not isinstance(code_version, str) or not code_version.strip():
+        raise ModelLineageError("model artifact code version is missing")
+    if not isinstance(seed, int) or isinstance(seed, bool) or seed < 0:
+        raise ModelLineageError("model artifact random seed is invalid")
 
 
 def _validate_evaluation_metadata(
@@ -294,6 +312,7 @@ def _validate_evaluation_metadata(
     model_artifact: Mapping[str, Any],
     evaluation_artifact: Mapping[str, Any],
     model_metadata: Mapping[str, Any],
+    lineage: str,
 ) -> dict[str, Any]:
     if metadata.get("schema_version") != EVALUATION_SCHEMA:
         raise ModelLineageError("evaluation schema is incompatible")
@@ -303,10 +322,16 @@ def _validate_evaluation_metadata(
         "snapshot_content_sha256"
     ]:
         raise ModelLineageError("evaluation targets a different frozen snapshot")
-    if metadata.get("code_version") != model_metadata.get("code_version"):
-        raise ModelLineageError("model and evaluation code versions differ")
-    if metadata.get("random_seed") != model_metadata.get("random_seed"):
-        raise ModelLineageError("model and evaluation random seeds differ")
+    if lineage == "snapshot":
+        if metadata.get("code_version") != model_metadata.get("code_version"):
+            raise ModelLineageError("model and evaluation code versions differ")
+        if metadata.get("random_seed") != model_metadata.get("random_seed"):
+            raise ModelLineageError("model and evaluation random seeds differ")
+    else:
+        # An external model has no CVSight code version; the evaluator's must be known.
+        code_version = metadata.get("code_version")
+        if not isinstance(code_version, str) or not code_version.strip():
+            raise ModelLineageError("evaluation code version is missing")
     metrics = metadata.get("metrics")
     if not isinstance(metrics, dict):
         raise ModelLineageError("evaluation metrics are missing")
@@ -360,20 +385,26 @@ def _entry_response(
         status = "default"
     elif deployment is not None and deployment.previous_entry_id == entry["id"]:
         status = "previous"
-    artifact_keys = {
-        row.id: row.artifact_key
+    artifacts = {
+        row.id: row
         for row in connection.execute(
-            select(snapshot_artifacts.c.id, snapshot_artifacts.c.artifact_key).where(
+            select(
+                snapshot_artifacts.c.id,
+                snapshot_artifacts.c.artifact_key,
+                snapshot_artifacts.c.metadata,
+            ).where(
                 snapshot_artifacts.c.id.in_(
                     (entry["model_artifact_id"], entry["evaluation_artifact_id"])
                 )
             )
         )
     }
+    model_artifact = artifacts[entry["model_artifact_id"]]
     return {
         **entry,
-        "model_artifact_key": artifact_keys[entry["model_artifact_id"]],
-        "evaluation_artifact_key": artifact_keys[entry["evaluation_artifact_id"]],
+        "model_artifact_key": model_artifact.artifact_key,
+        "evaluation_artifact_key": artifacts[entry["evaluation_artifact_id"]].artifact_key,
+        "source": model_artifact.metadata.get("source") if entry["lineage"] == "external" else None,
         "deployment_status": status,
     }
 
