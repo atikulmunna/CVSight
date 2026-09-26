@@ -19,7 +19,8 @@ export type ModelEntry = {
   source: string | null;
   trainingDatasetVersionId: string | null;
   evaluationDatasetVersionId: string;
-  metrics: Record<string, number>;
+  // null when the evaluation had no images or boxes for a subset recall.
+  metrics: Record<string, number | null>;
   registeredBy: string;
   registeredAt: string;
   deploymentStatus: ModelDeploymentStatus;
@@ -140,9 +141,9 @@ function parseEntry(value: unknown): ModelEntry {
     throw new ModelsApiError(502, "invalid_response");
   }
   const metrics = record(entry.metrics);
-  const numericMetrics: Record<string, number> = {};
+  const numericMetrics: Record<string, number | null> = {};
   for (const [key, metric] of Object.entries(metrics)) {
-    if (typeof metric === "number" && Number.isFinite(metric)) {
+    if (metric === null || (typeof metric === "number" && Number.isFinite(metric))) {
       numericMetrics[key] = metric;
     }
   }

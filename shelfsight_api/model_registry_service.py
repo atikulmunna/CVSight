@@ -16,6 +16,13 @@ from shelfsight_api.models import (
 )
 
 EVALUATION_SCHEMA = "cvsight-detector-evaluation/v1"
+# Recall over a subset of the evaluation images or boxes, and the metric counting that
+# subset. The recall may be left unmeasured only when the count shows the subset was
+# empty, so a missing score can never stand in for a poor one.
+SUBSET_RECALL_COUNTS = {
+    "dense_scene_recall_at_iou_50": "dense_scene_images",
+    "overlapping_product_recall_at_iou_50": "overlapping_products",
+}
 
 
 class ModelArtifactNotFoundError(ValueError):
@@ -343,8 +350,15 @@ def _validate_evaluation_metadata(
         "overlapping_product_recall_at_iou_50",
     )
     for key in required_metrics:
+        if metrics.get(key) is None and _subset_was_empty(metrics, key):
+            continue
         _score(metrics.get(key), key)
     return dict(metrics)
+
+
+def _subset_was_empty(metrics: Mapping[str, Any], key: str) -> bool:
+    count = metrics.get(SUBSET_RECALL_COUNTS.get(key, ""))
+    return isinstance(count, int) and not isinstance(count, bool) and count == 0
 
 
 def _metadata(artifact: Mapping[str, Any]) -> dict[str, Any]:

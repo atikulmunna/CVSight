@@ -13,6 +13,7 @@ import {
   type ModelEntry,
   type ModelRole,
 } from "./modelsApi";
+import { formatMetric, metricLabel } from "./modelMetrics";
 import { ProjectBand } from "./ProjectBand";
 import { ProjectsHeader } from "./ProjectsHeader";
 
@@ -43,14 +44,6 @@ const ROLE_LABELS: Record<ModelRole, string> = {
   box_refiner: "Box refiner",
   recognition_embedder: "Recognition embedder",
   propagation_embedder: "Propagation embedder",
-};
-
-const METRIC_LABELS: Record<string, string> = {
-  map_50_95: "mAP 50 to 95",
-  product_recall_at_iou_50: "Product recall",
-  duplicate_rate_at_iou_50: "Duplicate rate",
-  dense_scene_recall_at_iou_50: "Dense-scene recall",
-  overlapping_product_recall_at_iou_50: "Overlapping recall",
 };
 
 export function ProjectModelsPage({
@@ -325,8 +318,8 @@ function ModelSummary({ entry, badge }: { entry: ModelEntry; badge: string }) {
       <dl className="models-metrics">
         {Object.entries(entry.metrics).map(([key, value]) => (
           <div key={key}>
-            <dt>{METRIC_LABELS[key] ?? key}</dt>
-            <dd>{formatMetric(value)}</dd>
+            <dt>{metricLabel(key)}</dt>
+            <dd>{formatMetric(key, value)}</dd>
           </div>
         ))}
       </dl>
@@ -398,13 +391,6 @@ function actionErrorMessage(error: unknown): string {
     }
   }
   return "The deployment could not be changed. Try again.";
-}
-
-function formatMetric(value: number): string {
-  if (value >= 0 && value <= 1) {
-    return `${(value * 100).toFixed(1)}%`;
-  }
-  return value.toLocaleString(undefined, { maximumFractionDigits: 3 });
 }
 
 function formatDate(value: string): string {

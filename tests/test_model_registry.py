@@ -359,6 +359,75 @@ def test_registry_accepts_an_externally_trained_model_with_its_source(
     assert entry["model_artifact_sha256"] == model_sha
 
 
+def test_subset_recall_may_be_unmeasured_only_when_the_subset_was_empty(
+    database_engine: Engine,
+    registry_evidence: RegistryEvidence,
+) -> None:
+    no_dense_scenes = {
+        **_metrics(0.7),
+        "dense_scene_recall_at_iou_50": None,
+        "dense_scene_images": 0,
+    }
+
+    entry = _register_external(database_engine, registry_evidence, no_dense_scenes)
+
+    assert entry["metrics"]["dense_scene_recall_at_iou_50"] is None
+    assert entry["metrics"]["dense_scene_images"] == 0
+
+
+@pytest.mark.parametrize(
+    "count",
+    [3, None, False],
+    ids=["dense-scenes-present", "count-missing", "count-not-a-number"],
+)
+def test_subset_recall_cannot_be_left_out_when_the_subset_may_exist(
+    database_engine: Engine,
+    registry_evidence: RegistryEvidence,
+    count: object,
+) -> None:
+    metrics = {**_metrics(0.7), "dense_scene_recall_at_iou_50": None}
+    if count is not None:
+        metrics["dense_scene_images"] = count
+
+    with pytest.raises(ModelLineageError, match="dense_scene_recall_at_iou_50 is invalid"):
+        _register_external(database_engine, registry_evidence, metrics)
+
+
+def _register_external(
+    database_engine: Engine,
+    registry_evidence: RegistryEvidence,
+    metrics: dict[str, Any],
+) -> dict[str, Any]:
+    model_sha = uuid4().hex * 2
+    with database_engine.begin() as connection:
+        snapshot_sha = _snapshot_sha(connection, registry_evidence.evaluation_version_id)
+        model = register_snapshot_artifact(
+            connection,
+            registry_evidence.evaluation_version_id,
+            "model",
+            f"models/external-{uuid4()}.json",
+            content_sha256=model_sha,
+            metadata=_external_metadata(),
+        )
+        evaluation = register_snapshot_artifact(
+            connection,
+            registry_evidence.evaluation_version_id,
+            "evaluation",
+            f"evaluations/external-{uuid4()}.json",
+            content_sha256="f" * 64,
+            metadata=_evaluation_metadata(model_sha, snapshot_sha, metrics),
+        )
+        return register_model_candidate(
+            connection,
+            model_role="known_sku_detector",
+            model_id="shelf-detector-external",
+            model_version=f"v-{uuid4().hex[:8]}",
+            model_artifact_id=model["id"],
+            evaluation_artifact_id=evaluation["id"],
+            actor="operator:test",
+        )
+
+
 @pytest.mark.parametrize(
     ("metadata", "message"),
     [
@@ -463,7 +532,7 @@ def _model_metadata(runtime: str = "rfdetr-1.8.3-cu128") -> dict[str, Any]:
 def _evaluation_metadata(
     model_sha256: str,
     snapshot_sha256: str,
-    metrics: dict[str, float],
+    metrics: dict[str, Any],
 ) -> dict[str, Any]:
     return {
         "schema_version": "cvsight-detector-evaluation/v1",

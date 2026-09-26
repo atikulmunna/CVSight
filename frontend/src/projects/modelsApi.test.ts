@@ -30,7 +30,12 @@ function entry(overrides: Record<string, unknown> = {}) {
     evaluation_artifact_sha256: "b".repeat(64),
     configuration: { epochs: 12 },
     compatibility: { runtime: "detector-runtime-1" },
-    metrics: { map_50_95: 0.612, product_recall_at_iou_50: 0.93, notes: "ignored" },
+    metrics: {
+      map_50_95: 0.612,
+      product_recall_at_iou_50: 0.93,
+      dense_scene_recall_at_iou_50: null,
+      notes: "ignored",
+    },
     registered_by: "owner:owner",
     registered_at: "2026-09-22T08:00:00Z",
     deployment_status: "candidate",
@@ -75,7 +80,7 @@ describe("models API", () => {
     });
   });
 
-  it("loads candidates and keeps only numeric metrics", async () => {
+  it("loads candidates and keeps numeric and unmeasured metrics only", async () => {
     const fetcher = vi.fn().mockResolvedValue(response(200, { models: [entry()] }));
 
     const [candidate] = await loadModelCandidates("known_sku_detector", fetcher);
@@ -88,7 +93,7 @@ describe("models API", () => {
       modelId: "shelf-detector",
       modelVersion: "2026.09-cycle-1",
       deploymentStatus: "candidate",
-      metrics: { map_50_95: 0.612, product_recall_at_iou_50: 0.93 },
+      metrics: { map_50_95: 0.612, product_recall_at_iou_50: 0.93, dense_scene_recall_at_iou_50: null },
     });
   });
 

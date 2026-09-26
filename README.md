@@ -919,6 +919,12 @@ model checksum and frozen evaluation snapshot checksum, use the same code versio
 seed, and include mAP, product recall, duplicate rate, dense-scene recall, and
 overlapping-product recall.
 
+An evaluation set can lack the scenes a subset recall needs, for example with no photo
+of 50 or more products. Dense-scene recall may then be `null`, but only when the metrics
+also record `"dense_scene_images": 0`; overlapping-product recall likewise needs
+`"overlapping_products": 0`. Any other missing or non-numeric score is refused, and the
+Models page shows an accepted `null` as "Not measured".
+
 A model trained outside CVSight registers with `"lineage": "external"` in its model
 metadata, a `source` naming where it came from, the approved-license flag,
 configuration, and runtime compatibility; it has no training manifest or seed. Its
