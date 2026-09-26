@@ -244,8 +244,8 @@ touches the development database from `compose.dev.yaml`.
 2. Build the API image and generate a password hash for each user:
 
 ```sh
-docker build -f docker/api/Dockerfile -t cvsight-api:0.2.0 .
-docker run --rm -it cvsight-api:0.2.0 python -m shelfsight_api.auth_cli
+docker build -f docker/api/Dockerfile -t cvsight-api:0.3.0 .
+docker run --rm -it cvsight-api:0.3.0 python -m shelfsight_api.auth_cli
 ```
 
 3. Create `.env` next to `compose.yaml`. The database password goes into a connection

@@ -38,7 +38,7 @@ services:
     build:
       context: .
       dockerfile: docker/api/Dockerfile
-    image: cvsight-api:0.2.0
+    image: cvsight-api:0.3.0
     command: ["alembic", "upgrade", "head"]
     environment: *api-environment
     depends_on:
@@ -47,7 +47,7 @@ services:
     logging: *logging
 
   api:
-    image: cvsight-api:0.2.0
+    image: cvsight-api:0.3.0
     restart: unless-stopped
     environment: *api-environment
     volumes:
@@ -63,7 +63,7 @@ services:
     logging: *logging
 
   worker:
-    image: cvsight-api:0.2.0
+    image: cvsight-api:0.3.0
     command: ["python", "-m", "shelfsight_api.worker", "--worker-id", "compose-worker"]
     restart: unless-stopped
     environment:
@@ -81,7 +81,7 @@ services:
     build:
       context: .
       dockerfile: docker/web/Dockerfile
-    image: cvsight-web:0.2.0
+    image: cvsight-web:0.3.0
     restart: unless-stopped
     environment:
       CVSIGHT_SITE_ADDRESS: ${CVSIGHT_SITE_ADDRESS:?Set CVSIGHT_SITE_ADDRESS}

@@ -17,8 +17,8 @@ $databaseImage = "cvsight-postgres:17-pgvector-0.8.6"
 # Every image compose.yaml runs, with the Dockerfile that builds it.
 $images = [ordered]@{
     $databaseImage = "docker/postgres/Dockerfile"
-    "cvsight-api:0.2.0" = "docker/api/Dockerfile"
-    "cvsight-web:0.2.0" = "docker/web/Dockerfile"
+    "cvsight-api:0.3.0" = "docker/api/Dockerfile"
+    "cvsight-web:0.3.0" = "docker/web/Dockerfile"
 }
 $imageIds = [ordered]@{}
 $trivyImage = "aquasec/trivy:0.74.0@sha256:62b1e65e8869bc4b4c6aa4fa2b21595256c7c2f6018a9d9ad61caf87187c1969"

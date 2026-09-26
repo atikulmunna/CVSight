@@ -3,24 +3,19 @@
 CVSight itself is released under the MIT License in `LICENSE`. This document covers the
 third-party components, datasets, and checkpoints the release depends on.
 
-This document records the CVSight 0.1.0 release posture. It is an engineering inventory,
+This document records the CVSight 0.3.0 release posture. It is an engineering inventory,
 not legal advice.
 
 ## CVSight source
 
-This repository currently contains no project license grant. Public visibility does not
-grant permission to copy, modify, or redistribute CVSight source or project artwork.
-The copyright holder must deliberately choose and add a project license before describing
-CVSight as open source.
-
-Third-party packages remain governed by their own licenses. Their licenses do not grant
-rights to CVSight source.
+CVSight source is released under the MIT License in `LICENSE`. Third-party packages
+remain governed by their own licenses, and bundling them does not change those terms.
 
 ## Shipped repository contents
 
-The public source release contains application code, migrations, tests, PowerShell
-operator scripts, documentation, the CVSight logo, and a generated demonstration shelf
-image. It does not contain customer shelf imagery, benchmark datasets, annotations,
+The public source release contains application code, migrations, tests, PowerShell and
+POSIX shell operator scripts, container build files, documentation, the CVSight logo, and
+a generated demonstration shelf image. It does not contain customer shelf imagery, benchmark datasets, annotations,
 database dumps, model checkpoints, training exports, or local evaluation reports.
 
 The release license gate rejects common model, dataset, and archive suffixes in tracked
@@ -64,6 +59,7 @@ No model weight or dataset is shipped in this repository.
 | OpenAI CLIP ViT-B/32 code | MIT | Permitted only as an exploratory, operator-supplied suggestion model. Current evidence does not permit automatic SKU assignment. |
 | SAM 3 source and checkpoint | Custom SAM license | Optional local refinement only. Redistribution is not approved by this release. Operators must review the upstream terms. |
 | QPDS-Seg benchmark data | CC-BY-4.0 | Local benchmark input only. It is not shipped. Redistribution or derivatives require attribution. |
+| Externally trained detectors | Operator declared | Registered with external lineage, a named source, and the approved-license flag. They run as separate services behind the HTTP runtime contract, so their code and licenses, including AGPL runtimes such as Ultralytics, stay outside CVSight. |
 | Operator datasets and checkpoints | Operator declared | Training preparation refuses inputs without an approved name, license, source, and checkpoint checksum. |
 
 Model registry rows record dataset snapshot identity, artifact checksums, evaluation

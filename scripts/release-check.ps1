@@ -57,7 +57,7 @@ $recovery = Read-PassingReport "Recovery" $evidence.recovery
 
 $report = [ordered]@{
     schema_version = "cvsight-release-report/v1"
-    release = "0.2.0"
+    release = "0.3.0"
     completed_at = (Get-Date).ToUniversalTime().ToString("o")
     assembly_duration_seconds = [math]::Round(((Get-Date) - $startedAt).TotalSeconds, 3)
     passed = $true
