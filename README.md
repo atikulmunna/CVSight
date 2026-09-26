@@ -846,7 +846,10 @@ python -m benchmark_tool evaluate-rfdetr-training `
 The fixed strategies follow T004: full-image inference at confidence 0.3 is the
 default, and 2 by 2 sliced inference with 0.1 overlap and NMS IoU 0.5 is the dense-scene
 retry. The evaluation report includes product recall, precision, mAP 50, mAP 50:95,
-duplicate rate, and per-image dense-scene failures for both strategies.
+duplicate rate, per-image dense-scene failures, and overlapping-product recall for both
+strategies. Overlapping-product recall covers only labeled products whose box overlaps
+another labeled box at IoU 0.1 or more, so products that hide part of each other are
+scored apart from neighbors that merely touch.
 
 ## Evaluated model registry
 

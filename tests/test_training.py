@@ -228,6 +228,42 @@ def test_evaluation_reports_product_map_duplicates_and_dense_failures(
         evaluate_training_predictions(dataset_dir, predictions_path)
 
 
+def test_overlapping_recall_counts_only_products_that_hide_part_of_each_other(
+    tmp_path: Path,
+) -> None:
+    # A and B overlap (IoU 0.33); C only touches B's edge; D stands alone.
+    boxes = [
+        [0.0, 0.0, 4.0, 4.0],
+        [2.0, 0.0, 4.0, 4.0],
+        [6.0, 0.0, 4.0, 4.0],
+        [20.0, 0.0, 4.0, 4.0],
+    ]
+    dataset_dir = _write_evaluation_dataset(tmp_path / "dataset", boxes)
+    found = [boxes[0], boxes[3]]
+    predictions_path = _write_predictions(
+        tmp_path / "predictions.json",
+        [{"image_id": 30, "bbox": box, "score": 0.9} for box in found],
+    )
+
+    report = evaluate_training_predictions(dataset_dir, predictions_path)
+
+    assert report["overlap_iou_threshold"] == 0.1
+    assert report["modes"]["full_image"]["overlapping_products"] == {
+        "ground_truth": 2,
+        "matched_at_iou_50": 1,
+        "recall_at_iou_50": 0.5,
+    }
+
+
+def test_overlapping_recall_is_unknown_without_overlapping_products(tmp_path: Path) -> None:
+    dataset_dir = _write_evaluation_dataset(tmp_path / "dataset", [[0.0, 0.0, 4.0, 4.0]])
+    predictions_path = _write_predictions(tmp_path / "predictions.json", [])
+
+    report = evaluate_training_predictions(dataset_dir, predictions_path)
+
+    assert report["modes"]["full_image"]["overlapping_products"]["recall_at_iou_50"] is None
+
+
 def test_prediction_run_uses_fixed_full_and_sliced_test_strategy(tmp_path: Path) -> None:
     checkpoint = tmp_path / "rf-detr-nano.pth"
     checkpoint.write_bytes(b"checkpoint")
@@ -382,7 +418,7 @@ def _write_licenses(path: Path) -> Path:
     return path
 
 
-def _write_evaluation_dataset(root: Path) -> Path:
+def _write_evaluation_dataset(root: Path, boxes: list[list[float]] | None = None) -> Path:
     (root / "test").mkdir(parents=True)
     (root / "training-manifest.json").write_text(
         json.dumps(
@@ -397,14 +433,11 @@ def _write_evaluation_dataset(root: Path) -> Path:
         ),
         encoding="utf-8",
     )
+    if boxes is None:
+        boxes = [[float(index), 0.0, 0.8, 1.0] for index in range(50)]
     annotations = [
-        {
-            "id": index + 1,
-            "image_id": 30,
-            "category_id": 1,
-            "bbox": [float(index), 0.0, 0.8, 1.0],
-        }
-        for index in range(50)
+        {"id": index + 1, "image_id": 30, "category_id": 1, "bbox": box}
+        for index, box in enumerate(boxes)
     ]
     (root / "test" / "_annotations.coco.json").write_text(
         json.dumps(
@@ -417,6 +450,22 @@ def _write_evaluation_dataset(root: Path) -> Path:
         encoding="utf-8",
     )
     return root
+
+
+def _write_predictions(path: Path, predictions: list[dict[str, Any]]) -> Path:
+    mode = {"confidence_threshold": 0.3, "predictions": predictions}
+    path.write_text(
+        json.dumps(
+            {
+                "schema_version": PREDICTION_SCHEMA,
+                "dataset_version_id": "version-1",
+                "model_artifact_sha256": "f" * 64,
+                "modes": {"full_image": mode, "sliced_2x2": mode},
+            }
+        ),
+        encoding="utf-8",
+    )
+    return path
 
 
 def _tree_hashes(root: Path) -> dict[str, str]:

@@ -17,6 +17,9 @@ EVALUATION_SCHEMA = "cvsight-detector-evaluation/v1"
 REQUIRED_MODES = ("full_image", "sliced_2x2")
 IOU_THRESHOLDS = tuple(0.5 + index * 0.05 for index in range(10))
 DENSE_IMAGE_THRESHOLD = 50
+# Adjacent facings often share a few edge pixels; from this IoU on, two products
+# genuinely hide part of each other, which is where detectors merge or drop boxes.
+OVERLAP_IOU_THRESHOLD = 0.1
 
 
 def generate_test_predictions(
@@ -125,6 +128,7 @@ def evaluate_training_predictions(
         "predictions_sha256": _sha256_file(predictions_path),
         "iou_thresholds": list(IOU_THRESHOLDS),
         "dense_image_threshold": DENSE_IMAGE_THRESHOLD,
+        "overlap_iou_threshold": OVERLAP_IOU_THRESHOLD,
         "modes": results,
     }
 
@@ -141,7 +145,8 @@ def _metrics(
     ground_truth: dict[int, list[list[float]]],
     predictions: list[dict[str, Any]],
 ) -> dict[str, Any]:
-    matched, duplicates = _match_counts(ground_truth, predictions, 0.5)
+    matched_indexes, duplicates = _match(ground_truth, predictions, 0.5)
+    matched = sum(len(indexes) for indexes in matched_indexes.values())
     ground_truth_count = sum(len(boxes) for boxes in ground_truth.values())
     prediction_count = len(predictions)
     average_precisions = [
@@ -204,7 +209,34 @@ def _metrics(
             "recall_at_iou_50": dense_matched / dense_count if dense_count else None,
             "failures": dense_failures,
         },
+        "overlapping_products": _overlapping_recall(ground_truth, matched_indexes),
     }
+
+
+def _overlapping_recall(
+    ground_truth: Mapping[int, list[list[float]]],
+    matched_indexes: Mapping[int, set[int]],
+) -> dict[str, Any]:
+    overlapping = [
+        (image_id, index)
+        for image_id, boxes in ground_truth.items()
+        for index in range(len(boxes))
+        if _overlaps_another(boxes, index)
+    ]
+    matched = sum(1 for image_id, index in overlapping if index in matched_indexes[image_id])
+    return {
+        "ground_truth": len(overlapping),
+        "matched_at_iou_50": matched,
+        "recall_at_iou_50": matched / len(overlapping) if overlapping else None,
+    }
+
+
+def _overlaps_another(boxes: Sequence[list[float]], index: int) -> bool:
+    return any(
+        intersection_over_union(boxes[index], box) >= OVERLAP_IOU_THRESHOLD
+        for other, box in enumerate(boxes)
+        if other != index
+    )
 
 
 def _ground_truth(coco: Mapping[str, Any]) -> dict[int, list[list[float]]]:
@@ -257,8 +289,18 @@ def _match_counts(
     predictions: Sequence[dict[str, Any]],
     iou_threshold: float,
 ) -> tuple[int, int]:
+    matched_indexes, duplicates = _match(ground_truth, predictions, iou_threshold)
+    return sum(len(indexes) for indexes in matched_indexes.values()), duplicates
+
+
+def _match(
+    ground_truth: Mapping[int, list[list[float]]],
+    predictions: Sequence[dict[str, Any]],
+    iou_threshold: float,
+) -> tuple[dict[int, set[int]], int]:
+    """Ground-truth indexes matched per image, and predictions that only repeat a match."""
     unmatched = {image_id: set(range(len(boxes))) for image_id, boxes in ground_truth.items()}
-    matched = 0
+    matched: dict[int, set[int]] = {image_id: set() for image_id in ground_truth}
     duplicates = 0
     for prediction in _ordered(predictions):
         image_id = prediction["image_id"]
@@ -270,7 +312,7 @@ def _match_counts(
         best_iou, best_index = max(candidates, default=(0.0, -1))
         if best_iou >= iou_threshold:
             unmatched[image_id].remove(best_index)
-            matched += 1
+            matched[image_id].add(best_index)
         elif any(
             intersection_over_union(prediction["bbox"], box) >= iou_threshold
             for box in boxes
