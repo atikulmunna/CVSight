@@ -17,7 +17,13 @@ import {
   type ProjectImageStatus,
 } from "./imagesApi";
 import { ProjectBand } from "./ProjectBand";
+import { liveWorkerCount, prelabelUnlabeledImages, type PrelabelSummary } from "./prelabelApi";
 import { ProjectsHeader } from "./ProjectsHeader";
+
+type PrelabelState =
+  | { phase: "idle" | "queuing" }
+  | { phase: "done"; summary: PrelabelSummary; workers: number | null }
+  | { phase: "failed"; status: number };
 
 type ProjectImagesPageProps = {
   projectId: string;
@@ -65,6 +71,7 @@ export function ProjectImagesPage({
   const [refreshKey, setRefreshKey] = useState(0);
   const [loadingMore, setLoadingMore] = useState(false);
   const [showUpload, setShowUpload] = useState(false);
+  const [prelabel, setPrelabel] = useState<PrelabelState>({ phase: "idle" });
 
   useEffect(() => {
     let active = true;
@@ -123,6 +130,21 @@ export function ProjectImagesPage({
     setTotal(0);
     setImageStatus("loading");
     setFilter(nextFilter);
+  }
+
+  async function queuePrelabels(projectId: string, versionId: string) {
+    setPrelabel({ phase: "queuing" });
+    try {
+      const summary = await prelabelUnlabeledImages(projectId, versionId);
+      const workers = await liveWorkerCount().catch(() => null);
+      setPrelabel({ phase: "done", summary, workers });
+      refreshImages();
+    } catch (error) {
+      setPrelabel({
+        phase: "failed",
+        status: error instanceof ProjectImageApiError ? error.status : 0,
+      });
+    }
   }
 
   function refreshImages() {
@@ -202,12 +224,25 @@ export function ProjectImagesPage({
             <h2>Images</h2>
             <p>Upload shelf photos, track labeling state, and open an image for annotation.</p>
           </div>
-          {canUpload && (
-            <button className="projects-primary-action" type="button" onClick={() => setShowUpload(true)}>
-              <span aria-hidden="true">+</span> Upload images
-            </button>
+          {canUpload && project.openVersionId && (
+            <div className="project-images-actions">
+              <button
+                type="button"
+                disabled={prelabel.phase === "queuing"}
+                onClick={() => void queuePrelabels(project.id, project.openVersionId!)}
+              >
+                {prelabel.phase === "queuing" ? "Queuing pre-labels" : "Pre-label unlabeled"}
+              </button>
+              <button className="projects-primary-action" type="button" onClick={() => setShowUpload(true)}>
+                <span aria-hidden="true">+</span> Upload images
+              </button>
+            </div>
           )}
         </section>
+
+        {(prelabel.phase === "done" || prelabel.phase === "failed") && (
+          <PrelabelNotice state={prelabel} onRefresh={refreshImages} />
+        )}
 
         {showUpload && project.openVersionId && (
           <ImageUploadPanel
@@ -521,5 +556,50 @@ function ImageGridMessage({
       <p>{detail}</p>
       {action}
     </section>
+  );
+}
+
+function PrelabelNotice({
+  state,
+  onRefresh,
+}: {
+  state: Extract<PrelabelState, { phase: "done" | "failed" }>;
+  onRefresh: () => void;
+}) {
+  if (state.phase === "failed") {
+    return (
+      <p className="prelabel-notice is-error" role="alert">
+        {state.status === 403
+          ? "Only project owners can queue pre-labels."
+          : "Pre-labels could not be queued. Check that the API is running and try again."}
+      </p>
+    );
+  }
+  const { queued, alreadyQueued, failedEarlier, rejected } = state.summary;
+  if (queued + alreadyQueued + failedEarlier + rejected === 0) {
+    return <p className="prelabel-notice">No unlabeled photos to pre-label.</p>;
+  }
+  const parts = [`Queued ${queued} ${queued === 1 ? "photo" : "photos"} for pre-labeling.`];
+  if (alreadyQueued > 0) {
+    parts.push(`${alreadyQueued} were already queued.`);
+  }
+  if (failedEarlier > 0) {
+    parts.push(`${failedEarlier} failed on an earlier attempt and were not retried.`);
+  }
+  if (rejected > 0) {
+    parts.push(`${rejected} could not be queued.`);
+  }
+  parts.push(
+    state.workers === 0
+      ? "No worker is running, so the jobs wait until a detector worker starts."
+      : "Proposals appear as the detector worker finishes each photo.",
+  );
+  return (
+    <p className="prelabel-notice" role="status">
+      {parts.join(" ")}{" "}
+      <button type="button" onClick={onRefresh}>
+        Refresh
+      </button>
+    </p>
   );
 }

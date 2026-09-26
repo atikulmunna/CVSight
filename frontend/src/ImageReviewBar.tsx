@@ -7,6 +7,9 @@ type ImageReviewBarProps = {
   unresolvedCount: number;
   saveStatus: SaveStatus;
   error: string | null;
+  place?: { position: number; total: number } | null;
+  onPrevious?: () => void;
+  onNext?: () => void;
   onMarkReviewed: () => void;
 };
 
@@ -16,9 +19,15 @@ export function ImageReviewBar({
   unresolvedCount,
   saveStatus,
   error,
+  place,
+  onPrevious,
+  onNext,
   onMarkReviewed,
 }: ImageReviewBarProps) {
-  const review = reviewButtonState({ reviewed, busy, unresolvedCount, saveStatus });
+  const review = reviewButtonState(
+    { reviewed, busy, unresolvedCount, saveStatus },
+    onNext ? "Mark reviewed and next" : "Mark reviewed",
+  );
   return (
     <section className="image-review-bar" aria-label="Image review">
       <p>
@@ -26,6 +35,19 @@ export function ImageReviewBar({
           ? "Reviewed. Changing a box reopens it."
           : "Decide every box, then mark the photo reviewed."}
       </p>
+      {place && (
+        <div className="image-review-nav">
+          <button type="button" onClick={onPrevious} disabled={busy || !onPrevious}>
+            Previous
+          </button>
+          <span aria-label="Photo position">
+            {place.position} of {place.total}
+          </span>
+          <button type="button" onClick={onNext} disabled={busy || !onNext}>
+            Next
+          </button>
+        </div>
+      )}
       <button
         type="button"
         className="primary-action"

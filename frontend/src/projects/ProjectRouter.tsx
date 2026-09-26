@@ -104,6 +104,11 @@ export function ProjectRouter({ currentUser, onLogout }: ProjectRouterProps) {
           workspaceRoute.imageId,
           workspace,
         )}
+        onOpenImage={(imageId) => openWorkspace(
+          workspaceRoute.projectId,
+          imageId,
+          workspaceRoute.workspace,
+        )}
       />
     );
   }

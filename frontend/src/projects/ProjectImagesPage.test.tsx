@@ -58,6 +58,66 @@ describe("ProjectImagesPage", () => {
     );
   });
 
+  it("queues pre-labels for unlabeled photos and says when no worker is running", async () => {
+    window.history.replaceState({}, "", `/projects/${PROJECT_ID}/images`);
+    const fetcher = vi.fn().mockImplementation((input: RequestInfo | URL, init?: RequestInit) => {
+      const url = String(input);
+      if (url === "/api/datasets") {
+        return Promise.resolve(response(200, [PROJECT]));
+      }
+      if (url === `/api/datasets/${PROJECT_ID}`) {
+        return Promise.resolve(response(200, PROJECT));
+      }
+      if (url === "/api/prelabels/batch" && init?.method === "POST") {
+        return Promise.resolve(
+          response(202, { items: [{ image_id: IMAGE_ID, status: "queued", job_state: "queued" }] }),
+        );
+      }
+      if (url === "/api/workers/health") {
+        return Promise.resolve(response(200, { status: "unavailable", workers: [] }));
+      }
+      return Promise.resolve(response(200, imagePage("unlabeled")));
+    });
+    vi.stubGlobal("fetch", fetcher);
+
+    render(
+      <ProjectRouter currentUser={{ username: "owner", role: "owner" }} onLogout={vi.fn()} />,
+    );
+    fireEvent.click(await screen.findByRole("button", { name: "Pre-label unlabeled" }));
+
+    const notice = await screen.findByRole("status");
+    expect(notice).toHaveTextContent("Queued 1 photo for pre-labeling.");
+    expect(notice).toHaveTextContent("No worker is running");
+    expect(fetcher).toHaveBeenCalledWith(
+      "/api/prelabels/batch",
+      expect.objectContaining({ method: "POST" }),
+    );
+  });
+
+  it("hides pre-labeling from annotators", async () => {
+    window.history.replaceState({}, "", `/projects/${PROJECT_ID}/images`);
+    vi.stubGlobal(
+      "fetch",
+      vi.fn().mockImplementation((input: RequestInfo | URL) => {
+        const url = String(input);
+        if (url === "/api/datasets") {
+          return Promise.resolve(response(200, [PROJECT]));
+        }
+        if (url === `/api/datasets/${PROJECT_ID}`) {
+          return Promise.resolve(response(200, PROJECT));
+        }
+        return Promise.resolve(response(200, imagePage("unlabeled")));
+      }),
+    );
+
+    render(
+      <ProjectRouter currentUser={{ username: "anna", role: "annotator" }} onLogout={vi.fn()} />,
+    );
+
+    expect(await screen.findByText("shelf-unlabeled.jpg")).toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: "Pre-label unlabeled" })).not.toBeInTheDocument();
+  });
+
   it("validates files and reports upload completion", async () => {
     window.history.replaceState({}, "", `/projects/${PROJECT_ID}/images`);
     let uploaded = false;

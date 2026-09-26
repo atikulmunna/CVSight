@@ -1995,10 +1995,24 @@ code {
   flex-wrap: wrap;
   gap: 8px 14px;
   align-items: center;
-  max-width: 420px;
+  max-width: 620px;
   padding: 8px 10px 8px 14px;
   border: 1px solid var(--ws-line);
   border-radius: 14px;
+}
+
+.image-review-nav {
+  display: flex;
+  gap: 6px;
+  align-items: center;
+}
+
+.image-review-nav span {
+  min-width: 64px;
+  color: var(--ws-text-2);
+  font-family: var(--font-mono);
+  font-size: 11px;
+  text-align: center;
 }
 
 .image-review-bar p {
@@ -5337,4 +5351,28 @@ kbd {
     animation-duration: 0.01ms !important;
     scroll-behavior: auto !important;
   }
+}
+
+.project-images-actions {
+  display: flex;
+  gap: 10px;
+  align-items: center;
+}
+
+.prelabel-notice {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  align-items: center;
+  margin: 0 0 16px;
+  padding: 10px 14px;
+  color: var(--text-secondary);
+  background: var(--surface);
+  border: 1px solid var(--line);
+  border-radius: 10px;
+  font-size: 13px;
+}
+
+.prelabel-notice.is-error {
+  color: var(--danger);
 }

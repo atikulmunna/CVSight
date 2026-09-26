@@ -14,6 +14,7 @@ type ProjectWorkspacePageProps = {
   onBack: () => void;
   onLogout: () => Promise<void>;
   onWorkspaceChange: (workspace: Workspace) => void;
+  onOpenImage: (imageId: string) => void;
 };
 
 type PageStatus = "loading" | "ready" | "missing" | "error";
@@ -26,6 +27,7 @@ export function ProjectWorkspacePage({
   onBack,
   onLogout,
   onWorkspaceChange,
+  onOpenImage,
 }: ProjectWorkspacePageProps) {
   const [project, setProject] = useState<ProjectSummary | null>(null);
   const [status, setStatus] = useState<PageStatus>("loading");
@@ -80,6 +82,8 @@ export function ProjectWorkspacePage({
       projectLabel={project.name}
       onExitWorkspace={onBack}
       onWorkspaceChange={onWorkspaceChange}
+      datasetId={project.id}
+      onOpenImage={onOpenImage}
     />
   );
 }

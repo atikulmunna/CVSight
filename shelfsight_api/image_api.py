@@ -25,6 +25,7 @@ from shelfsight_api.image_ingest import (
     list_version_images,
     mark_image_reviewed,
     media_variant,
+    version_image_neighbors,
 )
 from shelfsight_api.media import (
     MAX_MANIFEST_ITEMS,
@@ -105,6 +106,13 @@ class ImageListResponse(BaseModel):
     offset: int
 
 
+class ImageNeighborsResponse(BaseModel):
+    previous_id: UUID | None
+    next_id: UUID | None
+    position: int
+    total: int
+
+
 @router.get(
     "/datasets/{dataset_id}/versions/{dataset_version_id}/images",
     response_model=ImageListResponse,
@@ -130,6 +138,24 @@ def images_index(
             total=int(result["total"]),
             limit=limit,
             offset=offset,
+        )
+    except Exception as error:
+        _raise_http_error(error)
+        raise
+
+
+@router.get(
+    "/datasets/{dataset_id}/versions/{dataset_version_id}/images/{image_id}/neighbors",
+    response_model=ImageNeighborsResponse,
+)
+def image_neighbors(
+    dataset_id: UUID,
+    dataset_version_id: UUID,
+    image_id: UUID,
+) -> ImageNeighborsResponse:
+    try:
+        return ImageNeighborsResponse.model_validate(
+            version_image_neighbors(get_engine(), dataset_id, dataset_version_id, image_id)
         )
     except Exception as error:
         _raise_http_error(error)

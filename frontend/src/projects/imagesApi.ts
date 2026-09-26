@@ -23,6 +23,13 @@ export type ProjectImagePage = {
   offset: number;
 };
 
+export type ImageNeighbors = {
+  previousId: string | null;
+  nextId: string | null;
+  position: number;
+  total: number;
+};
+
 export class ProjectImageApiError extends Error {
   constructor(
     readonly status: number,
@@ -59,6 +66,34 @@ export async function loadProjectImages(
     throw requestError(response.status, body);
   }
   return parsePage(body);
+}
+
+export async function loadImageNeighbors(
+  projectId: string,
+  versionId: string,
+  imageId: string,
+  fetcher: typeof fetch = fetch,
+): Promise<ImageNeighbors> {
+  requireUuid(projectId);
+  requireUuid(versionId);
+  requireUuid(imageId);
+  const response = await fetcher(
+    `/api/datasets/${encodeURIComponent(projectId)}` +
+      `/versions/${encodeURIComponent(versionId)}` +
+      `/images/${encodeURIComponent(imageId)}/neighbors`,
+    { headers: { Accept: "application/json" } },
+  );
+  const body = await responseBody(response);
+  if (!response.ok) {
+    throw requestError(response.status, body);
+  }
+  const value = record(body);
+  return {
+    previousId: value.previous_id === null ? null : uuid(value.previous_id),
+    nextId: value.next_id === null ? null : uuid(value.next_id),
+    position: positiveInteger(value.position),
+    total: positiveInteger(value.total),
+  };
 }
 
 export async function uploadProjectImage(

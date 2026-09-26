@@ -180,6 +180,46 @@ def test_project_image_list_is_filtered_and_bounded(
     assert missing.json()["detail"]["code"] == "dataset_version_not_found"
 
 
+def test_image_neighbors_follow_the_grid_order(
+    database_engine: Engine,
+    ingest_target: tuple[UUID, UUID],
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+) -> None:
+    dataset_id, version_id = ingest_target
+    configure_image_api(monkeypatch, database_engine, tmp_path / "media", tmp_path / "imports")
+    uploaded = [
+        client.post(
+            upload_url(dataset_id, version_id),
+            files={"file": (f"{color}.jpg", make_image_bytes(color), "image/jpeg")},
+        ).json()["id"]
+        for color in ("blue", "green", "red")
+    ]
+    grid = [
+        image["id"]
+        for image in client.get(f"{upload_url(dataset_id, version_id)}?limit=10").json()["images"]
+    ]
+
+    def neighbors(image_id: str) -> dict[str, object]:
+        response = client.get(f"{upload_url(dataset_id, version_id)}/{image_id}/neighbors")
+        assert response.status_code == 200
+        return response.json()
+
+    def place(previous: str | None, following: str | None, position: int) -> dict[str, object]:
+        return {"previous_id": previous, "next_id": following, "position": position, "total": 3}
+
+    assert sorted(grid) == sorted(uploaded)
+    assert neighbors(grid[0]) == place(None, grid[1], 1)
+    assert neighbors(grid[1]) == place(grid[0], grid[2], 2)
+    assert neighbors(grid[2]) == place(grid[1], None, 3)
+
+    outside = client.get(f"{upload_url(dataset_id, version_id)}/{uuid4()}/neighbors")
+    other_version = client.get(f"{upload_url(dataset_id, uuid4())}/{grid[0]}/neighbors")
+    assert outside.status_code == 404
+    assert outside.json()["detail"]["code"] == "image_not_found"
+    assert other_version.status_code == 404
+
+
 def test_duplicate_corrupt_and_unsupported_uploads_are_deterministic(
     database_engine: Engine,
     ingest_target: tuple[UUID, UUID],

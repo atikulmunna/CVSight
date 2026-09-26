@@ -71,13 +71,7 @@ def list_version_images(
         if version_exists is None:
             raise DatasetVersionNotFoundError("dataset version does not exist")
 
-        membership = dataset_version_images.join(
-            images,
-            and_(
-                images.c.id == dataset_version_images.c.image_id,
-                images.c.dataset_id == dataset_version_images.c.dataset_id,
-            ),
-        )
+        membership = _version_membership()
         filters = [dataset_version_images.c.dataset_version_id == dataset_version_id]
         if status_filter is not None:
             filters.append(images.c.status == status_filter)
@@ -96,11 +90,62 @@ def list_version_images(
             )
             .select_from(membership)
             .where(*filters)
-            .order_by(images.c.created_at.desc(), images.c.id)
+            .order_by(*_grid_order())
             .limit(limit)
             .offset(offset)
         ).mappings()
     return {"images": [dict(row) for row in rows], "total": total}
+
+
+def version_image_neighbors(
+    engine: Engine,
+    dataset_id: UUID,
+    dataset_version_id: UUID,
+    image_id: UUID,
+) -> dict[str, Any]:
+    """An image's place in the version's image grid order, with the images either side."""
+    with engine.connect() as connection:
+        ordered = (
+            select(
+                images.c.id,
+                func.lag(images.c.id).over(order_by=_grid_order()).label("previous_id"),
+                func.lead(images.c.id).over(order_by=_grid_order()).label("next_id"),
+                func.row_number().over(order_by=_grid_order()).label("position"),
+                func.count().over().label("total"),
+            )
+            .select_from(_version_membership())
+            .where(
+                dataset_version_images.c.dataset_version_id == dataset_version_id,
+                dataset_version_images.c.dataset_id == dataset_id,
+            )
+            .subquery()
+        )
+        row = connection.execute(
+            select(ordered).where(ordered.c.id == image_id)
+        ).mappings().one_or_none()
+    if row is None:
+        raise ImageNotFoundError("image is not in this dataset version")
+    return {
+        "previous_id": row["previous_id"],
+        "next_id": row["next_id"],
+        "position": int(row["position"]),
+        "total": int(row["total"]),
+    }
+
+
+def _version_membership() -> Any:
+    return dataset_version_images.join(
+        images,
+        and_(
+            images.c.id == dataset_version_images.c.image_id,
+            images.c.dataset_id == dataset_version_images.c.dataset_id,
+        ),
+    )
+
+
+# The image grid lists the newest images first; navigation must follow the same order.
+def _grid_order() -> tuple[Any, ...]:
+    return (images.c.created_at.desc(), images.c.id)
 
 
 def ingest_prepared_image(

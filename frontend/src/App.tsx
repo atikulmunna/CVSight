@@ -16,6 +16,7 @@ import { GapReviewNavigator } from "./GapReviewNavigator";
 import { loadGapReviewManifest, type GapReviewManifest } from "./gapReview";
 import { ImageReviewBar } from "./ImageReviewBar";
 import { loadImageReviewed, markImageReviewed } from "./imageReview";
+import { loadImageNeighbors, type ImageNeighbors } from "./projects/imagesApi";
 import { ReviewWorkspace } from "./review/ReviewWorkspace";
 import type { SaveStatus } from "./canvas/useAnnotationAutosave";
 import { workspacesForRole, type Workspace } from "./workspace";
@@ -44,6 +45,8 @@ type AppProps = {
   projectLabel?: string;
   onExitWorkspace?: () => void;
   onWorkspaceChange?: (workspace: Workspace) => void;
+  datasetId?: string;
+  onOpenImage?: (imageId: string) => void;
 };
 
 export default function App({
@@ -55,6 +58,8 @@ export default function App({
   projectLabel,
   onExitWorkspace,
   onWorkspaceChange,
+  datasetId,
+  onOpenImage,
 }: AppProps) {
   const [apiStatus, setApiStatus] = useState<ApiStatus>("checking");
   const [fixture, setFixture] = useState<CanvasFixture>(DEMO_FIXTURE);
@@ -67,6 +72,7 @@ export default function App({
   const [reviewBusy, setReviewBusy] = useState(false);
   const [imageReviewed, setImageReviewed] = useState(false);
   const [reviewError, setReviewError] = useState<string | null>(null);
+  const [neighbors, setNeighbors] = useState<ImageNeighbors | null>(null);
   const [saveStatus, setSaveStatus] =
     useState<SaveStatus>("saved");
   const flushRef = useRef<(() => Promise<void>) | null>(null);
@@ -245,7 +251,39 @@ export default function App({
   const reviewImageLoaded =
     reviewImageId !== null && fixture.images.some((image) => image.id === reviewImageId);
 
-  async function markCurrentImageReviewed() {
+  // Photo navigation follows the project's image grid; it needs the project route.
+  const canNavigate = Boolean(onOpenImage);
+  useEffect(() => {
+    if (!routedImageId || !datasetId || !datasetVersionId || !canNavigate) {
+      return;
+    }
+    const controller = new AbortController();
+    loadImageNeighbors(datasetId, datasetVersionId, routedImageId, (input, init) =>
+      fetch(input, { ...init, signal: controller.signal }),
+    )
+      .then(setNeighbors)
+      .catch((error: unknown) => {
+        if (error instanceof DOMException && error.name === "AbortError") {
+          return;
+        }
+        setReviewError("Photo navigation is unavailable for this image.");
+      });
+    return () => controller.abort();
+  }, [canNavigate, datasetId, datasetVersionId, routedImageId]);
+
+  async function openNeighbor(imageId: string) {
+    try {
+      setReviewBusy(true);
+      await flushRef.current?.();
+      onOpenImage?.(imageId);
+    } catch {
+      setReviewError("Changes could not be saved, so this photo stays open.");
+    } finally {
+      setReviewBusy(false);
+    }
+  }
+
+  async function markCurrentImageReviewed(thenNext = false) {
     if (!reviewImageId) {
       return;
     }
@@ -255,6 +293,9 @@ export default function App({
       await markImageReviewed(reviewImageId);
       setImageReviewed(true);
       setReviewError(null);
+      if (thenNext && neighbors?.nextId) {
+        onOpenImage?.(neighbors.nextId);
+      }
     } catch (error) {
       setReviewError(
         error instanceof Error ? error.message : "Image review could not be saved.",
@@ -448,7 +489,12 @@ export default function App({
           unresolvedCount={unresolvedCount}
           saveStatus={saveStatus}
           error={reviewError}
-          onMarkReviewed={() => void markCurrentImageReviewed()}
+          place={neighbors}
+          onPrevious={
+            neighbors?.previousId ? () => void openNeighbor(neighbors.previousId!) : undefined
+          }
+          onNext={neighbors?.nextId ? () => void openNeighbor(neighbors.nextId!) : undefined}
+          onMarkReviewed={() => void markCurrentImageReviewed(true)}
         />
       )}
       {workspace === "verify" || workspace === "assign" ? (

@@ -117,11 +117,13 @@ later cycle starts from the promoted model's proposals.
    metadata such as `split`, capture session, and store travels with each image and
    later keeps related photos on the same side of the train, validation, and test
    boundary.
-3. **Label** (annotator). Open an image. Draw boxes, or queue detector proposals with
-   `POST /api/prelabels/batch` when a detect worker is running. Accept, reject, flag,
-   or duplicate each box, assign SKUs from the catalog, confirm propagation suggestions
-   for visually similar crops, and choose **Mark reviewed** once every box has a
-   decision. Autosave keeps the server current and a local draft covers interruptions.
+3. **Label** (annotator). Owners can choose **Pre-label unlabeled** on the Images page
+   to queue detector proposals when a detect worker is running. Open an image, draw
+   boxes, accept, reject, flag, or duplicate each box, assign SKUs from the catalog,
+   and confirm propagation suggestions for visually similar crops. **Mark reviewed and
+   next** unlocks once every box has a decision and opens the next image in grid order;
+   **Previous** and **Next** move without reviewing. Autosave keeps the server current
+   and a local draft covers interruptions.
 4. **Review and release** (reviewer or owner). **Review QA** lists the riskiest
    annotations first. Approve or flag each one, then **Sign off** to freeze the version
    into an immutable snapshot. The Versions page offers the detection and recognition
@@ -387,7 +389,9 @@ one through the revision-safe annotation API.
 
 ## Pre-labeling
 
-Queue detector work for up to 250 canonical images:
+The Images page's **Pre-label unlabeled** action queues every unlabeled image in the
+open version under one idempotency key per version, so repeating it never duplicates
+proposals. The API queues detector work for up to 250 canonical images:
 
 ```text
 POST /api/prelabels/batch
@@ -545,6 +549,13 @@ Upload one image with multipart form data:
 
 ```text
 POST /api/datasets/{dataset_id}/versions/{version_id}/images
+```
+
+Read an image's place in the grid order (newest first), with the images either side:
+
+```text
+GET /api/datasets/{dataset_id}/versions/{version_id}/images/{image_id}/neighbors
+{"previous_id": "image-uuid", "next_id": null, "position": 42, "total": 42}
 ```
 
 Import up to 250 files from the configured import root:

@@ -250,6 +250,43 @@ describe("App health", () => {
     ).toBeDisabled();
   });
 
+  it("moves between project photos and marks one reviewed before the next", async () => {
+    const imageId = "11111111-1111-4111-8111-111111111111";
+    const previous = "33333333-3333-4333-8333-333333333333";
+    const next = "44444444-4444-4444-8444-444444444444";
+    const datasetId = "55555555-5555-4555-8555-555555555555";
+    const versionId = "66666666-6666-4666-8666-666666666666";
+    const fetcher = liveImageFetch(imageId, "verified", "accepted", {
+      previous_id: previous,
+      next_id: next,
+      position: 2,
+      total: 3,
+    });
+    vi.stubGlobal("fetch", fetcher);
+    const onOpenImage = vi.fn();
+
+    render(
+      <App
+        imageId={imageId}
+        datasetId={datasetId}
+        datasetVersionId={versionId}
+        initialWorkspace="verify"
+        onOpenImage={onOpenImage}
+      />,
+    );
+
+    expect(await screen.findByLabelText("Photo position")).toHaveTextContent("2 of 3");
+    fireEvent.click(screen.getByRole("button", { name: "Previous" }));
+    await waitFor(() => expect(onOpenImage).toHaveBeenCalledWith(previous));
+
+    fireEvent.click(await screen.findByRole("button", { name: "Mark reviewed and next" }));
+    await waitFor(() => expect(onOpenImage).toHaveBeenLastCalledWith(next));
+    expect(fetcher).toHaveBeenCalledWith(
+      `/api/images/${imageId}/reviewed`,
+      expect.objectContaining({ method: "POST" }),
+    );
+  });
+
   it("shows only workspaces allowed for an annotator", () => {
     vi.stubGlobal(
       "fetch",
@@ -270,13 +307,21 @@ describe("App health", () => {
   });
 });
 
-function liveImageFetch(imageId: string, lifecycleState: string, reviewState: string) {
+function liveImageFetch(
+  imageId: string,
+  lifecycleState: string,
+  reviewState: string,
+  neighbors: Record<string, unknown> | null = null,
+) {
   let reviewed = false;
   return vi.fn().mockImplementation((input: RequestInfo | URL, init?: RequestInit) => {
     const url = String(input);
     const ok = (body: unknown) => Promise.resolve({ ok: true, status: 200, json: async () => body });
     if (url === "/api/health") {
       return ok({ status: "ok", service: "shelfsight-api" });
+    }
+    if (neighbors && url.endsWith(`/images/${imageId}/neighbors`)) {
+      return ok(neighbors);
     }
     if (url === `/api/images/${imageId}/reviewed` && init?.method === "POST") {
       reviewed = true;

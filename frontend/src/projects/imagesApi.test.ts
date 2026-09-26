@@ -1,6 +1,7 @@
 import { describe, expect, it, vi } from "vitest";
 
 import {
+  loadImageNeighbors,
   loadProjectImages,
   ProjectImageApiError,
   uploadProjectImage,
@@ -42,6 +43,36 @@ describe("project image API", () => {
         "?limit=60&offset=0&status=reviewed",
       { headers: { Accept: "application/json" } },
     );
+  });
+
+  it("loads an image's neighbors in grid order", async () => {
+    const next = "44444444-4444-4444-8444-444444444444";
+    const fetcher = vi.fn().mockResolvedValue({
+      ok: true,
+      json: async () => ({ previous_id: null, next_id: next, position: 1, total: 42 }),
+    });
+
+    await expect(
+      loadImageNeighbors(PROJECT_ID, VERSION_ID, IMAGE_ID, fetcher),
+    ).resolves.toEqual({ previousId: null, nextId: next, position: 1, total: 42 });
+    expect(fetcher).toHaveBeenCalledWith(
+      `/api/datasets/${PROJECT_ID}/versions/${VERSION_ID}/images/${IMAGE_ID}/neighbors`,
+      { headers: { Accept: "application/json" } },
+    );
+  });
+
+  it("rejects malformed neighbor ids and bad identifiers", async () => {
+    const fetcher = vi.fn().mockResolvedValue({
+      ok: true,
+      json: async () => ({ previous_id: "../x", next_id: null, position: 2, total: 2 }),
+    });
+
+    await expect(
+      loadImageNeighbors(PROJECT_ID, VERSION_ID, IMAGE_ID, fetcher),
+    ).rejects.toBeInstanceOf(ProjectImageApiError);
+    await expect(
+      loadImageNeighbors(PROJECT_ID, VERSION_ID, "not-an-id", vi.fn()),
+    ).rejects.toMatchObject({ code: "invalid_id" });
   });
 
   it("rejects unsafe image response URLs", async () => {
