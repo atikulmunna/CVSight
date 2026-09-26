@@ -2,9 +2,16 @@
 
 [![check](https://github.com/atikulmunna/CVSight/actions/workflows/check.yml/badge.svg?branch=main)](https://github.com/atikulmunna/CVSight/actions/workflows/check.yml)
 
-CVSight is a self-hosted image annotation platform for dense retail shelves. The
-current application shell contains a React and TypeScript frontend, a FastAPI backend,
-PostgreSQL connectivity, and an Alembic migration path.
+CVSight is a self-hosted, closed-loop dataset platform for dense retail shelves.
+Annotators label and verify shelf photos; a review sign-off freezes each version into an
+immutable snapshot; exports keep capture sessions and stores on one side of the train,
+validation, and test boundary; RF-DETR trains and is evaluated from those snapshots; an
+evaluated model registry promotes or rolls back detectors; and a pre-label worker,
+pointed at the promoted detector, turns its output into proposals for the next batch.
+Shelf analytics (realogram, gaps, share of shelf) read only from frozen snapshots.
+
+It runs as a React and TypeScript frontend, a FastAPI backend, PostgreSQL with pgvector,
+and a job worker for model inference.
 
 ## Contents
 
