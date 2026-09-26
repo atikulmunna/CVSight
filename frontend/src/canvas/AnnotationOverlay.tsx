@@ -1,7 +1,14 @@
-import { memo } from "react";
+import { memo, type PointerEvent } from "react";
 
+import type { GeometryHandle } from "./editing";
 import type { AnnotationBox } from "./model";
 import { overlayCue } from "./model";
+
+type GeometryStart = (
+  annotationId: string,
+  handle: GeometryHandle,
+  event: PointerEvent<SVGGElement>,
+) => void;
 
 type AnnotationOverlayProps = {
   annotations: AnnotationBox[];
@@ -9,23 +16,30 @@ type AnnotationOverlayProps = {
   height: number;
   selectedId: string | null;
   interactive: boolean;
+  handleSize?: number;
+  handlesActive?: boolean;
   onSelect: (annotationId: string) => void;
+  onGeometryStart?: GeometryStart;
 };
 
 type AnnotationNodeProps = {
   box: AnnotationBox;
   selected: boolean;
   interactive: boolean;
+  handleSize: number;
+  handlesActive: boolean;
   onSelect: (annotationId: string) => void;
+  onGeometryStart?: GeometryStart;
 };
-
-const HANDLE_SIZE = 8;
 
 const AnnotationNode = memo(function AnnotationNode({
   box,
   selected,
   interactive,
+  handleSize,
+  handlesActive,
   onSelect,
+  onGeometryStart,
 }: AnnotationNodeProps) {
   return (
     <g
@@ -37,8 +51,24 @@ const AnnotationNode = memo(function AnnotationNode({
       role="button"
       aria-label={`${box.id}, ${box.sku}, ${box.state}`}
       onPointerDown={(event) => {
-        if (event.button === 0 && interactive) {
+        if (event.button !== 0) {
+          return;
+        }
+        // Handles resize even while a drawing tool is active; the body moves only in
+        // Select, where a first click selects and a drag on the selected box moves it.
+        const handle = handleAt(event.target);
+        if (selected && handle && handlesActive && onGeometryStart) {
           event.stopPropagation();
+          onGeometryStart(box.id, handle, event);
+          return;
+        }
+        if (!interactive) {
+          return;
+        }
+        event.stopPropagation();
+        if (selected && onGeometryStart) {
+          onGeometryStart(box.id, "move", event);
+        } else {
           onSelect(box.id);
         }
       }}
@@ -73,7 +103,7 @@ const AnnotationNode = memo(function AnnotationNode({
           />
         </>
       )}
-      {selected && <Selection box={box} />}
+      {selected && <Selection box={box} handleSize={handleSize} />}
     </g>
   );
 });
@@ -84,7 +114,10 @@ export const AnnotationOverlay = memo(function AnnotationOverlay({
   height,
   selectedId,
   interactive,
+  handleSize = 8,
+  handlesActive = false,
   onSelect,
+  onGeometryStart,
 }: AnnotationOverlayProps) {
   return (
     <svg
@@ -117,7 +150,10 @@ export const AnnotationOverlay = memo(function AnnotationOverlay({
           box={box}
           selected={box.id === selectedId}
           interactive={interactive}
+          handleSize={box.id === selectedId ? handleSize : 0}
+          handlesActive={handlesActive}
           onSelect={onSelect}
+          onGeometryStart={onGeometryStart}
           key={box.id}
         />
       ))}
@@ -134,14 +170,26 @@ function rectGeometry(box: AnnotationBox) {
   };
 }
 
-function Selection({ box }: { box: AnnotationBox }) {
-  const halfHandle = HANDLE_SIZE / 2;
-  const handles: Array<[number, number]> = [
-    [box.x, box.y],
-    [box.x + box.width, box.y],
-    [box.x, box.y + box.height],
-    [box.x + box.width, box.y + box.height],
-  ];
+const HANDLES: Array<[GeometryHandle, number, number]> = [
+  ["nw", 0, 0],
+  ["n", 0.5, 0],
+  ["ne", 1, 0],
+  ["e", 1, 0.5],
+  ["se", 1, 1],
+  ["s", 0.5, 1],
+  ["sw", 0, 1],
+  ["w", 0, 0.5],
+];
+
+function handleAt(target: EventTarget | null): GeometryHandle | null {
+  const handle =
+    target instanceof Element ? target.closest("[data-handle]")?.getAttribute("data-handle") : null;
+  return (HANDLES.find(([name]) => name === handle)?.[0] ?? null);
+}
+
+// handleSize is in scene units, chosen by the workspace so handles keep a constant
+// on-screen size at any zoom; each has a wider invisible hit area.
+function Selection({ box, handleSize }: { box: AnnotationBox; handleSize: number }) {
   return (
     <>
       <rect
@@ -149,17 +197,30 @@ function Selection({ box }: { box: AnnotationBox }) {
         vectorEffect="non-scaling-stroke"
         {...rectGeometry(box)}
       />
-      {handles.map(([x, y], index) => (
-        <rect
-          className="selection-handle"
-          x={x - halfHandle}
-          y={y - halfHandle}
-          width={HANDLE_SIZE}
-          height={HANDLE_SIZE}
-          vectorEffect="non-scaling-stroke"
-          key={index}
-        />
-      ))}
+      {HANDLES.map(([name, fx, fy]) => {
+        const x = box.x + box.width * fx;
+        const y = box.y + box.height * fy;
+        return (
+          <g key={name}>
+            <rect
+              className="selection-handle-hit"
+              data-handle={name}
+              x={x - handleSize}
+              y={y - handleSize}
+              width={handleSize * 2}
+              height={handleSize * 2}
+            />
+            <rect
+              className="selection-handle"
+              x={x - handleSize / 2}
+              y={y - handleSize / 2}
+              width={handleSize}
+              height={handleSize}
+              vectorEffect="non-scaling-stroke"
+            />
+          </g>
+        );
+      })}
     </>
   );
 }

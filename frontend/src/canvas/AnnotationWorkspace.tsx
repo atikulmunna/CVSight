@@ -20,13 +20,17 @@ import {
   assignSku,
   changeBoxClass,
   createDrawnBox,
+  dragGeometry,
   duplicateBox,
   flagBox,
   nudgeBox,
   rejectBox,
   resizeBox,
+  type BoxGeometry,
   type DrawnClass,
+  type GeometryHandle,
 } from "./editing";
+import { CanvasTools, type CanvasTool } from "./CanvasTools";
 import { SkuAssignmentPanel } from "./SkuAssignmentPanel";
 import type { AnnotationBox, AnnotationClass, CanvasFixture } from "./model";
 import { overlayCue, spatialReadingOrder } from "./model";
@@ -64,6 +68,15 @@ type PanStart = {
   transformY: number;
 };
 
+type GeometryDrag = {
+  pointerId: number;
+  annotationId: string;
+  handle: GeometryHandle;
+  start: { x: number; y: number };
+  original: BoxGeometry;
+  moved: boolean;
+};
+
 type DrawStart = {
   pointerId: number;
   classType: DrawnClass;
@@ -76,6 +89,9 @@ type DrawStart = {
 
 const LIST_ROW_HEIGHT = 50;
 const LIST_OVERSCAN = 5;
+const HANDLE_SCREEN_SIZE = 9;
+// Pointer travel, in screen pixels, before a press on a box counts as a drag.
+const DRAG_THRESHOLD = 3;
 const DEFAULT_VIEWPORT = { width: 900, height: 700 };
 
 export function AnnotationWorkspace({
@@ -132,9 +148,18 @@ export function AnnotationWorkspace({
   const [viewportDimensions, setViewportDimensions] = useState(DEFAULT_VIEWPORT);
   const [spaceHeld, setSpaceHeld] = useState(false);
   const [panStart, setPanStart] = useState<PanStart | null>(null);
-  const [drawMode, setDrawMode] = useState<DrawnClass | null>(null);
+  const [tool, setTool] = useState<CanvasTool>("select");
+  const drawMode: DrawnClass | null = tool === "product" || tool === "gap" ? tool : null;
+  const availableTools: readonly CanvasTool[] =
+    mode === "assign"
+      ? ["select", "pan"]
+      : isGapReview
+        ? ["select", "pan", "gap"]
+        : ["select", "pan", "product", "gap"];
   const [drawStart, setDrawStart] = useState<DrawStart | null>(null);
   const [draftBox, setDraftBox] = useState<AnnotationBox | null>(null);
+  const [geometryDrag, setGeometryDrag] = useState<GeometryDrag | null>(null);
+  const [draftGeometry, setDraftGeometry] = useState<(BoxGeometry & { id: string }) | null>(null);
   const [benchmark, setBenchmark] = useState<CanvasBenchmark | null>(null);
   const [benchmarkError, setBenchmarkError] = useState<string | null>(null);
   const [benchmarking, setBenchmarking] = useState(false);
@@ -143,6 +168,14 @@ export function AnnotationWorkspace({
   const duplicateCounterRef = useRef(0);
   const drawCounterRef = useRef(0);
 
+  const displayedAnnotations = useMemo(() => {
+    const boxes = draftGeometry
+      ? activeAnnotations.map((box) =>
+          box.id === draftGeometry.id ? { ...box, ...draftGeometry, id: box.id } : box,
+        )
+      : activeAnnotations;
+    return draftBox ? [...boxes, draftBox] : boxes;
+  }, [activeAnnotations, draftBox, draftGeometry]);
   const selectedBox =
     orderedAnnotations.find((annotation) => annotation.id === selectedId) ?? null;
   const showSkuPicker =
@@ -280,7 +313,13 @@ export function AnnotationWorkspace({
       return;
     }
     autosave.edit(selectedId, "reject", rejectBox);
-    moveToNextDecision(selectedId);
+    if (drawMode) {
+      // While drawing, removing a box leaves nothing selected instead of panning away.
+      setSelectedId(null);
+      closeSkuPicker();
+    } else {
+      moveToNextDecision(selectedId);
+    }
   }
 
   function duplicateSelected() {
@@ -357,8 +396,12 @@ export function AnnotationWorkspace({
     viewportRef.current?.focus();
   }
 
-  function toggleDrawMode(classType: DrawnClass) {
-    setDrawMode((active) => (active === classType ? null : classType));
+  // Pressing a drawing tool's key again returns to Select, as the old toggle did.
+  function chooseTool(next: CanvasTool) {
+    if (!availableTools.includes(next)) {
+      return;
+    }
+    setTool((current) => (current === next && next !== "select" ? "select" : next));
     setDrawStart(null);
     setDraftBox(null);
   }
@@ -420,21 +463,25 @@ export function AnnotationWorkspace({
     } else if (mode === "verify" && key === "a") {
       event.preventDefault();
       acceptSelected();
-    } else if (mode === "verify" && key === "r") {
+    } else if (
+      mode === "verify" &&
+      (key === "r" || key === "delete" || key === "backspace")
+    ) {
       event.preventDefault();
       rejectSelected();
+    } else if (mode === "verify" && key === "/" && selectedBox?.classType === "product") {
+      event.preventDefault();
+      setSkuPickerOpen(true);
+      assignmentCatalog.searchInputRef.current?.focus();
     } else if (mode === "verify" && key === "f") {
       event.preventDefault();
       flagSelected();
     } else if (mode === "verify" && key === "d") {
       event.preventDefault();
       duplicateSelected();
-    } else if (mode === "verify" && key === "b" && !isGapReview) {
+    } else if (key === "v" || key === "h" || key === "b" || key === "g") {
       event.preventDefault();
-      toggleDrawMode("product");
-    } else if (mode === "verify" && key === "g") {
-      event.preventDefault();
-      toggleDrawMode("gap");
+      chooseTool(({ v: "select", h: "pan", b: "product", g: "gap" } as const)[key]);
     } else if (key === "arrowright" || key === "j") {
       event.preventDefault();
       selectRelative(1);
@@ -442,7 +489,7 @@ export function AnnotationWorkspace({
       event.preventDefault();
       selectRelative(-1);
     } else if (key === "escape") {
-      setDrawMode(null);
+      setTool("select");
       setDrawStart(null);
       setDraftBox(null);
       setSelectedId(null);
@@ -457,14 +504,13 @@ export function AnnotationWorkspace({
   }
 
   function handlePointerDown(event: React.PointerEvent<HTMLDivElement>) {
-    const shouldPan = event.button === 1 || (event.button === 0 && spaceHeld);
-    if (
-      mode === "verify" &&
-      drawMode &&
-      event.button === 0 &&
-      !spaceHeld &&
-      !isControlTarget(event.target)
-    ) {
+    // Toolbars and the SKU picker sit inside the viewport; their clicks are theirs.
+    if (isControlTarget(event.target)) {
+      return;
+    }
+    const shouldPan =
+      event.button === 1 || (event.button === 0 && (spaceHeld || tool === "pan"));
+    if (mode === "verify" && drawMode && event.button === 0 && !spaceHeld) {
       event.preventDefault();
       const point = scenePoint(event, transform);
       const imageIndex = imageIndexAtPoint(fixture, point);
@@ -516,7 +562,54 @@ export function AnnotationWorkspace({
     );
   }
 
+  function startGeometryDrag(
+    annotationId: string,
+    handle: GeometryHandle,
+    event: React.PointerEvent<SVGGElement>,
+  ) {
+    const box = activeAnnotations.find((annotation) => annotation.id === annotationId);
+    const viewport = viewportRef.current;
+    if (!box || !viewport) {
+      return;
+    }
+    viewport.setPointerCapture?.(event.pointerId);
+    const bounds = viewport.getBoundingClientRect();
+    setGeometryDrag({
+      pointerId: event.pointerId,
+      annotationId,
+      handle,
+      start: {
+        x: (event.clientX - bounds.left - transform.x) / transform.scale,
+        y: (event.clientY - bounds.top - transform.y) / transform.scale,
+      },
+      original: { x: box.x, y: box.y, width: box.width, height: box.height },
+      moved: false,
+    });
+  }
+
+  // The geometry a drag reaches at this pointer position, or null while it is still
+  // within the click threshold.
+  function draggedGeometry(drag: GeometryDrag, event: React.PointerEvent<HTMLDivElement>) {
+    const point = scenePoint(event, transform);
+    const deltaX = point.x - drag.start.x;
+    const deltaY = point.y - drag.start.y;
+    if (!drag.moved && Math.hypot(deltaX, deltaY) * transform.scale < DRAG_THRESHOLD) {
+      return null;
+    }
+    return dragGeometry(drag.original, drag.handle, deltaX, deltaY, fixture);
+  }
+
   function handlePointerMove(event: React.PointerEvent<HTMLDivElement>) {
+    if (geometryDrag?.pointerId === event.pointerId) {
+      const geometry = draggedGeometry(geometryDrag, event);
+      if (geometry) {
+        if (!geometryDrag.moved) {
+          setGeometryDrag({ ...geometryDrag, moved: true });
+        }
+        setDraftGeometry({ id: geometryDrag.annotationId, ...geometry });
+      }
+      return;
+    }
     if (drawStart?.pointerId === event.pointerId) {
       setDraftBox(drawnBox(drawStart, scenePoint(event, transform)));
       return;
@@ -532,13 +625,38 @@ export function AnnotationWorkspace({
   }
 
   function finishPointerAction(event: React.PointerEvent<HTMLDivElement>) {
+    if (geometryDrag?.pointerId === event.pointerId) {
+      // Final geometry comes from the release point, so it never trails the last move.
+      const geometry = draggedGeometry(geometryDrag, event);
+      if (geometry) {
+        autosave.edit(geometryDrag.annotationId, "update", (box) => ({
+          ...box,
+          ...geometry,
+          confidence: null,
+        }));
+      } else if (geometryDrag.handle === "move") {
+        selectAnnotation(geometryDrag.annotationId);
+      }
+      setGeometryDrag(null);
+      setDraftGeometry(null);
+      return;
+    }
     if (drawStart?.pointerId === event.pointerId) {
       const completed = drawnBox(drawStart, scenePoint(event, transform));
       if (completed) {
         autosave.add(completed);
         setSelectedId(completed.id);
-        // A drawn product needs its SKU next, so the picker opens on it straight away.
-        setSkuPickerOpen(completed.classType === "product");
+        if (completed.classType === "product" && lastAssignedSku) {
+          // Shelves repeat products, so a new box takes the previous SKU through the
+          // same accept and assign steps as the picker; / changes it.
+          const sku = lastAssignedSku;
+          autosave.edit(completed.id, "accept", acceptBox);
+          autosave.edit(completed.id, "assign", (box) => assignSku(box, sku.id, sku.name));
+          closeSkuPicker();
+        } else {
+          // A drawn product needs its SKU next, so the picker opens on it straight away.
+          setSkuPickerOpen(completed.classType === "product");
+        }
       }
       setDrawStart(null);
       setDraftBox(null);
@@ -709,8 +827,8 @@ export function AnnotationWorkspace({
           <span>{fixture.name}</span>
         </div>
         <div
-          className={`canvas-viewport${panStart ? " is-panning" : ""}${
-            spaceHeld ? " is-pan-ready" : ""
+          className={`canvas-viewport tool-${tool}${panStart ? " is-panning" : ""}${
+            spaceHeld || tool === "pan" ? " is-pan-ready" : ""
           }${drawMode ? ` is-drawing is-drawing-${drawMode}` : ""}`}
           ref={viewportRef}
           tabIndex={0}
@@ -753,12 +871,15 @@ export function AnnotationWorkspace({
               ))}
             </div>
             <AnnotationOverlay
-              annotations={draftBox ? [...activeAnnotations, draftBox] : activeAnnotations}
+              annotations={displayedAnnotations}
               width={fixture.width}
               height={fixture.height}
               selectedId={selectedId}
-              interactive={!spaceHeld && !drawMode}
+              interactive={!spaceHeld && tool === "select"}
+              handleSize={HANDLE_SCREEN_SIZE / transform.scale}
+              handlesActive={!spaceHeld && tool !== "pan"}
               onSelect={selectAnnotation}
+              onGeometryStart={startGeometryDrag}
             />
           </div>
           {showSkuPicker && selectedBox && (
@@ -786,6 +907,7 @@ export function AnnotationWorkspace({
                   setSelectedId(null);
                   closeSkuPicker();
                 }}
+                onRemove={mode === "verify" ? rejectSelected : undefined}
               />
             </div>
           )}
@@ -801,28 +923,7 @@ export function AnnotationWorkspace({
               Fit
             </button>
           </div>
-          {mode === "verify" && (
-            <div className="draw-controls">
-              {!isGapReview && (
-                <button
-                  type="button"
-                  className={`draw-control${drawMode === "product" ? " is-active" : ""}`}
-                  aria-pressed={drawMode === "product"}
-                  onClick={() => toggleDrawMode("product")}
-                >
-                  {drawMode === "product" ? "Drawing boxes" : "Draw box"} <kbd>B</kbd>
-                </button>
-              )}
-              <button
-                type="button"
-                className={`draw-control${drawMode === "gap" ? " is-active" : ""}`}
-                aria-pressed={drawMode === "gap"}
-                onClick={() => toggleDrawMode("gap")}
-              >
-                {drawMode === "gap" ? "Drawing gaps" : "Draw gap"} <kbd>G</kbd>
-              </button>
-            </div>
-          )}
+          <CanvasTools tool={tool} available={availableTools} onChange={chooseTool} />
           <div className="shortcut-strip">
             {mode === "assign" ? (
               <>
@@ -832,14 +933,18 @@ export function AnnotationWorkspace({
               </>
             ) : (
               <>
-                <span>A accept · R reject · F flag · D duplicate</span>
-                <span>{isGapReview ? "G draw gap" : "B draw box · G draw gap"} · Esc stop</span>
-                <span>Alt + arrows nudge · add Shift to resize</span>
+                <span>A accept · R or Del reject · F flag · D duplicate</span>
+                <span>
+                  V select · H pan ·{" "}
+                  {isGapReview ? "G gap" : "B box, repeats last SKU · / change SKU · G gap"}
+                  {" "}· Esc select
+                </span>
+                <span>Drag a selected box or its handles · Alt + arrows nudge, Shift resizes</span>
               </>
             )}
             <span>J K next or previous</span>
             <span>+ − zoom</span>
-            <span>Space drag pans</span>
+            <span>Hold Space to pan</span>
           </div>
         </div>
       </section>

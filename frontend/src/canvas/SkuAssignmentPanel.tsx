@@ -16,6 +16,7 @@ type SkuAssignmentPanelProps = {
   onQueryChange: (query: string) => void;
   onAssign: (sku: Sku) => void;
   onClose?: () => void;
+  onRemove?: () => void;
 };
 
 export function SkuAssignmentPanel({
@@ -31,6 +32,7 @@ export function SkuAssignmentPanel({
   onQueryChange,
   onAssign,
   onClose,
+  onRemove,
 }: SkuAssignmentPanelProps) {
   return (
     <section
@@ -133,6 +135,11 @@ export function SkuAssignmentPanel({
         >
           Unknown / Other <kbd>U</kbd>
         </button>
+        {onRemove && (
+          <button type="button" className="reject-action" onClick={onRemove}>
+            Delete box <kbd>Del</kbd>
+          </button>
+        )}
       </div>
     </section>
   );

@@ -2365,16 +2365,17 @@ code {
   touch-action: none;
 }
 
+/* Pan cursors come last so holding Space while drawing still shows the hand. */
+.canvas-viewport.is-drawing {
+  cursor: crosshair;
+}
+
 .canvas-viewport.is-pan-ready {
   cursor: grab;
 }
 
 .canvas-viewport.is-panning {
   cursor: grabbing;
-}
-
-.canvas-viewport.is-drawing {
-  cursor: crosshair;
 }
 
 .canvas-scene {
@@ -2485,6 +2486,35 @@ code {
   pointer-events: none;
 }
 
+.selection-handle-hit {
+  fill: transparent;
+  pointer-events: all;
+}
+
+.selection-handle-hit[data-handle="nw"],
+.selection-handle-hit[data-handle="se"] {
+  cursor: nwse-resize;
+}
+
+.selection-handle-hit[data-handle="ne"],
+.selection-handle-hit[data-handle="sw"] {
+  cursor: nesw-resize;
+}
+
+.selection-handle-hit[data-handle="n"],
+.selection-handle-hit[data-handle="s"] {
+  cursor: ns-resize;
+}
+
+.selection-handle-hit[data-handle="e"],
+.selection-handle-hit[data-handle="w"] {
+  cursor: ew-resize;
+}
+
+.canvas-viewport.tool-select .annotation.is-selected {
+  cursor: move;
+}
+
 .zoom-controls {
   position: absolute;
   z-index: 4;
@@ -2515,30 +2545,67 @@ code {
   text-align: center;
 }
 
-.draw-controls {
+/* Tool rail on the canvas edge, as in an image editor: one tool is active at a time. */
+.canvas-tools {
   position: absolute;
   z-index: 5;
-  top: 150px;
-  right: 14px;
+  top: 50%;
+  left: 14px;
   display: flex;
   flex-direction: column;
-  gap: 8px;
-}
-
-.draw-control {
-  min-height: 38px;
-  padding: 0 13px;
-  background:
-    var(--ws-panel);
-  border-color: var(--ws-line);
-  border-radius: 10px;
+  gap: 4px;
+  padding: 5px;
+  background: var(--ws-panel);
+  border: 1px solid var(--ws-line);
+  border-radius: 12px;
   box-shadow: 0 12px 34px rgb(0 0 0 / 25%);
+  transform: translateY(-50%);
 }
 
-.draw-control.is-active {
+.canvas-tool {
+  position: relative;
+  display: grid;
+  place-items: center;
+  width: 40px;
+  height: 40px;
+  min-height: 0;
+  padding: 0;
+  background: transparent;
+  border: 0;
+  border-radius: 8px;
+  box-shadow: none;
+}
+
+.canvas-tool svg {
+  width: 20px;
+  height: 20px;
+  fill: none;
+  stroke: currentColor;
+  stroke-width: 1.8;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+}
+
+.canvas-tool kbd {
+  position: absolute;
+  right: 3px;
+  bottom: 2px;
+  padding: 0;
+  background: transparent;
+  border: 0;
+  color: inherit;
+  font-size: 8px;
+  line-height: 1;
+  opacity: 0.7;
+}
+
+.canvas-tool:hover {
+  background: var(--ws-elevated);
+}
+
+.canvas-tool.is-active {
   color: #ffffff;
   background: var(--brand);
-  border-color: var(--ws-violet);
 }
 
 .shortcut-strip {
@@ -4746,7 +4813,7 @@ kbd {
 .canvas-context,
 .shortcut-strip,
 .zoom-controls,
-.draw-control,
+.canvas-tools,
 .gap-review-navigator,
 .image-review-bar,
 .sku-picker-popover {
@@ -4802,14 +4869,12 @@ kbd {
   font-size: 10px;
 }
 
-.draw-control {
+.canvas-tool {
   color: var(--ink);
-  font-weight: 600;
 }
 
-.draw-control.is-active {
-  background: var(--magenta);
-  border-color: var(--magenta);
+.canvas-tool.is-active {
+  background: var(--brand);
   color: #fff;
 }
 

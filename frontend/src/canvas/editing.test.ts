@@ -5,6 +5,7 @@ import {
   assignSku,
   changeBoxClass,
   createDrawnBox,
+  dragGeometry,
   duplicateBox,
   flagBox,
   nudgeBox,
@@ -88,6 +89,33 @@ describe("annotation editing", () => {
       lifecycleState: "proposed",
       reviewState: "unreviewed",
     });
+  });
+
+  it("moves a dragged box without leaving the scene", () => {
+    const box = { x: 10, y: 20, width: 30, height: 40 };
+    const bounds = { width: 100, height: 100 };
+
+    expect(dragGeometry(box, "move", 5, -5, bounds)).toEqual({ x: 15, y: 15, width: 30, height: 40 });
+    expect(dragGeometry(box, "move", 500, 500, bounds)).toEqual({ x: 70, y: 60, width: 30, height: 40 });
+  });
+
+  it("resizes only the edges a handle names", () => {
+    const box = { x: 10, y: 20, width: 30, height: 40 };
+    const bounds = { width: 100, height: 100 };
+
+    expect(dragGeometry(box, "se", 10, 5, bounds)).toEqual({ x: 10, y: 20, width: 40, height: 45 });
+    expect(dragGeometry(box, "nw", -5, -10, bounds)).toEqual({ x: 5, y: 10, width: 35, height: 50 });
+    expect(dragGeometry(box, "e", 7, 99, bounds)).toEqual({ x: 10, y: 20, width: 37, height: 40 });
+    expect(dragGeometry(box, "n", 99, 3, bounds)).toEqual({ x: 10, y: 23, width: 30, height: 37 });
+  });
+
+  it("keeps a resized box inside the scene and above the minimum size", () => {
+    const box = { x: 10, y: 20, width: 30, height: 40 };
+    const bounds = { width: 100, height: 100 };
+
+    expect(dragGeometry(box, "w", 100, 0, bounds)).toMatchObject({ x: 36, width: 4 });
+    expect(dragGeometry(box, "se", 500, 500, bounds)).toEqual({ x: 10, y: 20, width: 90, height: 80 });
+    expect(dragGeometry(box, "nw", -500, -500, bounds)).toEqual({ x: 0, y: 0, width: 40, height: 60 });
   });
 
   it("ignores accidental clicks smaller than the minimum box size", () => {

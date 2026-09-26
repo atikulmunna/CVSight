@@ -21,7 +21,7 @@ describe("AnnotationWorkspace", () => {
     expect(container.querySelectorAll(".overlay-secondary-halo")).toHaveLength(
       DEMO_FIXTURE.annotations.filter((box) => box.state === "propagated").length,
     );
-    expect(container.querySelectorAll(".selection-handle")).toHaveLength(4);
+    expect(container.querySelectorAll(".selection-handle")).toHaveLength(8);
     expect(screen.getAllByRole("option").length).toBeLessThan(40);
   });
 
@@ -111,6 +111,106 @@ describe("AnnotationWorkspace", () => {
     expect(control).toHaveAttribute("aria-pressed", "false");
   });
 
+  it("switches tools from the rail and keyboard and pans with the hand tool", () => {
+    const { container } = render(<AnnotationWorkspace fixture={DEMO_FIXTURE} />);
+    const viewport = screen.getByLabelText("Shelf annotation canvas");
+    const scene = container.querySelector<HTMLElement>(".canvas-scene");
+    Object.defineProperty(viewport, "setPointerCapture", { value: () => undefined });
+    const pressed = (name: string) =>
+      screen.getByRole("button", { name }).getAttribute("aria-pressed");
+
+    expect(pressed("Select")).toBe("true");
+    fireEvent.keyDown(viewport, { key: "h" });
+    expect(pressed("Pan")).toBe("true");
+    expect(viewport).toHaveClass("is-pan-ready");
+    const before = scene?.style.transform;
+    drag(viewport, { x: 100, y: 100 }, { x: 160, y: 140 });
+    expect(scene?.style.transform).not.toBe(before);
+    expect(container.querySelector(".annotation-overlay .annotation.is-selected")).not.toBeNull();
+
+    fireEvent.click(screen.getByRole("button", { name: "Draw box" }));
+    expect(pressed("Draw box")).toBe("true");
+    expect(viewport).toHaveClass("is-drawing-product");
+    expect(viewport).not.toHaveClass("is-pan-ready");
+
+    fireEvent.keyDown(viewport, { key: "v" });
+    expect(pressed("Select")).toBe("true");
+    fireEvent.keyDown(viewport, { key: "g" });
+    fireEvent.keyDown(viewport, { key: "Escape" });
+    expect(pressed("Select")).toBe("true");
+  });
+
+  it("offers only selection and panning while assigning SKUs", () => {
+    vi.stubGlobal("fetch", vi.fn().mockRejectedValue(new TypeError("offline")));
+    render(<AnnotationWorkspace fixture={DEMO_FIXTURE} mode="assign" />);
+    const tools = screen.getByRole("toolbar", { name: "Canvas tools" });
+
+    expect(
+      [...tools.querySelectorAll("button")].map((button) => button.getAttribute("aria-label")),
+    ).toEqual(["Select", "Pan"]);
+  });
+
+  it("resizes the selected box from a handle and moves it by dragging", () => {
+    vi.stubGlobal("fetch", vi.fn().mockRejectedValue(new TypeError("offline")));
+    const fixture = {
+      ...DEMO_FIXTURE,
+      name: "Geometry drag fixture",
+      annotations: DEMO_FIXTURE.annotations.slice(1, 2),
+    };
+    const { container } = render(<AnnotationWorkspace fixture={fixture} />);
+    const viewport = screen.getByLabelText("Shelf annotation canvas");
+    Object.defineProperty(viewport, "setPointerCapture", { value: () => undefined });
+    const core = () => container.querySelector<SVGRectElement>(".annotation.is-selected .overlay-core")!;
+    const geometry = (): [number, number, number, number] => {
+      const rect = core();
+      const read = (key: string) => Number(rect.getAttribute(key));
+      return [read("x"), read("y"), read("width"), read("height")];
+    };
+    const [x, y, width, height] = geometry();
+
+    const corner = container.querySelector('.annotation.is-selected [data-handle="se"]')!;
+    fireEvent.pointerDown(corner, { button: 0, pointerId: 1, clientX: 300, clientY: 300 });
+    fireEvent.pointerMove(viewport, { pointerId: 1, clientX: 340, clientY: 330 });
+    fireEvent.pointerUp(viewport, { pointerId: 1, clientX: 340, clientY: 330 });
+    const [x2, y2, width2, height2] = geometry();
+    expect([x2, y2]).toEqual([x, y]);
+    expect(width2).toBeGreaterThan(width);
+    expect(height2).toBeGreaterThan(height);
+
+    fireEvent.pointerDown(core(), { button: 0, pointerId: 2, clientX: 300, clientY: 300 });
+    fireEvent.pointerMove(viewport, { pointerId: 2, clientX: 350, clientY: 300 });
+    fireEvent.pointerUp(viewport, { pointerId: 2, clientX: 350, clientY: 300 });
+    const [x3, y3, width3, height3] = geometry();
+    expect(x3).toBeGreaterThan(x2);
+    expect([y3, width3, height3]).toEqual([y2, width2, height2]);
+
+    fireEvent.pointerDown(core(), { button: 0, pointerId: 3, clientX: 300, clientY: 300 });
+    fireEvent.pointerUp(viewport, { pointerId: 3, clientX: 301, clientY: 300 });
+    expect(geometry()).toEqual([x3, y3, width3, height3]);
+    expect(screen.getByLabelText("SKU assignment")).toBeInTheDocument();
+  });
+
+  it("resizes a just-drawn box from its handle without leaving the drawing tool", () => {
+    vi.stubGlobal("fetch", vi.fn().mockRejectedValue(new TypeError("offline")));
+    const fixture = { ...DEMO_FIXTURE, name: "Draw then resize fixture", annotations: [] };
+    const { container } = render(<AnnotationWorkspace fixture={fixture} />);
+    const viewport = screen.getByLabelText("Shelf annotation canvas");
+    Object.defineProperty(viewport, "setPointerCapture", { value: () => undefined });
+
+    fireEvent.keyDown(viewport, { key: "b" });
+    drag(viewport, { x: 200, y: 200 }, { x: 320, y: 330 });
+    const core = () => container.querySelector<SVGRectElement>(".annotation.is-selected .overlay-core")!;
+    const width = Number(core().getAttribute("width"));
+
+    const edge = container.querySelector('.annotation.is-selected [data-handle="e"]')!;
+    fireEvent.pointerDown(edge, { button: 0, pointerId: 4, clientX: 320, clientY: 260 });
+    fireEvent.pointerUp(viewport, { pointerId: 4, clientX: 360, clientY: 260 });
+
+    expect(Number(core().getAttribute("width"))).toBeGreaterThan(width);
+    expect(container.querySelectorAll(".box-row")).toHaveLength(1);
+    expect(viewport).toHaveClass("is-drawing-product");
+  });
+
   it("draws a product, opens its SKU picker, and stays on it after naming it", () => {
     vi.stubGlobal("fetch", vi.fn().mockRejectedValue(new TypeError("offline")));
     const existing = {
@@ -129,7 +229,7 @@ describe("AnnotationWorkspace", () => {
     Object.defineProperty(viewport, "setPointerCapture", { value: () => undefined });
 
     fireEvent.keyDown(viewport, { key: "b" });
-    expect(screen.getByRole("button", { name: /Drawing boxes/ })).toHaveAttribute(
+    expect(screen.getByRole("button", { name: "Draw box" })).toHaveAttribute(
       "aria-pressed",
       "true",
     );
@@ -154,8 +254,30 @@ describe("AnnotationWorkspace", () => {
     expect(viewport).toHaveFocus();
 
     drag(viewport, { x: 420, y: 200 }, { x: 520, y: 330 });
-    expect(container.querySelectorAll('.box-row[data-annotation-id^="product-"]')).toHaveLength(2);
+    const rows = () =>
+      [...container.querySelectorAll<HTMLElement>('.box-row[data-annotation-id^="product-"]')];
+    expect(rows()).toHaveLength(2);
+    const repeated = rows().find((row) => row.getAttribute("aria-selected") === "true")!;
+    expect(repeated).toHaveTextContent("Aurora Cola 250ml 1 pack");
+    expect(
+      container.querySelector(
+        `.annotation[data-annotation-id="${repeated.getAttribute("data-annotation-id")}"]`,
+      ),
+    ).toHaveAttribute("data-state", "verified");
+    expect(screen.queryByLabelText("SKU assignment")).not.toBeInTheDocument();
+
+    fireEvent.keyDown(viewport, { key: "/" });
     expect(screen.getByLabelText("SKU assignment")).toBeInTheDocument();
+    fireEvent.click(screen.getByRole("button", { name: /Delete box/ }));
+    expect(rows()).toHaveLength(1);
+    expect(screen.queryByLabelText("SKU assignment")).not.toBeInTheDocument();
+    expect(container.querySelector(".box-row.is-selected")).toBeNull();
+
+    drag(viewport, { x: 420, y: 200 }, { x: 520, y: 330 });
+    expect(rows()).toHaveLength(2);
+    fireEvent.keyDown(viewport, { key: "Delete" });
+    expect(rows()).toHaveLength(1);
+    expect(viewport).toHaveClass("is-drawing-product");
 
     fireEvent.keyDown(viewport, { key: "Escape" });
     expect(viewport).not.toHaveClass("is-drawing");
@@ -508,8 +630,12 @@ describe("AnnotationWorkspace", () => {
       annotations: [proposed],
     };
     const { container } = render(<AnnotationWorkspace fixture={fixture} />);
+    const viewport = screen.getByLabelText("Shelf annotation canvas");
 
-    fireEvent.pointerDown(container.querySelector(".annotation")!, { button: 0 });
+    // The box opens selected, so a click completes on release (a press could start a move).
+    const click = { button: 0, pointerId: 1, clientX: 100, clientY: 100 };
+    fireEvent.pointerDown(container.querySelector(".annotation")!, click);
+    fireEvent.pointerUp(viewport, click);
 
     expect(screen.getByLabelText("SKU assignment")).toBeInTheDocument();
     expect(screen.getByLabelText("SKU assignment search")).toHaveFocus();

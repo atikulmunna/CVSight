@@ -141,6 +141,44 @@ export function duplicateBox(
   };
 }
 
+export type GeometryHandle = "nw" | "n" | "ne" | "e" | "se" | "s" | "sw" | "w" | "move";
+
+export type BoxGeometry = Pick<AnnotationBox, "x" | "y" | "width" | "height">;
+
+// A pointer drag on a selected box: "move" shifts it, a handle moves the edges it names.
+export function dragGeometry(
+  original: BoxGeometry,
+  handle: GeometryHandle,
+  deltaX: number,
+  deltaY: number,
+  bounds: SceneBounds,
+): BoxGeometry {
+  if (handle === "move") {
+    return {
+      ...original,
+      x: clamp(original.x + deltaX, 0, bounds.width - original.width),
+      y: clamp(original.y + deltaY, 0, bounds.height - original.height),
+    };
+  }
+  let left = original.x;
+  let top = original.y;
+  let right = original.x + original.width;
+  let bottom = original.y + original.height;
+  if (handle.includes("w")) {
+    left = clamp(left + deltaX, 0, right - MIN_BOX_SIZE);
+  }
+  if (handle.includes("e")) {
+    right = clamp(right + deltaX, left + MIN_BOX_SIZE, bounds.width);
+  }
+  if (handle.includes("n")) {
+    top = clamp(top + deltaY, 0, bottom - MIN_BOX_SIZE);
+  }
+  if (handle.includes("s")) {
+    bottom = clamp(bottom + deltaY, top + MIN_BOX_SIZE, bounds.height);
+  }
+  return { x: left, y: top, width: right - left, height: bottom - top };
+}
+
 export type DrawnClass = Extract<AnnotationClass, "product" | "gap">;
 
 export function createDrawnBox(
