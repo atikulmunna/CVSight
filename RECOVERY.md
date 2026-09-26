@@ -76,6 +76,25 @@ If restore fails after changing the target database, discard that isolated targe
 retry with a new empty database and absent media target. Do not continue from a partial
 restore.
 
+## Compose deployments
+
+A deployment from `compose.yaml` keeps PostgreSQL and managed media in Docker volumes,
+so it has its own scripts. They write and read the same bundle format as above. Run them
+on the host from the repository directory:
+
+```sh
+scripts/backup-compose.sh /var/backups/cvsight/2026-09-26
+scripts/restore-compose.sh /var/backups/cvsight/2026-09-26
+```
+
+The backup stops the API and worker for a quiescent recovery point, then starts again
+only the services that were running. It validates the PostgreSQL archive and the whole
+bundle before publishing the output directory, and it hands the bundle to the user who
+ran it. The restore builds the images, verifies the bundle, and requires a database with
+no public tables and no existing media, so run it against new, empty volumes. After it
+finishes it starts the whole stack; the migration service then brings an older backup up
+to the current schema.
+
 ## Rebuild projections
 
 Rebuild a named FiftyOne projection from an immutable snapshot. PostgreSQL and media

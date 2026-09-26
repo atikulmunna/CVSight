@@ -1,0 +1,106 @@
+# Full CVSight deployment: PostgreSQL, migrations, API, job worker, and the HTTPS web
+# entrypoint. See "Deploy with Docker Compose" in the README.
+name: cvsight-deploy
+
+x-logging: &logging
+  driver: json-file
+  options:
+    max-size: 10m
+    max-file: "5"
+
+x-api-environment: &api-environment
+  # The password is placed in a URL, so keep it to letters and digits.
+  SHELFSIGHT_DATABASE_URL: postgresql+psycopg://shelfsight:${SHELFSIGHT_DB_PASSWORD:?Set SHELFSIGHT_DB_PASSWORD}@database:5432/shelfsight
+  SHELFSIGHT_AUTH_USERS: ${SHELFSIGHT_AUTH_USERS:?Set SHELFSIGHT_AUTH_USERS}
+  SHELFSIGHT_SESSION_COOKIE_SECURE: "true"
+
+services:
+  database:
+    build:
+      context: .
+      dockerfile: docker/postgres/Dockerfile
+    image: cvsight-postgres:17-pgvector-0.8.6
+    restart: unless-stopped
+    environment:
+      POSTGRES_DB: shelfsight
+      POSTGRES_USER: shelfsight
+      POSTGRES_PASSWORD: ${SHELFSIGHT_DB_PASSWORD:?Set SHELFSIGHT_DB_PASSWORD}
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U shelfsight -d shelfsight"]
+      interval: 5s
+      timeout: 3s
+      retries: 20
+    volumes:
+      - database:/var/lib/postgresql/data
+    logging: *logging
+
+  migrate:
+    build:
+      context: .
+      dockerfile: docker/api/Dockerfile
+    image: cvsight-api:0.2.0
+    command: ["alembic", "upgrade", "head"]
+    environment: *api-environment
+    depends_on:
+      database:
+        condition: service_healthy
+    logging: *logging
+
+  api:
+    image: cvsight-api:0.2.0
+    restart: unless-stopped
+    environment: *api-environment
+    volumes:
+      - storage:/data
+    depends_on:
+      migrate:
+        condition: service_completed_successfully
+    healthcheck:
+      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://127.0.0.1:8000/api/health/database', timeout=3)"]
+      interval: 10s
+      timeout: 5s
+      retries: 6
+    logging: *logging
+
+  worker:
+    image: cvsight-api:0.2.0
+    command: ["python", "-m", "shelfsight_api.worker", "--worker-id", "compose-worker"]
+    restart: unless-stopped
+    environment:
+      <<: *api-environment
+      # Optional: a detector runtime the worker reaches over HTTP.
+      SHELFSIGHT_DETECTOR_RUNTIME_URL: ${SHELFSIGHT_DETECTOR_RUNTIME_URL:-}
+    volumes:
+      - storage:/data
+    depends_on:
+      migrate:
+        condition: service_completed_successfully
+    logging: *logging
+
+  web:
+    build:
+      context: .
+      dockerfile: docker/web/Dockerfile
+    image: cvsight-web:0.2.0
+    restart: unless-stopped
+    environment:
+      CVSIGHT_SITE_ADDRESS: ${CVSIGHT_SITE_ADDRESS:?Set CVSIGHT_SITE_ADDRESS}
+    ports:
+      - "80:80"
+      - "443:443"
+      - "443:443/udp"
+    volumes:
+      - caddy_data:/data
+      - caddy_config:/config
+    depends_on:
+      api:
+        condition: service_healthy
+    logging: *logging
+
+volumes:
+  database:
+  # Managed media lives in /data/media and server-side imports in /data/import.
+  storage:
+  # Caddy keeps its certificates here; losing them only means reissuing.
+  caddy_data:
+  caddy_config:

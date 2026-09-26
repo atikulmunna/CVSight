@@ -30,6 +30,10 @@ export async function login(username: string, password: string): Promise<AuthSes
   if (response.status === 401) {
     throw new Error("Username or password is incorrect.");
   }
+  // The deployment's proxy limits sign-in attempts per address.
+  if (response.status === 429) {
+    throw new Error("Too many sign-in attempts. Wait a minute, then try again.");
+  }
   if (!response.ok) {
     throw new Error("Sign in is unavailable.");
   }

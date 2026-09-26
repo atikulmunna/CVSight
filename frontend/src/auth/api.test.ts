@@ -34,6 +34,12 @@ describe("authentication API", () => {
     );
   });
 
+  it("tells a rate-limited person to wait rather than reporting an outage", async () => {
+    vi.stubGlobal("fetch", vi.fn().mockResolvedValue({ ok: false, status: 429 }));
+
+    await expect(login("labeler", "guess")).rejects.toThrow("Too many sign-in attempts");
+  });
+
   it("rejects invalid session data and tolerates an expired logout", async () => {
     vi.stubGlobal(
       "fetch",

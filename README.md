@@ -23,6 +23,7 @@ and a job worker for model inference.
 - [Reference](#reference)
   - [Requirements](#requirements)
   - [First-time setup](#first-time-setup)
+  - [Deploy with Docker Compose](#deploy-with-docker-compose)
   - [Quality checks](#quality-checks)
   - [Database migrations](#database-migrations)
   - [Authentication and roles](#authentication-and-roles)
@@ -227,6 +228,63 @@ docker compose --env-file .env -f compose.dev.yaml up -d database
 The frontend runs at `http://127.0.0.1:5173` and proxies `/api` requests to
 `http://127.0.0.1:8000`. The development script also starts one separate durable-job
 worker named `local-worker`.
+
+## Deploy with Docker Compose
+
+`compose.yaml` runs the whole platform on one Linux host: PostgreSQL, a one-off
+migration, the API, the job worker, and Caddy as the only published entrypoint. Caddy
+serves the frontend, proxies `/api`, obtains and renews HTTPS certificates, and allows at
+most 10 sign-in attempts per client address per minute. Long-running services restart
+after a crash or a host reboot, the database and API have health checks, and container
+logs rotate at five files of 10 MB. It uses its own Compose project name, so it never
+touches the development database from `compose.dev.yaml`.
+
+1. Point a DNS name at the host and open ports 80 and 443. Caddy needs port 80 to prove
+   it controls the name before it issues a certificate.
+2. Build the API image and generate a password hash for each user:
+
+```sh
+docker build -f docker/api/Dockerfile -t cvsight-api:0.2.0 .
+docker run --rm -it cvsight-api:0.2.0 python -m shelfsight_api.auth_cli
+```
+
+3. Create `.env` next to `compose.yaml`. The database password goes into a connection
+   URL, so use letters and digits only, for example from `openssl rand -hex 24`. Keep
+   the users JSON in single quotes.
+
+```sh
+SHELFSIGHT_DB_PASSWORD=replace-with-letters-and-digits
+SHELFSIGHT_AUTH_USERS='[{"username":"owner","role":"owner","password_hash":"scrypt:..."}]'
+CVSIGHT_SITE_ADDRESS=cvsight.example.com
+```
+
+4. Start everything, then open `https://cvsight.example.com`:
+
+```sh
+docker compose up -d --build
+docker compose ps
+```
+
+To upgrade, pull the new source and run `docker compose up -d --build` again. The
+migration service applies any new migrations before the API and worker start. Setting
+`CVSIGHT_SITE_ADDRESS=localhost` gives a local trial with a certificate from Caddy's
+own authority, which browsers show as untrusted. To pre-label with a detector runtime,
+set `SHELFSIGHT_DETECTOR_RUNTIME_URL` in `.env` to an address the worker container can
+reach.
+
+Back up with a verified recovery bundle, the same format `scripts/backup.ps1` writes:
+
+```sh
+scripts/backup-compose.sh /var/backups/cvsight/2026-09-26
+```
+
+The script stops the API and worker for a consistent recovery point, dumps the database,
+copies managed media, checks the bundle against its manifest, and starts them again. For
+a nightly backup, add a cron entry such as
+`15 3 * * * cd /opt/cvsight && scripts/backup-compose.sh /var/backups/cvsight/$(date +\%F)`,
+and copy each bundle to storage on another machine as described in `RECOVERY.md`.
+`scripts/restore-compose.sh BUNDLE` restores a bundle into a new deployment with empty
+volumes and refuses one that already holds data.
 
 ## Quality checks
 

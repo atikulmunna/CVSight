@@ -1,0 +1,19 @@
+# Allowlist: images get only what they build from, never .env, media, backups, or notes.
+*
+!LICENSE
+!pyproject.toml
+!uv.lock
+!alembic.ini
+!migrations/
+!shelfsight_api/
+!benchmark_tool/
+!frontend/
+!docker/
+frontend/node_modules/
+frontend/dist/
+frontend/coverage/
+frontend/public/local-fixtures/
+**/__pycache__/
+**/AGENTS.md
+**/CLAUDE.md
+**/tasks.md

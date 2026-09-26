@@ -1,0 +1,41 @@
+{
+	order rate_limit before basic_auth
+}
+
+# A domain name gets a public certificate automatically; localhost or an IP address gets
+# one from Caddy's own local authority. Requests for any other host are not served.
+{$CVSIGHT_SITE_ADDRESS} {
+	encode zstd gzip
+
+	header {
+		Strict-Transport-Security "max-age=31536000"
+		X-Content-Type-Options nosniff
+		X-Frame-Options DENY
+		Referrer-Policy same-origin
+		-Server
+	}
+
+	# The API does not throttle sign-in, so password guessing is limited here: at most
+	# 10 attempts per client address per minute.
+	rate_limit {
+		zone sign_in {
+			match {
+				method POST
+				path /api/auth/login
+			}
+			key {remote_host}
+			events 10
+			window 1m
+		}
+	}
+
+	handle /api/* {
+		reverse_proxy api:8000
+	}
+
+	handle {
+		root * /srv
+		try_files {path} /index.html
+		file_server
+	}
+}

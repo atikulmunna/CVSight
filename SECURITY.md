@@ -7,7 +7,11 @@ media directory, model files, user configuration, reverse proxy, and backups.
 ## Release boundary
 
 - Bind PostgreSQL, the API, and the development frontend to loopback. Remote access
-  requires an operator-managed HTTPS reverse proxy.
+  requires an operator-managed HTTPS reverse proxy. The Compose deployment in
+  `compose.yaml` provides one: only Caddy publishes ports, it terminates HTTPS, serves
+  nothing for other host names, and allows 10 sign-in attempts per client address per
+  minute. Behind another load balancer, that limit applies to the balancer's address
+  unless Caddy is configured to trust its forwarded client address.
 - Set `SHELFSIGHT_SESSION_COOKIE_SECURE=true` behind HTTPS. The reverse proxy must rate
   limit login attempts and reject malformed Host headers.
 - Give each person a named account with the least privileged role. Do not share the
@@ -26,6 +30,7 @@ media directory, model files, user configuration, reverse proxy, and backups.
 | Exports | Archive path injection, export of mutable work, or unintended data release | Owner-only access, immutable snapshots, fixed generated entry names, bounded canonical media, deterministic checksums, and no user-selected output paths | An owner can export all approved snapshot content. Store and transmit the ZIP as sensitive data. |
 | Model inputs | Arbitrary file reads, checkpoint selection, command injection, or oversized output | API requests use database identifiers, bounded geometry and payloads, server-resolved canonical media, operator-only jobs, and environment-selected local checkpoints | Model code and checkpoint files are operator-supplied trusted components and run in separate workers. |
 | Administration | Credential theft, role spoofing, CSRF, or audit tampering | Scrypt password hashes, opaque server sessions stored as hashes, HttpOnly SameSite Strict cookies, server-derived actors, least-privilege roles, and immutable auth audit rows | The built-in server is not a public login edge. Internet exposure requires HTTPS and proxy rate limiting. |
+| Deployment containers | Vulnerable packages in the API, worker, or proxy images, or a compromised process gaining root | Digest-pinned bases rebuilt with current security packages, a non-root API and worker, no pip or uv in the runtime image, Caddy rebuilt with a patched Go toolchain and modules, only the proxy publishing ports, and repeatable Trivy checks of every image | The proxy runs as root inside its container, as the upstream Caddy image does, to bind ports 80 and 443. |
 | Database container | Vulnerable base packages or privilege escalation | Pinned pgvector base, current security package upgrades, removal of the root helper, non-root runtime, loopback port binding, and repeatable Trivy checks | See the explicit upstream vulnerability acceptance below. |
 
 ## Media privacy
@@ -81,9 +86,9 @@ Run the release security gate from the repository root:
 ```
 
 It audits the frozen Python runtime graph with pip-audit, audits the full npm graph,
-rebuilds the rootless database image from its pinned base with current Debian security
-updates, and scans the resulting local image with pinned Trivy 0.74.0. Any fixable high
-or critical finding fails the command. The script requires network access and Docker.
+rebuilds every image `compose.yaml` runs (database, API and worker, and web proxy) from
+its pinned base with current security packages, and scans each resulting local image
+with pinned Trivy 0.74.0. Any fixable high or critical finding fails the command. The script requires network access and Docker.
 Passing evidence is retained locally at `benchmark-local/t039-security-report.json`.
 
 The image build passes `--no-cache`, and that flag carries the gate's meaning. The base
@@ -95,6 +100,14 @@ vulnerability database is downloaded in its own step with a long timeout, becaus
 around 116 MiB and a slow link otherwise exhausts the scan timeout before any scanning
 starts. Operators running the image outside the gate must rebuild it the same way rather
 than trusting a locally cached build.
+
+On 2026-09-26 the gate was extended to the deployment images. The API image passes
+after its runtime stage dropped pip, which vendors old msgpack and setuptools code, and
+the uv binary and cache, which only the build stage needs. Stock Caddy images failed the
+gate: 2.10 carried 83 fixable high or critical findings, and 2.11.4, the latest release,
+carried 17 in its Go toolchain and modules. The web image therefore builds Caddy 2.11.4
+with Go 1.26.6 and fixed `x/crypto`, `x/net`, `x/text`, and gRPC versions. Drop that
+build stage once a Caddy release includes the fixes.
 
 On 2026-09-22 a cacheless rebuild removed three fixable high findings in `libpcre2-8-0`
 (CVE-2026-86145, CVE-2026-89157, CVE-2026-89161) by upgrading the package from `10.42-1`

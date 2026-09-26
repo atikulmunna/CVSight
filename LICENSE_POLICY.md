@@ -40,7 +40,9 @@ makes no network font requests.
 FiftyOne 1.19.0 is an optional Apache-licensed operator projection. Its isolated Python
 environment includes permissive and unmodified LGPL dependencies. It is not bundled in
 the frontend or core API distribution. The PostgreSQL image uses PostgreSQL and pgvector
-components under their upstream PostgreSQL licenses.
+components under their upstream PostgreSQL licenses. The web image bundles Caddy and its
+caddy-ratelimit module, both Apache-2.0, compiled unmodified from their published Go
+modules.
 
 Run the repeatable metadata audit from the repository root:
 
