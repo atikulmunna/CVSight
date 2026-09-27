@@ -85,6 +85,8 @@ services:
     restart: unless-stopped
     environment:
       CVSIGHT_SITE_ADDRESS: ${CVSIGHT_SITE_ADDRESS:?Set CVSIGHT_SITE_ADDRESS}
+      # Only when people reach the deployment by IP address instead of a name.
+      CVSIGHT_IP_ADDRESS: ${CVSIGHT_IP_ADDRESS:-localhost}
     ports:
       - "80:80"
       - "443:443"

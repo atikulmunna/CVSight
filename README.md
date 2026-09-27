@@ -231,8 +231,8 @@ worker named `local-worker`.
 
 ## Deploy with Docker Compose
 
-`compose.yaml` runs the whole platform on one Linux host: PostgreSQL, a one-off
-migration, the API, the job worker, and Caddy as the only published entrypoint. Caddy
+`compose.yaml` runs the whole platform on one Docker host, either a Linux server or a
+Windows PC with Docker Desktop: PostgreSQL, a one-off migration, the API, the job worker, and Caddy as the only published entrypoint. Caddy
 serves the frontend, proxies `/api`, obtains and renews HTTPS certificates, and allows at
 most 10 sign-in attempts per client address per minute. Long-running services restart
 after a crash or a host reboot, the database and API have health checks, and container
@@ -284,7 +284,28 @@ a nightly backup, add a cron entry such as
 `15 3 * * * cd /opt/cvsight && scripts/backup-compose.sh /var/backups/cvsight/$(date +\%F)`,
 and copy each bundle to storage on another machine as described in `RECOVERY.md`.
 `scripts/restore-compose.sh BUNDLE` restores a bundle into a new deployment with empty
-volumes and refuses one that already holds data.
+volumes and refuses one that already holds data. On Windows, use
+`scripts/backup-compose.ps1 -OutputDirectory DIR` and
+`scripts/restore-compose.ps1 -BundleDirectory DIR` instead; they do the same work inside
+the deployment's containers.
+
+To move an existing development install into a deployment on the same Windows PC, stop
+the development API and worker, add the addresses to `.env`, then back up and restore.
+`CVSIGHT_SITE_ADDRESS` may list several names separated by commas. Set
+`CVSIGHT_IP_ADDRESS` whenever people reach the deployment by IP address: a browser sends
+no server name to an IP, so Caddy needs to be told which certificate to use.
+
+```powershell
+Add-Content .env "CVSIGHT_SITE_ADDRESS=localhost, 192.168.1.20"
+Add-Content .env "CVSIGHT_IP_ADDRESS=192.168.1.20"
+./scripts/backup.ps1 -DatabaseContainer cvsight-database-1 -MediaRoot ./media-local `
+  -OutputDirectory ./backup-local/to-docker
+./scripts/restore-compose.ps1 -BundleDirectory ./backup-local/to-docker
+```
+
+The existing accounts and passwords carry over, and other devices on the same network
+reach it at `https://192.168.1.20` after accepting the certificate warning. From then on
+the development and Compose copies are separate, so work in only one of them.
 
 ## Quality checks
 

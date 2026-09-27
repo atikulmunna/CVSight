@@ -87,6 +87,13 @@ scripts/backup-compose.sh /var/backups/cvsight/2026-09-26
 scripts/restore-compose.sh /var/backups/cvsight/2026-09-26
 ```
 
+On a Windows host with Docker Desktop, use the PowerShell equivalents:
+
+```powershell
+./scripts/backup-compose.ps1 -OutputDirectory ./backup-local/2026-09-26
+./scripts/restore-compose.ps1 -BundleDirectory ./backup-local/2026-09-26
+```
+
 The backup stops the API and worker for a quiescent recovery point, then starts again
 only the services that were running. It validates the PostgreSQL archive and the whole
 bundle before publishing the output directory, and it hands the bundle to the user who
