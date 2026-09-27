@@ -91,6 +91,8 @@ services:
       - "80:80"
       - "443:443"
       - "443:443/udp"
+      # Tunnel entry point (plain HTTP), reachable only from this host.
+      - "127.0.0.1:8081:8081"
     volumes:
       - caddy_data:/data
       - caddy_config:/config

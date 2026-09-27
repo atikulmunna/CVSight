@@ -307,6 +307,31 @@ The existing accounts and passwords carry over, and other devices on the same ne
 reach it at `https://192.168.1.20` after accepting the certificate warning. From then on
 the development and Compose copies are separate, so work in only one of them.
 
+### Use it from your own devices with Tailscale
+
+Browsers only trust HTTPS for a real domain name, so `localhost` and LAN addresses show
+a certificate warning on every device. Tailscale, free for personal use, gives the
+deployment a private name such as `https://my-pc.tailnet-name.ts.net` with a trusted
+certificate. It works from any network, needs no router or firewall changes, and only
+devices signed in to your Tailscale account can reach it.
+
+1. Install Tailscale on the host and sign in. In the Tailscale admin console, open
+   **DNS** and enable **MagicDNS** and **HTTPS Certificates**.
+2. Point Tailscale at the deployment's tunnel entry point, which Compose publishes as
+   plain HTTP on the host's loopback port 8081:
+
+```powershell
+tailscale serve --bg http://127.0.0.1:8081
+tailscale serve status
+```
+
+3. Install the Tailscale app on each phone or laptop, sign in to the same account, and
+   open the `https://...ts.net` address that `tailscale serve status` prints.
+
+The sign-in limit applies per device: Caddy trusts the client address that the tunnel
+forwards, but only on the loopback entry point, so it cannot be spoofed from the
+network. `tailscale serve reset` turns the address off again.
+
 ## Quality checks
 
 The database tests run against a separate PostgreSQL database named by

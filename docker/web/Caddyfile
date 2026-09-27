@@ -3,11 +3,14 @@
 	# A browser connecting to an IP address sends no server name, and behind Docker's port
 	# forwarding Caddy cannot tell which address was used, so name the certificate to use.
 	default_sni {$CVSIGHT_IP_ADDRESS}
+	# Only the tunnel entry point below trusts forwarded client addresses. Compose publishes
+	# it on the host's loopback, so the only proxy that can reach it runs on the host.
+	servers :8081 {
+		trusted_proxies static private_ranges
+	}
 }
 
-# A domain name gets a public certificate automatically; localhost or an IP address gets
-# one from Caddy's own local authority. Requests for any other host are not served.
-{$CVSIGHT_SITE_ADDRESS} {
+(cvsight) {
 	encode zstd gzip
 
 	header {
@@ -26,7 +29,7 @@
 				method POST
 				path /api/auth/login
 			}
-			key {remote_host}
+			key {client_ip}
 			events 10
 			window 1m
 		}
@@ -41,4 +44,16 @@
 		try_files {path} /index.html
 		file_server
 	}
+}
+
+# A domain name gets a public certificate automatically; localhost or an IP address gets
+# one from Caddy's own local authority. Requests for any other host are not served.
+{$CVSIGHT_SITE_ADDRESS} {
+	import cvsight
+}
+
+# Plain HTTP for a tunnel on the host, such as tailscale serve, which terminates HTTPS
+# with its own trusted certificate and forwards here.
+http://:8081 {
+	import cvsight
 }
