@@ -330,7 +330,26 @@ tailscale serve status
 
 The sign-in limit applies per device: Caddy trusts the client address that the tunnel
 forwards, but only on the loopback entry point, so it cannot be spoofed from the
-network. `tailscale serve reset` turns the address off again.
+network.
+
+### Manage who can use it
+
+`scripts/cvsight-access.ps1` on Windows, or `scripts/cvsight-access.sh` on Linux, handles
+accounts and the Tailscale address in one command. Account changes run inside the
+deployment's API image, so the host needs only Docker:
+
+| Command | What it does |
+| --- | --- |
+| `cvsight-access list` | Lists the accounts and their roles |
+| `cvsight-access add rahim annotator` | Asks for a password, adds the account, restarts the API, and prints what to send the new user |
+| `cvsight-access password rahim` | Sets a new password |
+| `cvsight-access remove rahim` | Removes the account; the last owner cannot be removed |
+| `cvsight-access share` or `unshare` | Turns the Tailscale address on or off |
+
+A new user also needs network access. In the Tailscale admin console, share the host
+machine with them: they accept with their own Tailscale account and see only that
+machine. They then open the `https://...ts.net` address and sign in with the username
+and password you set.
 
 ## Quality checks
 
@@ -406,7 +425,10 @@ Login successes, failures, logouts, and authenticated authorization denials crea
 immutable audit events. Passwords and session tokens are never written to audit rows.
 Changing or removing a configured user's role invalidates that user's existing
 sessions. Add or update accounts by editing the local `SHELFSIGHT_AUTH_USERS` value and
-restarting the API. This single-project release does not include team administration.
+restarting the API, or on a Compose deployment with `scripts/cvsight-access` (see
+[Manage who can use it](#manage-who-can-use-it)), which runs
+`python -m shelfsight_api.auth_cli users` and checks the list the way the API does. This
+single-project release does not include team administration.
 
 ## Background jobs
 

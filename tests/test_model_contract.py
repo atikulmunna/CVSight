@@ -21,6 +21,7 @@ from shelfsight_api.model_contract import (
 )
 from shelfsight_api.model_runtime import (
     CLIP_MODEL_ROOT_ENV,
+    DETECTOR_RUNTIME_URL_ENV,
     RFDETR_CHECKPOINT_ENV,
     RFDETR_VERSION_ENV,
     SAM3_CHECKPOINT_ENV,
@@ -323,6 +324,7 @@ def test_worker_registers_models_only_from_operator_configuration(
     monkeypatch.delenv(SAM3_CHECKPOINT_ENV, raising=False)
     monkeypatch.delenv(SAM3_VERSION_ENV, raising=False)
     monkeypatch.delenv(CLIP_MODEL_ROOT_ENV, raising=False)
+    monkeypatch.delenv(DETECTOR_RUNTIME_URL_ENV, raising=False)
     assert configured_model_job_definitions() == {}
 
     monkeypatch.setenv(RFDETR_CHECKPOINT_ENV, "configured-checkpoint.pth")
