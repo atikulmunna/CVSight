@@ -13,10 +13,15 @@ Shelf analytics (realogram, gaps, share of shelf) read only from frozen snapshot
 It runs as a React and TypeScript frontend, a FastAPI backend, PostgreSQL with pgvector,
 and a job worker for model inference.
 
+Labeling needs no GPU and no model. Models are an optional helper: once you promote a
+detector, it pre-labels new photos for people to verify.
+
 ## Contents
 
 - [Interface](#interface)
 - [Quick start](#quick-start)
+  - [Use CVSight (Docker only)](#use-cvsight-docker-only)
+  - [Develop CVSight](#develop-cvsight)
 - [How work flows](#how-work-flows)
 - [Roles and screens](#roles-and-screens)
 - [Troubleshooting](#troubleshooting)
@@ -79,7 +84,58 @@ an unknown product.
 
 ## Quick start
 
-Five steps take a clean machine to a signed-in owner. The
+Pick one path. **Use CVSight** needs only Docker and gives you the whole app at
+`https://localhost`. **Develop CVSight** sets up the source for changing the code and
+running the tests.
+
+### Use CVSight (Docker only)
+
+1. Install Docker (Docker Desktop on Windows or macOS, Docker Engine with the Compose
+   plugin on Linux) and Git, then start Docker.
+2. Get the code:
+
+```sh
+git clone https://github.com/atikulmunna/CVSight.git
+cd CVSight
+```
+
+3. Create the password hash for your owner account. The second command asks for the
+   password twice and prints a line that starts with `scrypt:`:
+
+```sh
+docker build -f docker/api/Dockerfile -t cvsight-api:0.3.0 .
+docker run --rm -it cvsight-api:0.3.0 python -m shelfsight_api.auth_cli
+```
+
+4. Create a file named `.env` in the `CVSight` folder with these three lines. Paste your
+   hash, and choose a database password of letters and digits only:
+
+```sh
+SHELFSIGHT_DB_PASSWORD=replace-with-letters-and-digits
+SHELFSIGHT_AUTH_USERS='[{"username":"owner","role":"owner","password_hash":"scrypt:..."}]'
+CVSIGHT_SITE_ADDRESS=localhost
+```
+
+5. Start it. The first build takes several minutes:
+
+```sh
+docker compose up -d --build
+```
+
+6. Open `https://localhost` and sign in as `owner`. The browser warns that the
+   certificate is not trusted, because it comes from the app's own authority; continue
+   past the warning, or see [Troubleshooting](#troubleshooting).
+
+After a reboot, starting Docker brings the app back on its own; `docker compose stop`
+stops it. Put labeled YOLO or COCO datasets you want to import in the `import-local`
+folder next to `compose.yaml`. From there you can
+[add people](#manage-who-can-use-it),
+[reach it from your phone or another laptop](#use-it-from-your-own-devices-with-tailscale),
+and [back it up](#deploy-with-docker-compose).
+
+### Develop CVSight
+
+Clone the repository as above, then follow these five steps. The
 [first-time setup](#first-time-setup) section explains each one.
 
 1. Copy `.env.example` to `.env`, set a local database password, and paste at least one
@@ -117,11 +173,13 @@ later cycle starts from the promoted model's proposals.
    each, or bulk import up to 250 files per request from the operator import root
    with `POST /api/datasets/{dataset_id}/versions/{version_id}/images/import`. An
    already labeled YOLO or COCO dataset comes in with its boxes through **Import
-   labeled dataset**. Capture metadata such as `split`, capture session, and store
+   labeled dataset**. On a Docker deployment the import root is the `import-local`
+   folder next to `compose.yaml`. Capture metadata such as `split`, capture session, and store
    travels with each image and later keeps related photos on the same side of the
    train, validation, and test boundary.
-3. **Label** (annotator). Owners can choose **Pre-label unlabeled** on the Images page
-   to queue detector proposals when a detect worker is running. Open an image, draw
+3. **Label** (annotator). Labeling needs no model. When a detector is promoted and a
+   detect worker is running, owners can choose **Pre-label unlabeled** on the Images
+   page to queue its proposals. Open an image, draw
    boxes, accept, reject, flag, or duplicate each box, assign SKUs from the catalog,
    and confirm propagation suggestions for visually similar crops. **Mark reviewed and
    next** unlocks once every box has a decision and opens the next image in grid order;
@@ -131,7 +189,7 @@ later cycle starts from the promoted model's proposals.
    annotations first. Approve or flag each one, then **Sign off** to freeze the version
    into an immutable snapshot. The Versions page offers the detection and recognition
    exports for every release, and the owner starts the next working version from it.
-5. **Train, evaluate, promote** (owner, separate GPU environment). Download the
+5. **Train, evaluate, promote** (owner, optional, separate GPU environment). Download the
    detection export, prepare the training set with a license approval file, train
    RF-DETR, evaluate on the frozen test split, register the checkpoint and its report
    as a model candidate, and promote it on the project's **Models** page. Point the
@@ -154,6 +212,30 @@ other route needs a signed-in user of any role. Denied requests are recorded as 
 events.
 
 ## Troubleshooting
+
+Docker deployment:
+
+- The page does not load at all: Docker is not running. Start it; the app starts with
+  it. `docker compose ps` should show the database, API, worker, and web as up.
+- The browser says the connection is not private: expected for `localhost` and LAN
+  addresses, because the certificate comes from Caddy's own authority. Continue past
+  the warning, or trust that authority on this computer by exporting it with
+  `docker compose cp web:/data/caddy/pki/authorities/local/root.crt caddy-root.crt`
+  and installing `caddy-root.crt` as a trusted root certificate. For other devices, use
+  [Tailscale](#use-it-from-your-own-devices-with-tailscale), which gives an address
+  every browser trusts.
+- `docker compose` reports `required variable ... is missing a value`: `.env` lacks one
+  of the lines from step 4 of the quick start.
+- `Bind for 0.0.0.0:443 failed: port is already allocated`: another program uses port
+  80 or 443. Stop it, then run `docker compose up -d` again.
+- Another device cannot open the LAN address: on Windows, a network marked Public
+  blocks Docker. Use Tailscale, or mark the network Private and allow TCP 80 and 443 in
+  Windows Firewall.
+- **Import labeled dataset** finds nothing at the path: the dataset must be inside
+  `import-local` next to `compose.yaml`, and the path is relative to that folder with
+  forward slashes, such as `shelf-audit`.
+
+Development setup:
 
 - `SHELFSIGHT_DATABASE_URL is required` when starting `dev.ps1` or Alembic: the
   variables are not in this terminal. Run `. ./scripts/load-env.ps1` with the leading
@@ -178,6 +260,12 @@ annotations, catalog, versions and exports, training and registry, analytics, an
 review and annotation workspaces.
 
 ## Requirements
+
+To use CVSight: Docker (Docker Desktop on Windows or macOS, Docker Engine with the Compose
+plugin on Linux) and Git. No GPU is needed; one matters only for running your own
+detector for pre-labeling.
+
+To develop CVSight:
 
 - Python 3.12 or newer
 - uv
@@ -237,7 +325,8 @@ serves the frontend, proxies `/api`, obtains and renews HTTPS certificates, and 
 most 10 sign-in attempts per client address per minute. Long-running services restart
 after a crash or a host reboot, the database and API have health checks, and container
 logs rotate at five files of 10 MB. It uses its own Compose project name, so it never
-touches the development database from `compose.dev.yaml`.
+touches the development database from `compose.dev.yaml`. Datasets to import go in the
+`import-local` folder next to `compose.yaml`, which the API can read but not change.
 
 1. Point a DNS name at the host and open ports 80 and 443. Caddy needs port 80 to prove
    it controls the name before it issues a certificate.
@@ -833,8 +922,9 @@ The parent snapshot and its exports remain unchanged.
 
 ## Labeled dataset import
 
-Owners bring an existing labeled dataset into the open version from the import root,
-either with **Import labeled dataset** on the Images page or through the API:
+Owners bring an existing labeled dataset into the open version from the import root
+(the `import-local` folder next to `compose.yaml` on a Docker deployment, or
+`SHELFSIGHT_IMPORT_ROOT` in development), either with **Import labeled dataset** on the Images page or through the API:
 
 ```text
 POST /api/datasets/{dataset_id}/versions/{version_id}/labeled-imports/preview

@@ -52,6 +52,8 @@ services:
     environment: *api-environment
     volumes:
       - storage:/data
+      # Datasets to import sit in this folder next to compose.yaml; the API only reads it.
+      - ./import-local:/data/import:ro
     depends_on:
       migrate:
         condition: service_completed_successfully
@@ -103,7 +105,7 @@ services:
 
 volumes:
   database:
-  # Managed media lives in /data/media and server-side imports in /data/import.
+  # Managed media lives in /data/media. Imports come from ./import-local instead.
   storage:
   # Caddy keeps its certificates here; losing them only means reissuing.
   caddy_data:
