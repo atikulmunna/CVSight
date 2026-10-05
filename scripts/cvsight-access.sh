@@ -12,7 +12,7 @@ set -eu
 
 root=$(cd "$(dirname "$0")/.." && pwd)
 compose="docker compose -f $root/compose.yaml"
-tunnel_target="http://127.0.0.1:8081"
+tunnel_target="http://127.0.0.1:47080"
 action=${1:-}
 username=${2:-}
 role=${3:-}

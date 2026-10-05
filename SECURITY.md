@@ -13,7 +13,7 @@ media directory, model files, user configuration, reverse proxy, and backups.
   minute. Behind another load balancer, that limit applies to the balancer's address
   unless Caddy is configured to trust its forwarded client address. A plain-HTTP entry
   point for a tunnel on the host, such as `tailscale serve`, is published on the host's
-  loopback port 8081 only; there Caddy trusts forwarded client addresses from private
+  loopback port 47080 only; there Caddy trusts forwarded client addresses from private
   ranges, so the limit still applies per device.
 - Set `SHELFSIGHT_SESSION_COOKIE_SECURE=true` behind HTTPS. The reverse proxy must rate
   limit login attempts and reject malformed Host headers.

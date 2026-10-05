@@ -16,7 +16,7 @@ param(
 $ErrorActionPreference = "Stop"
 $projectRoot = (Resolve-Path (Join-Path $PSScriptRoot "..")).Path
 $composeFile = Join-Path $projectRoot "compose.yaml"
-$tunnelTarget = "http://127.0.0.1:8081"
+$tunnelTarget = "http://127.0.0.1:47080"
 
 function Assert-NativeSuccess {
     param([Parameter(Mandatory)][string]$Step)

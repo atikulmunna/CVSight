@@ -409,10 +409,10 @@ devices signed in to your Tailscale account can reach it.
 1. Install Tailscale on the host and sign in. In the Tailscale admin console, open
    **DNS** and enable **MagicDNS** and **HTTPS Certificates**.
 2. Point Tailscale at the deployment's tunnel entry point, which Compose publishes as
-   plain HTTP on the host's loopback port 8081:
+   plain HTTP on the host's loopback port 47080:
 
 ```powershell
-tailscale serve --bg http://127.0.0.1:8081
+tailscale serve --bg http://127.0.0.1:47080
 tailscale serve status
 ```
 

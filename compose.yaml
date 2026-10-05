@@ -93,8 +93,9 @@ services:
       - "80:80"
       - "443:443"
       - "443:443/udp"
-      # Tunnel entry point (plain HTTP), reachable only from this host.
-      - "127.0.0.1:8081:8081"
+      # Tunnel entry point (plain HTTP), reachable only from this host. The host port is
+      # uncommon on purpose: 8081 is a popular development port and collides easily.
+      - "127.0.0.1:47080:8081"
     volumes:
       - caddy_data:/data
       - caddy_config:/config
