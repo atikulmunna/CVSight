@@ -325,7 +325,8 @@ def test_worker_registers_models_only_from_operator_configuration(
     monkeypatch.delenv(SAM3_VERSION_ENV, raising=False)
     monkeypatch.delenv(CLIP_MODEL_ROOT_ENV, raising=False)
     monkeypatch.delenv(DETECTOR_RUNTIME_URL_ENV, raising=False)
-    assert configured_model_job_definitions() == {}
+    # Evaluation needs no model of its own, so it is the only job left registered.
+    assert set(configured_model_job_definitions()) == {"evaluate_detector"}
 
     monkeypatch.setenv(RFDETR_CHECKPOINT_ENV, "configured-checkpoint.pth")
     with pytest.raises(ValueError, match=RFDETR_VERSION_ENV):

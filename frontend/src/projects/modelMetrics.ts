@@ -1,6 +1,8 @@
 const METRIC_LABELS: Record<string, string> = {
+  map_50: "mAP 50",
   map_50_95: "mAP 50 to 95",
   product_recall_at_iou_50: "Product recall",
+  precision_at_iou_50: "Precision",
   duplicate_rate_at_iou_50: "Duplicate rate",
   dense_scene_recall_at_iou_50: "Dense-scene recall",
   dense_scene_images: "Dense-scene photos",

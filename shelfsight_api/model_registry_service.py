@@ -7,6 +7,7 @@ from uuid import UUID
 
 from sqlalchemy import Connection, func, insert, select, update
 
+from shelfsight_api.detector_metrics import EVALUATION_SCHEMA
 from shelfsight_api.models import (
     dataset_snapshots,
     model_deployment_events,
@@ -15,7 +16,7 @@ from shelfsight_api.models import (
     snapshot_artifacts,
 )
 
-EVALUATION_SCHEMA = "cvsight-detector-evaluation/v1"
+MODEL_CONTRACT_VERSION = "shelfsight-model-contract/v1"
 # Recall over a subset of the evaluation images or boxes, and the metric counting that
 # subset. The recall may be left unmeasured only when the count shows the subset was
 # empty, so a missing score can never stand in for a poor one.
@@ -293,7 +294,7 @@ def _validate_model_metadata(
         raise ModelLineageError("model artifact compatibility is missing")
     required_compatibility = {
         "model_role": model_role,
-        "contract_version": "shelfsight-model-contract/v1",
+        "contract_version": MODEL_CONTRACT_VERSION,
         "input_geometry": "axis_aligned_box",
     }
     if any(compatibility.get(key) != value for key, value in required_compatibility.items()):

@@ -1878,6 +1878,138 @@ code {
   border-left-color: var(--violet);
 }
 
+.model-registration {
+  margin-top: 20px;
+  padding: 22px 24px;
+  background: var(--surface);
+  border: 1px solid var(--line);
+  border-left: 4px solid var(--violet);
+  border-radius: var(--radius-tile);
+}
+
+.model-registration-heading h3 {
+  margin: 0;
+  font-size: 18px;
+}
+
+.model-registration-heading p,
+.model-registration-note {
+  margin: 6px 0 0;
+  color: var(--muted);
+  font-size: 13px;
+  line-height: 1.45;
+}
+
+.model-registration-form {
+  display: grid;
+  grid-template-columns: minmax(220px, 2fr) minmax(180px, 1.4fr) minmax(120px, 0.8fr) auto;
+  align-items: end;
+  gap: 12px;
+  margin-top: 16px;
+}
+
+.model-registration-form .model-registration-note {
+  grid-column: 1 / -1;
+}
+
+.model-registration label {
+  display: grid;
+  gap: 4px;
+  color: var(--muted);
+  font-size: 12px;
+  font-weight: 600;
+}
+
+.model-registration input[type="url"],
+.model-registration input[type="number"],
+.model-registration select,
+.model-registration textarea {
+  min-height: 38px;
+  padding: 0 10px;
+  background: var(--surface);
+  border: 1px solid var(--line-strong);
+  border-radius: 8px;
+  color: var(--ink);
+  font-size: 14px;
+  font-weight: 400;
+}
+
+.model-registration textarea {
+  min-height: 72px;
+  padding: 8px 10px;
+  resize: vertical;
+}
+
+.model-registration input:focus-visible,
+.model-registration select:focus-visible,
+.model-registration textarea:focus-visible {
+  outline: none;
+  border-color: var(--violet);
+  box-shadow: 0 0 0 3px var(--violet-soft);
+}
+
+.model-registration button {
+  min-height: 38px;
+  padding: 0 16px;
+}
+
+.model-registration-progress {
+  margin: 16px 0 0;
+  font-weight: 600;
+}
+
+.model-registration-result {
+  display: grid;
+  gap: 14px;
+  margin-top: 16px;
+}
+
+.model-registration-result > p {
+  margin: 0;
+}
+
+.model-registration-identity {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  gap: 8px;
+}
+
+.model-registration-identity span {
+  color: var(--muted);
+  font-size: 13px;
+}
+
+.model-registration-result .models-metrics {
+  margin: 0;
+}
+
+.model-registration label.model-registration-check {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  color: var(--ink);
+  font-size: 14px;
+  font-weight: 500;
+}
+
+.model-registration-actions {
+  display: flex;
+  gap: 10px;
+}
+
+.model-registration-error {
+  margin: 12px 0 0;
+  color: var(--danger);
+  font-size: 13px;
+}
+
+@media (max-width: 760px) {
+  .model-registration-form {
+    grid-template-columns: 1fr;
+  }
+}
+
 .models-metrics {
   display: grid;
   grid-template-columns: repeat(auto-fit, minmax(150px, 1fr));

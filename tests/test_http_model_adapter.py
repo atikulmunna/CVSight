@@ -175,7 +175,7 @@ def test_worker_serves_detection_from_a_configured_runtime(
     monkeypatch.setattr("shelfsight_api.model_runtime.get_engine", lambda: None)
     monkeypatch.setattr("shelfsight_api.model_runtime.get_media_root", lambda: tmp_path)
 
-    assert set(configured_model_job_definitions()) == {"detect"}
+    assert set(configured_model_job_definitions()) == {"detect", "evaluate_detector"}
 
     monkeypatch.setenv(RFDETR_CHECKPOINT_ENV, "detector.pth")
     with pytest.raises(ValueError, match="not both"):

@@ -13,6 +13,7 @@ import {
   type ModelEntry,
   type ModelRole,
 } from "./modelsApi";
+import { ModelRegistrationPanel } from "./ModelRegistrationPanel";
 import { formatMetric, metricLabel } from "./modelMetrics";
 import { ProjectBand } from "./ProjectBand";
 import { ProjectsHeader } from "./ProjectsHeader";
@@ -139,6 +140,16 @@ export function ProjectModelsPage({
             </p>
           </div>
         </section>
+
+        {currentUser.role === "owner" && (
+          <ModelRegistrationPanel
+            projectId={project.id}
+            onRegistered={() => {
+              setRole("known_sku_detector");
+              setRefreshKey((value) => value + 1);
+            }}
+          />
+        )}
 
         <div className="models-roles" role="tablist" aria-label="Model roles">
           {MODEL_ROLES.map((option) => (

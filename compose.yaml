@@ -49,7 +49,10 @@ services:
   api:
     image: cvsight-api:0.3.0
     restart: unless-stopped
-    environment: *api-environment
+    environment:
+      <<: *api-environment
+      # Offered as the starting address in the Models page's Register a model panel.
+      SHELFSIGHT_DETECTOR_RUNTIME_URL: ${SHELFSIGHT_DETECTOR_RUNTIME_URL:-}
     volumes:
       - storage:/data
       # Datasets to import sit in this folder next to compose.yaml; the API only reads it.

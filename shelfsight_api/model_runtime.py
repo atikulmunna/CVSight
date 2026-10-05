@@ -17,6 +17,7 @@ from shelfsight_api.model_adapters import (
     load_rfdetr_adapter,
     load_sam3_box_refiner_adapter,
 )
+from shelfsight_api.model_evaluation import EVALUATION_JOB_TYPE, evaluation_job_definition
 from shelfsight_api.model_registry_service import (
     ModelDeploymentNotFoundError,
     get_model_deployment,
@@ -90,8 +91,11 @@ def configured_model_job_definitions() -> dict[str, JobDefinition]:
         adapters["propagation_embedder"] = clip_adapter
         operations.append("embed")
 
+    # Evaluation calls the model service an owner names on the Models page, so it needs
+    # no model of its own and every worker can run it.
+    jobs = {EVALUATION_JOB_TYPE: evaluation_job_definition()}
     if not adapters:
-        return {}
+        return jobs
     engine = get_engine()
     image_resolver = (
         database_embedding_image_resolver(engine, get_media_root())
@@ -108,7 +112,7 @@ def configured_model_job_definitions() -> dict[str, JobDefinition]:
             "embed": _write_embedding,
         },
     )
-    return {operation: definitions[operation] for operation in operations}
+    return {**jobs, **{operation: definitions[operation] for operation in operations}}
 
 
 def promoted_detector_only(write: JobResultWriter) -> JobResultWriter:

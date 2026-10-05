@@ -83,7 +83,7 @@ def build_detection_export(
     media_root: Path,
     dataset_version_id: UUID,
 ) -> bytes:
-    snapshot = _load_snapshot(connection, dataset_version_id)
+    snapshot = load_snapshot(connection, dataset_version_id)
     entries: dict[str, bytes] = {}
     coco_images: list[dict[str, Any]] = []
     image_numbers: dict[UUID, int] = {}
@@ -105,7 +105,7 @@ def build_detection_export(
             }
         )
 
-    accepted = [row for row in snapshot.annotations if _is_training_annotation(row)]
+    accepted = [row for row in snapshot.annotations if is_training_annotation(row)]
     coco_annotations = [
         _coco_annotation(index, row, image_numbers)
         for index, row in enumerate(accepted, start=1)
@@ -153,8 +153,8 @@ def build_dataset_export(
     Boxes are named by their class type, or in SKU mode by the SKU they show. A split
     already recorded for a photo, including an imported dataset's own split, is kept.
     """
-    snapshot = _load_snapshot(connection, dataset_version_id)
-    accepted = [row for row in snapshot.annotations if _is_training_annotation(row)]
+    snapshot = load_snapshot(connection, dataset_version_id)
+    accepted = [row for row in snapshot.annotations if is_training_annotation(row)]
     for row in accepted:
         _validate_geometry(row)
     names = _box_class_names(accepted, class_mode, snapshot.skus)
@@ -273,13 +273,13 @@ def build_recognition_export(
     media_root: Path,
     dataset_version_id: UUID,
 ) -> bytes:
-    snapshot = _load_snapshot(connection, dataset_version_id)
+    snapshot = load_snapshot(connection, dataset_version_id)
     entries: dict[str, bytes] = {}
     samples: list[dict[str, Any]] = []
     product_rows = [
         row
         for row in snapshot.annotations
-        if _is_training_annotation(row) and row["class_type"] == "product"
+        if is_training_annotation(row) and row["class_type"] == "product"
     ]
     image_by_id = {
         UUID(str(image["id"])): image
@@ -412,7 +412,7 @@ def read_recognition_export(archive: bytes) -> list[dict[str, Any]]:
     return samples
 
 
-def _load_snapshot(
+def load_snapshot(
     connection: Connection,
     dataset_version_id: UUID,
 ) -> SnapshotData:
@@ -760,7 +760,7 @@ def _validate_geometry(row: Mapping[str, Any]) -> None:
         raise InvalidExportArchiveError("annotation class is invalid")
 
 
-def _is_training_annotation(row: Mapping[str, Any]) -> bool:
+def is_training_annotation(row: Mapping[str, Any]) -> bool:
     return bool(
         row["lifecycle_state"] == "verified"
         and row["review_state"] == "accepted"

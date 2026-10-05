@@ -2,25 +2,7 @@ import math
 from collections.abc import Sequence
 from typing import Any
 
-
-def intersection_over_union(first: Sequence[float], second: Sequence[float]) -> float:
-    first_x, first_y, first_width, first_height = first
-    second_x, second_y, second_width, second_height = second
-
-    intersection_left = max(first_x, second_x)
-    intersection_top = max(first_y, second_y)
-    intersection_right = min(first_x + first_width, second_x + second_width)
-    intersection_bottom = min(first_y + first_height, second_y + second_height)
-    intersection_width = max(0.0, intersection_right - intersection_left)
-    intersection_height = max(0.0, intersection_bottom - intersection_top)
-    intersection_area = intersection_width * intersection_height
-
-    first_area = max(0.0, first_width) * max(0.0, first_height)
-    second_area = max(0.0, second_width) * max(0.0, second_height)
-    union_area = first_area + second_area - intersection_area
-    if union_area <= 0:
-        return 0.0
-    return intersection_area / union_area
+from shelfsight_api.detector_metrics import intersection_over_union as intersection_over_union
 
 
 def evaluate_detections(

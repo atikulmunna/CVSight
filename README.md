@@ -1117,8 +1117,31 @@ page labels such entries as trained outside CVSight.
 
 Owners can browse candidates, the active deployment, and its rollback target for every
 model role at `http://127.0.0.1:5173/projects/{project_id}/models`, and promote or roll
-back from there. The registry is shared by every project. Candidate registration stays
-an API operation because it references uploaded artifacts.
+back from there. The registry is shared by every project.
+
+A product detector served over HTTP, like any model trained outside CVSight, is
+registered from the same page. **Register a model** takes the model service address,
+a signed-off release to test on, and a confidence threshold, then queues a worker job
+that sends every photo in the release to the model and scores its boxes against the
+verified products with the same evaluator as RF-DETR training. The panel shows progress
+and the scores, and the model's fingerprint as the service reports it. After the owner
+describes where the model comes from and confirms its license, **Register model**
+records the model and its evaluation on that release and adds it as a candidate.
+Promotion stays a separate step. Each model fingerprint is registered once, so a second
+evaluation of the same model is refused rather than replacing the first.
+
+```text
+GET  /api/model-registry/evaluations/defaults
+POST /api/model-registry/evaluations
+     {"dataset_version_id": "...", "runtime_url": "http://...", "confidence_threshold": 0.3}
+GET  /api/jobs/{evaluation_id}
+POST /api/model-registry/evaluations/{evaluation_id}/register
+     {"source": "...", "licenses_approved": true}
+```
+
+Test a model on a release it was not trained on and, ideally, one labeled without its
+pre-labels: boxes that started as that model's proposals agree with it by
+construction and flatter its scores.
 
 Registry routes:
 

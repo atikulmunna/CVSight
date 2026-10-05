@@ -34,6 +34,28 @@ export type ModelDeployment = {
   updatedAt: string;
 };
 
+export type EvaluationState = "queued" | "running" | "succeeded" | "failed" | "cancelled";
+
+export type EvaluationReport = {
+  modelId: string;
+  modelVersion: string;
+  modelArtifactSha256: string;
+  photos: number;
+  groundTruthBoxes: number;
+  predictedBoxes: number;
+  confidenceThreshold: number;
+  metrics: Record<string, number | null>;
+};
+
+export type ModelEvaluation = {
+  id: string;
+  state: EvaluationState;
+  progressCurrent: number;
+  progressTotal: number | null;
+  errorCode: string | null;
+  report: EvaluationReport | null;
+};
+
 export class ModelsApiError extends Error {
   constructor(
     readonly status: number,
@@ -121,6 +143,129 @@ async function deploymentAction(
   return parseDeployment(body);
 }
 
+export async function loadEvaluationDefaults(fetcher: typeof fetch = fetch): Promise<string | null> {
+  const response = await fetcher("/api/model-registry/evaluations/defaults", {
+    headers: { Accept: "application/json" },
+  });
+  const body = await responseBody(response);
+  if (!response.ok) {
+    throw requestError(response.status, body);
+  }
+  const runtimeUrl = record(body).runtime_url;
+  return typeof runtimeUrl === "string" && runtimeUrl ? runtimeUrl : null;
+}
+
+export async function startModelEvaluation(
+  request: { datasetVersionId: string; runtimeUrl: string; confidenceThreshold: number },
+  fetcher: typeof fetch = fetch,
+): Promise<ModelEvaluation> {
+  const response = await fetcher("/api/model-registry/evaluations", {
+    method: "POST",
+    headers: { Accept: "application/json", "Content-Type": "application/json" },
+    body: JSON.stringify({
+      dataset_version_id: request.datasetVersionId,
+      runtime_url: request.runtimeUrl,
+      confidence_threshold: request.confidenceThreshold,
+    }),
+  });
+  const body = await responseBody(response);
+  if (!response.ok) {
+    throw requestError(response.status, body);
+  }
+  return parseEvaluation(body);
+}
+
+export async function loadModelEvaluation(
+  evaluationId: string,
+  fetcher: typeof fetch = fetch,
+): Promise<ModelEvaluation> {
+  const response = await fetcher(`/api/jobs/${encodeURIComponent(uuid(evaluationId))}`, {
+    headers: { Accept: "application/json" },
+  });
+  const body = await responseBody(response);
+  if (!response.ok) {
+    throw requestError(response.status, body);
+  }
+  return parseEvaluation(body);
+}
+
+export async function registerEvaluatedModel(
+  evaluationId: string,
+  source: string,
+  licensesApproved: boolean,
+  fetcher: typeof fetch = fetch,
+): Promise<ModelEntry> {
+  const response = await fetcher(
+    `/api/model-registry/evaluations/${encodeURIComponent(uuid(evaluationId))}/register`,
+    {
+      method: "POST",
+      headers: { Accept: "application/json", "Content-Type": "application/json" },
+      body: JSON.stringify({ source, licenses_approved: licensesApproved }),
+    },
+  );
+  const body = await responseBody(response);
+  if (!response.ok) {
+    throw requestError(response.status, body);
+  }
+  return parseEntry(body);
+}
+
+function parseEvaluation(value: unknown): ModelEvaluation {
+  const job = record(value);
+  const state = job.state;
+  if (
+    job.job_type !== "evaluate_detector" ||
+    (state !== "queued" && state !== "running" && state !== "succeeded" &&
+      state !== "failed" && state !== "cancelled")
+  ) {
+    throw new ModelsApiError(502, "invalid_response");
+  }
+  return {
+    id: uuid(job.id),
+    state,
+    progressCurrent: count(job.progress_current),
+    progressTotal: job.progress_total === null ? null : count(job.progress_total),
+    errorCode: typeof job.error_code === "string" ? job.error_code : null,
+    report: state === "succeeded" ? parseReport(job.result) : null,
+  };
+}
+
+function parseReport(value: unknown): EvaluationReport {
+  const report = record(value);
+  const threshold = report.confidence_threshold;
+  if (typeof threshold !== "number") {
+    throw new ModelsApiError(502, "invalid_response");
+  }
+  return {
+    modelId: requiredString(report.model_id),
+    modelVersion: requiredString(report.model_version),
+    modelArtifactSha256: requiredString(report.model_artifact_sha256),
+    photos: count(report.photos),
+    groundTruthBoxes: count(report.ground_truth_boxes),
+    predictedBoxes: count(report.predicted_boxes),
+    confidenceThreshold: threshold,
+    metrics: parseMetrics(report.metrics),
+  };
+}
+
+// Numeric scores, plus null for a subset recall the evaluation could not measure.
+function parseMetrics(value: unknown): Record<string, number | null> {
+  const metrics: Record<string, number | null> = {};
+  for (const [key, metric] of Object.entries(record(value))) {
+    if (metric === null || (typeof metric === "number" && Number.isFinite(metric))) {
+      metrics[key] = metric;
+    }
+  }
+  return metrics;
+}
+
+function count(value: unknown): number {
+  if (typeof value !== "number" || !Number.isInteger(value) || value < 0) {
+    throw new ModelsApiError(502, "invalid_response");
+  }
+  return value;
+}
+
 function parseDeployment(value: unknown): ModelDeployment {
   const deployment = record(value);
   return {
@@ -140,13 +285,7 @@ function parseEntry(value: unknown): ModelEntry {
   if (status !== "candidate" && status !== "default" && status !== "previous") {
     throw new ModelsApiError(502, "invalid_response");
   }
-  const metrics = record(entry.metrics);
-  const numericMetrics: Record<string, number | null> = {};
-  for (const [key, metric] of Object.entries(metrics)) {
-    if (metric === null || (typeof metric === "number" && Number.isFinite(metric))) {
-      numericMetrics[key] = metric;
-    }
-  }
+  const numericMetrics = parseMetrics(entry.metrics);
   return {
     id: uuid(entry.id),
     modelRole: requiredString(entry.model_role),
