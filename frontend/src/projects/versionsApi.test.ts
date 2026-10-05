@@ -5,6 +5,8 @@ import {
   loadProjectVersions,
   loadWorkingVersionReview,
   ProjectVersionsApiError,
+  splitProblem,
+  trainingExportUrl,
   versionExportUrl,
 } from "./versionsApi";
 
@@ -63,6 +65,27 @@ describe("project versions API", () => {
     );
     expect(() => versionExportUrl("unsafe", "detection")).toThrow(
       new ProjectVersionsApiError(502, "invalid_response"),
+    );
+  });
+
+  it("adds the class mode and split to training export URLs", () => {
+    expect(trainingExportUrl(RELEASE_ID, "tfrecord", "sku", { train: 60, valid: 20, test: 20 })).toBe(
+      `/api/dataset-versions/${RELEASE_ID}/exports/tfrecord?classes=sku&split=60%2C20%2C20`,
+    );
+  });
+
+  it("checks a split the same way the export API does", () => {
+    expect(splitProblem({ train: 70, valid: 20, test: 10 })).toBeNull();
+    expect(splitProblem({ train: 80, valid: 20, test: 0 })).toBeNull();
+    expect(splitProblem({ train: 70, valid: 20, test: 20 })).toBe(
+      "The split adds up to 110%; it must be 100%.",
+    );
+    expect(splitProblem({ train: 0, valid: 50, test: 50 })).toBe("Training needs a share above 0%.");
+    expect(splitProblem({ train: 70.5, valid: 19.5, test: 10 })).toBe(
+      "Use whole percentages from 0 to 100.",
+    );
+    expect(splitProblem({ train: Number.NaN, valid: 20, test: 10 })).toBe(
+      "Use whole percentages from 0 to 100.",
     );
   });
 

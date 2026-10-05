@@ -1,12 +1,13 @@
 from __future__ import annotations
 
 from collections.abc import Mapping
-from typing import Any
+from typing import Any, get_args
 from uuid import UUID, uuid4
 
 from sqlalchemy import Connection, Select, and_, func, insert, literal, select
 from sqlalchemy.sql.selectable import Subquery
 
+from shelfsight_api.export_service import ExportType
 from shelfsight_api.models import (
     annotation_records,
     annotation_revisions,
@@ -192,7 +193,7 @@ def list_dataset_versions(
     exports_by_version: dict[UUID, set[str]] = {}
     for row in export_rows:
         export_type = row["metadata"].get("export_type")
-        if export_type in {"detection", "recognition", "yolo"}:
+        if export_type in get_args(ExportType):
             exports_by_version.setdefault(row["dataset_version_id"], set()).add(export_type)
 
     for version in versions:

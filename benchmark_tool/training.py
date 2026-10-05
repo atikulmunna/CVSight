@@ -12,6 +12,7 @@ from typing import Any
 from zipfile import ZipFile
 
 from shelfsight_api.export_service import read_detection_export, validate_export_archive
+from shelfsight_api.export_split import SPLIT_BOUNDARY_KEYS
 
 TRAINING_SCHEMA = "cvsight-rfdetr-training/v1"
 RUN_SCHEMA = "cvsight-rfdetr-run/v1"
@@ -20,12 +21,7 @@ SPLIT_DIRECTORIES = {
     "validation": "valid",
     "test": "test",
 }
-BOUNDARY_KEYS = (
-    "near_duplicate_group",
-    "capture_session_id",
-    "store_id",
-    "fixture_id",
-)
+BOUNDARY_KEYS = SPLIT_BOUNDARY_KEYS
 
 
 class TrainingInputError(ValueError):

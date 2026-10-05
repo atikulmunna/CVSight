@@ -13,10 +13,17 @@ from typing import Any, Literal
 from uuid import UUID
 from zipfile import ZIP_DEFLATED, BadZipFile, ZipFile, ZipInfo
 
-import yaml
 from PIL import Image, UnidentifiedImageError
 from sqlalchemy import Connection, select
 
+from shelfsight_api.dataset_formats import ExportBox, ExportImage, write_dataset
+from shelfsight_api.export_split import (
+    SPLIT_BOUNDARY_KEYS,
+    SplitCandidate,
+    SplitRatios,
+    assign_splits,
+    normalize_split,
+)
 from shelfsight_api.geometry import pixel_crop_bounds
 from shelfsight_api.media import resolve_media_path
 from shelfsight_api.models import (
@@ -29,18 +36,17 @@ from shelfsight_api.models import (
 MANIFEST_SCHEMA = "shelfsight-export-manifest/v1"
 DETECTION_SCHEMA = "shelfsight-coco-detection/v1"
 RECOGNITION_SCHEMA = "shelfsight-recognition-jsonl/v1"
-YOLO_SCHEMA = "shelfsight-yolo-detection/v1"
+DATASET_SCHEMA = "shelfsight-dataset-export/v1"
 COCO_CATEGORIES = (
     {"id": 1, "name": "product", "supercategory": "shelf"},
     {"id": 2, "name": "gap", "supercategory": "shelf"},
     {"id": 3, "name": "shelf_label", "supercategory": "shelf"},
 )
 CATEGORY_IDS = {category["name"]: category["id"] for category in COCO_CATEGORIES}
-YOLO_FOLDERS = {"train": "train", "validation": "val", "test": "test"}
-# YOLO classes are zero-based and follow the COCO category order.
-YOLO_CLASS_INDEXES = {
-    str(category["name"]): index for index, category in enumerate(COCO_CATEGORIES)
-}
+UNKNOWN_SKU_CLASS = "unknown"
+ExportType = Literal["detection", "recognition", "coco", "yolo", "csv", "createml", "tfrecord"]
+DatasetFormat = Literal["coco", "yolo", "csv", "createml", "tfrecord"]
+ClassMode = Literal["product", "sku"]
 ZIP_TIMESTAMP = (1980, 1, 1, 0, 0, 0)
 
 
@@ -134,72 +140,132 @@ def build_detection_export(
     return _zip_bytes(entries)
 
 
-def build_yolo_export(
+def build_dataset_export(
     connection: Connection,
     media_root: Path,
     dataset_version_id: UUID,
+    dataset_format: DatasetFormat,
+    class_mode: ClassMode,
+    ratios: SplitRatios,
 ) -> bytes:
-    """The detection export's images and verified boxes in the Ultralytics YOLO layout.
+    """Verified boxes in a common training format, split without leaking related photos.
 
-    Images keep their snapshot split as train, val, and test folders. Images without a
-    split go to an unsplit folder that data.yaml leaves out, so no split is invented.
+    Boxes are named by their class type, or in SKU mode by the SKU they show. A split
+    already recorded for a photo, including an imported dataset's own split, is kept.
     """
     snapshot = _load_snapshot(connection, dataset_version_id)
     accepted = [row for row in snapshot.annotations if _is_training_annotation(row)]
-    rows_by_image: dict[UUID, list[Mapping[str, Any]]] = defaultdict(list)
     for row in accepted:
         _validate_geometry(row)
-        rows_by_image[UUID(str(row["image_id"]))].append(row)
-
-    entries: dict[str, bytes] = {}
-    folders: Counter[str] = Counter()
-    for image in snapshot.images:
-        image_id = UUID(str(image["id"]))
-        folder = YOLO_FOLDERS.get(_evaluation_metadata(image).get("split", ""), "unsplit")
-        folders[folder] += 1
-        entries[f"images/{folder}/{image_id}.{_image_extension(image)}"] = (
-            _read_canonical_media(media_root, image)
+    names = _box_class_names(accepted, class_mode, snapshot.skus)
+    classes = _class_order(set(names.values()), class_mode)
+    class_index = {name: index for index, name in enumerate(classes)}
+    boxes: dict[str, list[ExportBox]] = defaultdict(list)
+    for row in accepted:
+        boxes[str(row["image_id"])].append(
+            ExportBox(
+                class_index[names[str(row["annotation_id"])]],
+                float(row["x"]),
+                float(row["y"]),
+                float(row["width"]),
+                float(row["height"]),
+            )
         )
-        entries[f"labels/{folder}/{image_id}.txt"] = "".join(
-            _yolo_line(row, image["canonical_width"], image["canonical_height"])
-            for row in rows_by_image[image_id]
-        ).encode("utf-8")
-
-    data = {
-        "path": ".",
-        **{key: f"images/{key}" for key in ("train", "val", "test") if folders[key]},
-        "names": {index: name for name, index in YOLO_CLASS_INDEXES.items()},
-    }
-    entries["data.yaml"] = yaml.safe_dump(data, sort_keys=False).encode("utf-8")
+    splits = assign_splits([_split_candidate(image) for image in snapshot.images], ratios)
+    images = [
+        ExportImage(
+            file_name=f"{image['id']}.{_image_extension(image)}",
+            split=splits[str(image["id"])],
+            width=int(image["canonical_width"]),
+            height=int(image["canonical_height"]),
+            image_format="jpeg" if _image_extension(image) == "jpg" else "png",
+            data=_read_canonical_media(media_root, image),
+            boxes=tuple(boxes[str(image["id"])]),
+        )
+        for image in snapshot.images
+    ]
+    entries = write_dataset(dataset_format, classes, images)
     entries["manifest.json"] = _manifest_bytes(
         snapshot,
-        "yolo",
-        YOLO_SCHEMA,
+        dataset_format,
+        DATASET_SCHEMA,
         entries,
         {
-            "images": len(snapshot.images),
+            "images": len(images),
             "annotations": len(accepted),
             "excluded_annotations": len(snapshot.annotations) - len(accepted),
-            "images_by_folder": dict(sorted(folders.items())),
+            "images_by_split": dict(sorted(Counter(image.split for image in images).items())),
         },
         {
             "annotation_filter": "lifecycle_state=verified and review_state=accepted",
-            "class_indexes": YOLO_CLASS_INDEXES,
-            "product_category_is_sku_agnostic": True,
-            "split_source": "capture_metadata split; images without one are unsplit",
+            "classes": class_mode,
+            "class_names": classes,
+            "split_ratios": ratios.as_dict(),
+            "split_policy": (
+                "recorded splits are kept; photos sharing content, a near-duplicate group, "
+                "capture session, store, or fixture share a split"
+            ),
         },
     )
     return _zip_bytes(entries)
 
 
-def _yolo_line(row: Mapping[str, Any], width: int, height: int) -> str:
-    x, y = float(row["x"]), float(row["y"])
-    box_width, box_height = float(row["width"]), float(row["height"])
-    return (
-        f"{YOLO_CLASS_INDEXES[str(row['class_type'])]} "
-        f"{(x + box_width / 2) / width:.6f} {(y + box_height / 2) / height:.6f} "
-        f"{box_width / width:.6f} {box_height / height:.6f}\n"
+def _box_class_names(
+    rows: list[dict[str, Any]],
+    class_mode: ClassMode,
+    catalog: Mapping[UUID, dict[str, Any]],
+) -> dict[str, str]:
+    training_ids: dict[str, str | None] = {}
+    names: dict[str, str] = {}
+    for row in rows:
+        names[str(row["annotation_id"])] = str(row["class_type"])
+        if class_mode == "sku" and row["class_type"] == "product":
+            sku_id = UUID(str(row["sku_id"])) if row["sku_id"] is not None else None
+            training_ids[str(row["annotation_id"])] = _recognition_label(sku_id, catalog)[
+                "training_sku_id"
+            ]
+    sku_names = _unique_sku_names({sku for sku in training_ids.values() if sku}, catalog)
+    for annotation_id, training_id in training_ids.items():
+        names[annotation_id] = sku_names[training_id] if training_id else UNKNOWN_SKU_CLASS
+    return names
+
+
+def _unique_sku_names(
+    sku_ids: set[str], catalog: Mapping[UUID, dict[str, Any]]
+) -> dict[str, str]:
+    """Class names for the SKUs in an export. Only SKUs that share a name within the
+    export get a UPC suffix; a namesake elsewhere in the catalog does not matter."""
+    by_name: dict[str, list[dict[str, Any]]] = defaultdict(list)
+    for sku_id in sku_ids:
+        sku = catalog[UUID(sku_id)]
+        by_name[str(sku["name"]).strip()].append(sku)
+    names = {}
+    for name, skus in by_name.items():
+        for sku in skus:
+            suffix = sku["upc"] or str(sku["id"])[:8]
+            names[str(sku["id"])] = name if len(skus) == 1 else f"{name} ({suffix})"
+    return names
+
+
+def _class_order(present: set[str], class_mode: ClassMode) -> list[str]:
+    # Product mode keeps the fixed COCO category order so class indexes never move.
+    if class_mode == "product":
+        return [str(category["name"]) for category in COCO_CATEGORIES]
+    trailing = [UNKNOWN_SKU_CLASS, "gap", "shelf_label"]
+    skus = sorted((name for name in present if name not in trailing), key=str.casefold)
+    return skus + [name for name in trailing if name in present]
+
+
+def _split_candidate(image: Mapping[str, Any]) -> SplitCandidate:
+    metadata = _evaluation_metadata(image)
+    recorded = normalize_split(metadata.get("split")) or normalize_split(
+        _provided_metadata(image).get("source_split")
     )
+    boundaries = (
+        f"content_sha256:{image['content_sha256']}",
+        *(f"{key}:{metadata[key]}" for key in SPLIT_BOUNDARY_KEYS if key in metadata),
+    )
+    return SplitCandidate(str(image["id"]), recorded, boundaries)
 
 
 def build_recognition_export(
@@ -427,24 +493,20 @@ def _coco_annotation(
 
 
 def _evaluation_metadata(image: Mapping[str, Any]) -> dict[str, str]:
+    provided = _provided_metadata(image)
+    return {
+        key: value.strip()
+        for key in ("split", *SPLIT_BOUNDARY_KEYS)
+        if isinstance((value := provided.get(key)), str) and value.strip()
+    }
+
+
+def _provided_metadata(image: Mapping[str, Any]) -> dict[str, Any]:
     capture_metadata = image.get("capture_metadata")
     if not isinstance(capture_metadata, dict):
         return {}
     provided = capture_metadata.get("provided", capture_metadata)
-    if not isinstance(provided, dict):
-        return {}
-    keys = (
-        "split",
-        "near_duplicate_group",
-        "capture_session_id",
-        "store_id",
-        "fixture_id",
-    )
-    return {
-        key: value.strip()
-        for key in keys
-        if isinstance((value := provided.get(key)), str) and value.strip()
-    }
+    return provided if isinstance(provided, dict) else {}
 
 
 def _recognition_sample(
@@ -612,7 +674,7 @@ def _read_canonical_media(
 
 def _manifest_bytes(
     snapshot: SnapshotData,
-    export_type: Literal["detection", "recognition", "yolo"],
+    export_type: ExportType,
     artifact_schema: str,
     entries: Mapping[str, bytes],
     counts: Mapping[str, Any],

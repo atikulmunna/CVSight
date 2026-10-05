@@ -10,6 +10,7 @@ from uuid import UUID, uuid4
 from zipfile import ZIP_DEFLATED, ZipFile
 
 import pytest
+import yaml
 from fastapi.testclient import TestClient
 from PIL import Image
 from sqlalchemy import Connection, Engine, delete, func, insert, select, update
@@ -20,13 +21,15 @@ from shelfsight_api.export_service import (
     ExportMediaError,
     ExportVersionNotFrozenError,
     InvalidExportArchiveError,
+    _unique_sku_names,
+    build_dataset_export,
     build_detection_export,
     build_recognition_export,
-    build_yolo_export,
     read_detection_export,
     read_recognition_export,
     validate_export_archive,
 )
+from shelfsight_api.export_split import SplitRatios
 from shelfsight_api.models import (
     dataset_version_images,
     dataset_versions,
@@ -284,37 +287,122 @@ def test_exports_are_deterministic_and_importable(
 def test_yolo_export_lays_out_verified_boxes_by_split(
     database_engine: Engine,
     export_target: ExportTarget,
-    monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     with database_engine.connect() as connection:
-        first = build_yolo_export(connection, export_target.media_root, export_target.version_id)
-        second = build_yolo_export(connection, export_target.media_root, export_target.version_id)
+        first = _dataset_export(connection, export_target, "yolo", "product")
+        second = _dataset_export(connection, export_target, "yolo", "product")
 
     assert first == second
     with ZipFile(BytesIO(first)) as bundle:
         names = set(bundle.namelist())
         labels = bundle.read(f"labels/train/{export_target.image_id}.txt").decode().splitlines()
-        data_yaml = bundle.read("data.yaml").decode()
+        data = yaml.safe_load(bundle.read("data.yaml"))
         manifest = json.loads(bundle.read("manifest.json"))
+    # The recorded split is kept even though the ratios would allow other splits.
     assert f"images/train/{export_target.image_id}.png" in names
     assert len(labels) == 7
     assert "0 0.087500 0.181250 0.137500 0.306250" in labels
     assert sorted({line.split()[0] for line in labels}) == ["0", "1", "2"]
-    assert "train: images/train" in data_yaml
-    assert "val:" not in data_yaml
-    assert "0: product" in data_yaml and "2: shelf_label" in data_yaml
+    assert data == {
+        "path": ".", "train": "images/train", "nc": 3,
+        "names": ["product", "gap", "shelf_label"],
+    }
     assert manifest["export_type"] == "yolo"
     assert manifest["counts"]["annotations"] == 7
     assert manifest["counts"]["excluded_annotations"] == 1
-    assert manifest["counts"]["images_by_folder"] == {"train": 1}
+    assert manifest["counts"]["images_by_split"] == {"train": 1}
+    assert manifest["policies"]["split_ratios"] == {"train": 70, "valid": 20, "test": 10}
 
+
+def test_sku_mode_names_boxes_by_their_trainable_sku(
+    database_engine: Engine,
+    export_target: ExportTarget,
+) -> None:
+    with database_engine.connect() as connection:
+        archive = _dataset_export(connection, export_target, "coco", "sku")
+
+    with ZipFile(BytesIO(archive)) as bundle:
+        coco = json.loads(bundle.read("train/_annotations.coco.json"))
+    names = {category["id"]: category["name"] for category in coco["categories"]}
+    assert list(names.values()) == [
+        "Active Cola", "Merged Target", "unknown", "gap", "shelf_label",
+    ]
+    # Unknown, deprecated, and unassigned products are all untrainable, so "unknown".
+    labeled = sorted(names[a["category_id"]] for a in coco["annotations"])
+    assert labeled == [
+        "Active Cola", "Merged Target", "gap", "shelf_label", "unknown", "unknown", "unknown",
+    ]
+
+
+def test_sku_names_get_a_suffix_only_when_namesakes_share_an_export(
+    database_engine: Engine,
+    export_target: ExportTarget,
+) -> None:
+    namesake_id = uuid4()
+    with database_engine.begin() as connection:
+        connection.execute(insert(skus).values(id=namesake_id, name="Active Cola", status="active"))
+    try:
+        with database_engine.connect() as connection:
+            archive = _dataset_export(connection, export_target, "coco", "sku")
+    finally:
+        with database_engine.begin() as connection:
+            connection.execute(delete(skus).where(skus.c.id == namesake_id))
+
+    with ZipFile(BytesIO(archive)) as bundle:
+        coco = json.loads(bundle.read("train/_annotations.coco.json"))
+    assert "Active Cola" in [category["name"] for category in coco["categories"]]
+
+    first, second = uuid4(), uuid4()
+    catalog = {
+        first: {"id": first, "name": "Cola", "upc": "012345678905"},
+        second: {"id": second, "name": "Cola ", "upc": None},
+    }
+    names = _unique_sku_names({str(first), str(second)}, catalog)
+    assert names == {str(first): "Cola (012345678905)", str(second): f"Cola ({str(second)[:8]})"}
+
+
+def test_dataset_export_api_applies_options_and_refuses_bad_splits(
+    database_engine: Engine,
+    export_target: ExportTarget,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
     monkeypatch.setattr("shelfsight_api.export_api.get_engine", lambda: database_engine)
     monkeypatch.setattr(
         "shelfsight_api.export_api.get_media_root", lambda: export_target.media_root
     )
-    response = client.get(f"/api/dataset-versions/{export_target.version_id}/exports/yolo")
+    url = f"/api/dataset-versions/{export_target.version_id}/exports"
+
+    response = client.get(f"{url}/csv", params={"classes": "sku", "split": "60,20,20"})
+    refused = client.get(f"{url}/tfrecord", params={"split": "50,20,20"})
+
     assert response.status_code == 200
-    assert response.headers["content-disposition"].endswith('-yolo.zip"')
+    assert response.headers["content-disposition"].endswith('-csv-sku.zip"')
+    with ZipFile(BytesIO(response.content)) as bundle:
+        rows = bundle.read("train/_annotations.csv").decode().splitlines()
+    assert rows[0] == "filename,width,height,class,xmin,ymin,xmax,ymax"
+    assert any(",Active Cola," in row for row in rows)
+    assert refused.status_code == 422
+    assert refused.json()["detail"]["code"] == "invalid_split"
+    with database_engine.connect() as connection:
+        artifact = connection.execute(
+            select(snapshot_artifacts.c.metadata).where(
+                snapshot_artifacts.c.dataset_version_id == export_target.version_id,
+                snapshot_artifacts.c.artifact_type == "export",
+            )
+        ).scalar_one()
+    assert artifact == {
+        "export_type": "csv", "classes": "sku",
+        "split": {"train": 60, "valid": 20, "test": 20},
+    }
+
+
+def _dataset_export(
+    connection: Connection, target: ExportTarget, dataset_format: Any, classes: Any
+) -> bytes:
+    return build_dataset_export(
+        connection, target.media_root, target.version_id, dataset_format, classes,
+        SplitRatios(70, 20, 10),
+    )
 
 
 def test_export_api_returns_zip_and_rejects_mutable_versions(

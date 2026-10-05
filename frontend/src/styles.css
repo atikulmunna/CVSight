@@ -1746,6 +1746,84 @@ code {
   color: var(--violet-strong);
 }
 
+.dataset-export {
+  display: grid;
+  gap: 10px;
+  margin: 16px 0 0;
+  padding: 14px 16px;
+  border: 1px solid var(--line);
+  border-radius: var(--radius-control);
+}
+
+.dataset-export legend {
+  padding: 0 6px;
+  font-size: 14px;
+  font-weight: 600;
+}
+
+.dataset-export-fields {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 10px;
+}
+
+.dataset-export label {
+  display: grid;
+  gap: 4px;
+  color: var(--muted);
+  font-size: 12px;
+  font-weight: 600;
+}
+
+.dataset-export select,
+.dataset-export input {
+  min-height: 34px;
+  padding: 0 10px;
+  background: var(--surface);
+  border: 1px solid var(--line-strong);
+  border-radius: 8px;
+  color: var(--ink);
+  font-size: 14px;
+}
+
+.dataset-export-split input {
+  width: 76px;
+}
+
+.dataset-export select:focus-visible,
+.dataset-export input:focus-visible {
+  outline: none;
+  border-color: var(--violet);
+  box-shadow: 0 0 0 3px var(--violet-soft);
+}
+
+.dataset-export a {
+  display: inline-flex;
+  align-items: center;
+  justify-self: start;
+  min-height: 34px;
+  padding: 0 14px;
+  border: 1px solid var(--violet);
+  border-radius: var(--radius-control);
+  color: var(--violet-strong);
+  font-size: 14px;
+  font-weight: 600;
+  text-decoration: none;
+}
+
+.dataset-export-problem {
+  margin: 0;
+  color: var(--danger);
+  font-size: 13px;
+}
+
+.dataset-export-note {
+  margin: 0;
+  color: var(--muted);
+  font-size: 12px;
+  line-height: 1.45;
+}
+
 .versions-section-heading + .create-project-error,
 .versions-working-section > .create-project-error {
   margin-top: 12px;

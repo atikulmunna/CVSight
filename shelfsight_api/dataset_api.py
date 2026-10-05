@@ -33,6 +33,7 @@ from shelfsight_api.dataset_service import (
     list_dataset_versions,
     list_datasets,
 )
+from shelfsight_api.export_service import ExportType
 
 router = APIRouter(prefix="/api")
 
@@ -156,7 +157,7 @@ class DatasetVersionSummaryResponse(BaseModel):
     status: Literal["working", "released", "frozen"]
     image_count: int
     review_signoff: VersionReviewSignoffResponse | None
-    export_types: list[Literal["detection", "recognition", "yolo"]]
+    export_types: list[ExportType]
 
 
 class WorkingVersionResponse(BaseModel):

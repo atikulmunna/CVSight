@@ -1,5 +1,10 @@
 export type ProjectVersionStatus = "working" | "released" | "frozen";
-export type ProjectExportType = "detection" | "recognition" | "yolo";
+export const TRAINING_FORMATS = ["coco", "yolo", "csv", "createml", "tfrecord"] as const;
+export type TrainingFormat = (typeof TRAINING_FORMATS)[number];
+export type ProjectExportType = "detection" | "recognition" | TrainingFormat;
+export type ClassMode = "product" | "sku";
+export type SplitPercentages = { train: number; valid: number; test: number };
+const EXPORT_TYPES: readonly ProjectExportType[] = ["detection", "recognition", ...TRAINING_FORMATS];
 
 export type VersionReviewSignoff = {
   signedBy: string;
@@ -105,6 +110,32 @@ export function versionExportUrl(versionId: string, exportType: ProjectExportTyp
   return `/api/dataset-versions/${encodeURIComponent(uuid(versionId))}/exports/${exportType}`;
 }
 
+export function trainingExportUrl(
+  versionId: string,
+  format: TrainingFormat,
+  classes: ClassMode,
+  split: SplitPercentages,
+): string {
+  const query = new URLSearchParams({ classes, split: `${split.train},${split.valid},${split.test}` });
+  return `${versionExportUrl(versionId, format)}?${query.toString()}`;
+}
+
+// The same rules the export API applies, so a bad split never reaches the server.
+export function splitProblem(split: SplitPercentages): string | null {
+  const values = [split.train, split.valid, split.test];
+  if (values.some((value) => !Number.isInteger(value) || value < 0 || value > 100)) {
+    return "Use whole percentages from 0 to 100.";
+  }
+  const total = values.reduce((sum, value) => sum + value, 0);
+  if (total !== 100) {
+    return `The split adds up to ${total}%; it must be 100%.`;
+  }
+  if (split.train === 0) {
+    return "Training needs a share above 0%.";
+  }
+  return null;
+}
+
 function parseVersion(value: unknown): ProjectVersion {
   const version = record(value);
   const status = version.status;
@@ -126,10 +157,10 @@ function parseVersion(value: unknown): ProjectVersion {
     throw new ProjectVersionsApiError(502, "invalid_response");
   }
   const exportTypes = version.export_types.map((item) => {
-    if (item !== "detection" && item !== "recognition" && item !== "yolo") {
+    if (!EXPORT_TYPES.includes(item as ProjectExportType)) {
       throw new ProjectVersionsApiError(502, "invalid_response");
     }
-    return item;
+    return item as ProjectExportType;
   });
   if (new Set(exportTypes).size !== exportTypes.length) {
     throw new ProjectVersionsApiError(502, "invalid_response");

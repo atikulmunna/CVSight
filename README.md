@@ -188,7 +188,9 @@ later cycle starts from the promoted model's proposals.
 4. **Review and release** (reviewer or owner). **Review QA** lists the riskiest
    annotations first. Approve or flag each one, then **Sign off** to freeze the version
    into an immutable snapshot. The Versions page offers the detection and recognition
-   exports for every release, and the owner starts the next working version from it.
+   exports for every release, plus a training dataset in COCO, YOLO, CSV, CreateML, or
+   TFRecord with product or SKU classes and a split you choose. The owner starts the
+   next working version from it.
 5. **Train, evaluate, promote** (owner, optional, separate GPU environment). Download the
    detection export, prepare the training set with a license approval file, train
    RF-DETR, evaluate on the frozen test split, register the checkpoint and its report
@@ -963,7 +965,8 @@ Only immutable, snapshotted dataset versions can be exported:
 - `POST /api/dataset-versions/{version_id}/snapshot` freezes the export input.
 - `GET /api/dataset-versions/{version_id}/exports/detection`
 - `GET /api/dataset-versions/{version_id}/exports/recognition`
-- `GET /api/dataset-versions/{version_id}/exports/yolo`
+- `GET /api/dataset-versions/{version_id}/exports/{format}?classes=product&split=70,20,10`
+  for the training formats `coco`, `yolo`, `csv`, `createml`, and `tfrecord`
 
 Every route returns a deterministic ZIP file with `manifest.json`. The manifest records
 the dataset and version identifiers, snapshot timestamp, artifact schema, export
@@ -980,11 +983,32 @@ SKUs are trainable. Merged SKUs resolve to their final active target while retai
 the source ID. Unknown, deprecated, and unassigned samples remain in the artifact with
 `trainable=false`.
 
-The YOLO artifact holds the same images and verified boxes as the detection artifact in
-the Ultralytics layout: `images/{train,val,test}`, `labels/{train,val,test}`, and
-`data.yaml` with zero-based classes (product `0`, gap `1`, shelf label `2`). Folders
-follow each image's snapshot split; images without a split go to `unsplit`, which
-`data.yaml` leaves out rather than inventing a split.
+The training formats hold the same images and verified boxes, laid out the way common
+tools read them. On the Versions page, **Training dataset** builds the download from a
+format, a class mode, and split percentages.
+
+| Format | Layout |
+| --- | --- |
+| COCO JSON | `train/`, `valid/`, `test/`, each with its images and `_annotations.coco.json` |
+| YOLO | `images/` and `labels/` with `train`, `val`, and `test` folders, plus `data.yaml` |
+| CSV | one folder per split with its images and `_annotations.csv`: one row per box with `filename,width,height,class,xmin,ymin,xmax,ymax` in pixels |
+| CreateML JSON | one folder per split with its images and `_annotations.createml.json`, boxes by center |
+| TFRecord | `train/train.tfrecord` and the other splits, plus `label_map.pbtxt`, using the TensorFlow Object Detection API feature names |
+
+`classes=product` names boxes by class type (product, gap, shelf label) in that fixed
+order. `classes=sku` names each product box by its SKU, the way Roboflow exports a
+labeled dataset; merged SKUs follow their final target, and unknown, deprecated, or
+unassigned products become `unknown`. Two different SKUs with the same name in one
+export are told apart by UPC, so merge duplicate catalog entries before release to keep
+one class per product.
+
+`split` takes whole train, validation, and test percentages that add up to 100. A split
+already recorded on a photo is kept, including an imported dataset's own train, valid,
+and test folders. The other photos are assigned by ratio, but photos that share content,
+a near-duplicate group, a capture session, a store, or a fixture always land in the
+same split, the same rule training preparation enforces, so test scores are not
+inflated by near-identical photos. With few such groups the result can differ from the
+requested ratio; `manifest.json` records the counts per split.
 
 ## RF-DETR training from reviewed snapshots
 
