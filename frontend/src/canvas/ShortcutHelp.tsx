@@ -61,6 +61,11 @@ const GROUPS: Array<{ title: string; shortcuts: Shortcut[] }> = [
         action: "Draw a box, named with the previous SKU",
         when: (context) => verifying(context) && !context.isGapReview,
       },
+      {
+        keys: "M",
+        action: "Smart box: click a product and SAM boxes it",
+        when: (context) => verifying(context) && !context.isGapReview,
+      },
       { keys: "G", action: "Draw a gap", when: verifying },
     ],
   },

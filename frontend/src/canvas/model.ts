@@ -335,3 +335,17 @@ export function skuLabel(box: AnnotationBox): string {
   }
   return box.skuId === null ? "Unassigned" : box.sku;
 }
+
+// The shelf row of the box whose center is nearest to a height in the scene, so a new
+// box lands in the row it was drawn on.
+export function nearestShelfRow(annotations: AnnotationBox[], y: number): number {
+  const rowCandidates = annotations.filter((box) => box.shelfRow !== null);
+  if (rowCandidates.length === 0) {
+    return 0;
+  }
+  return rowCandidates.reduce((closest, box) =>
+    Math.abs(box.y + box.height / 2 - y) < Math.abs(closest.y + closest.height / 2 - y)
+      ? box
+      : closest,
+  ).shelfRow!;
+}

@@ -1,6 +1,6 @@
 import type { ReactNode } from "react";
 
-export type CanvasTool = "select" | "pan" | "product" | "gap";
+export type CanvasTool = "select" | "pan" | "product" | "smart" | "gap";
 
 type ToolSpec = {
   tool: CanvasTool;
@@ -34,6 +34,12 @@ const TOOLS: ToolSpec[] = [
         <path d="M3.5 3.5h3v3h-3zM17.5 3.5h3v3h-3zM3.5 17.5h3v3h-3zM17.5 17.5h3v3h-3z" />
       </>
     ),
+  },
+  {
+    tool: "smart",
+    label: "Smart box",
+    shortcut: "M",
+    icon: <path d="M4.5 19.5l10-10M16 3.5v3M14.5 5h3M19.5 8.5v2M18.5 9.5h2M10 4v2M9 5h2" />,
   },
   {
     tool: "gap",

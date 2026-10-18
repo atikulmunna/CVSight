@@ -88,6 +88,7 @@ describe("canvas key commands", () => {
   it("maps tools, navigation, view, and help keys in both modes", () => {
     for (const context of [VERIFY, ASSIGN]) {
       expect(canvasCommand(press("b"), context)).toEqual({ type: "chooseTool", tool: "product" });
+      expect(canvasCommand(press("M"), context)).toEqual({ type: "chooseTool", tool: "smart" });
       expect(canvasCommand(press("k"), context)).toEqual({ type: "step", delta: -1 });
       expect(canvasCommand(press("Escape"), context)).toEqual({ type: "clear" });
       expect(canvasCommand(press("="), context)).toEqual({ type: "zoom", factor: ZOOM_STEP });

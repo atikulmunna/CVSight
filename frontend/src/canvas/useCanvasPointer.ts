@@ -19,6 +19,7 @@ import {
   type ScenePoint,
 } from "./editing";
 import type { AnnotationBox, CanvasFixture } from "./model";
+import { nearestShelfRow } from "./model";
 import { boxesInside, rectBetween } from "./selection";
 import { zoomTransform, type SceneTransform } from "./transform";
 
@@ -67,6 +68,8 @@ type CanvasPointerOptions = {
   fixture: CanvasFixture;
   // The drawing tool in use, or null when drawing is not on offer.
   drawMode: DrawnClass | null;
+  // Whether a click asks SAM for the box around the object under it.
+  smartMode: boolean;
   tool: CanvasTool;
   spaceHeld: boolean;
   transform: SceneTransform;
@@ -76,6 +79,8 @@ type CanvasPointerOptions = {
   // The boxes a marquee may select.
   selectableAnnotations: AnnotationBox[];
   onBoxDrawn: (box: AnnotationBox) => void;
+  // A click with the smart box tool, at a scene point on the photo with this index.
+  onSmartClick: (point: ScenePoint, imageIndex: number) => void;
   onGeometryChanged: (annotationId: string, geometry: BoxGeometry) => void;
   // A press on the editable box that ended without a drag.
   onBoxClicked: (annotationId: string) => void;
@@ -88,6 +93,7 @@ type CanvasPointerOptions = {
 export function useCanvasPointer({
   fixture,
   drawMode,
+  smartMode,
   tool,
   spaceHeld,
   transform,
@@ -96,6 +102,7 @@ export function useCanvasPointer({
   activeAnnotations,
   selectableAnnotations,
   onBoxDrawn,
+  onSmartClick,
   onGeometryChanged,
   onBoxClicked,
   onMarqueeSelect,
@@ -125,6 +132,15 @@ export function useCanvasPointer({
       event.button === 1 || (event.button === 0 && (spaceHeld || tool === "pan"));
     if (drawMode && event.button === 0 && !spaceHeld) {
       startDrawing(event, drawMode);
+      return;
+    }
+    if (smartMode && event.button === 0 && !spaceHeld) {
+      event.preventDefault();
+      const point = scenePoint(event, transform);
+      const imageIndex = imageIndexAtPoint(fixture, point);
+      if (imageIndex >= 0) {
+        onSmartClick(point, imageIndex);
+      }
       return;
     }
     if (!shouldPan) {
@@ -375,16 +391,4 @@ function imageIndexAtPoint(fixture: CanvasFixture, point: ScenePoint): number {
       point.y >= image.y &&
       point.y <= image.y + image.height,
   );
-}
-
-function nearestShelfRow(annotations: AnnotationBox[], y: number): number {
-  const rowCandidates = annotations.filter((box) => box.shelfRow !== null);
-  if (rowCandidates.length === 0) {
-    return 0;
-  }
-  return rowCandidates.reduce((closest, box) =>
-    Math.abs(box.y + box.height / 2 - y) < Math.abs(closest.y + closest.height / 2 - y)
-      ? box
-      : closest,
-  ).shelfRow!;
 }

@@ -910,6 +910,74 @@ describe("AnnotationWorkspace", () => {
     expect(crosshair()).toBeNull();
   });
 
+  it("boxes the product under a smart click and undoes it in one step", async () => {
+    const fetchMock = vi.fn().mockImplementation((input: RequestInfo | URL) =>
+      String(input).endsWith("/smart-box")
+        ? Promise.resolve(response(200, { x: 100, y: 120, width: 60, height: 90, score: 0.9 }))
+        : Promise.reject(new TypeError("offline")),
+    );
+    vi.stubGlobal("fetch", fetchMock);
+    const fixture = { ...DEMO_FIXTURE, name: "Smart box fixture", annotations: [] };
+    const { container } = render(<AnnotationWorkspace fixture={fixture} />);
+    const viewport = screen.getByLabelText("Shelf annotation canvas");
+
+    fireEvent.keyDown(viewport, { key: "m" });
+    expect(screen.getByRole("button", { name: "Smart box" })).toHaveAttribute(
+      "aria-pressed",
+      "true",
+    );
+    fireEvent.pointerDown(viewport, { button: 0, pointerId: 1, clientX: 250, clientY: 250 });
+
+    await waitFor(() => expect(container.querySelectorAll(".box-row")).toHaveLength(1));
+    const core = container.querySelector(".annotation.is-selected .overlay-core")!;
+    expect([core.getAttribute("x"), core.getAttribute("width")]).toEqual(["100", "60"]);
+    expect(fetchMock).toHaveBeenCalledWith(
+      `/api/images/${DEMO_FIXTURE.images[0]!.id}/smart-box`,
+      expect.objectContaining({ method: "POST" }),
+    );
+
+    fireEvent.keyDown(viewport, { key: "z", ctrlKey: true });
+    expect(container.querySelectorAll(".box-row")).toHaveLength(0);
+  });
+
+  it("explains a failed smart box and ignores clicks while one is pending", async () => {
+    let answer: (value: unknown) => void = () => undefined;
+    const fetchMock = vi.fn().mockImplementation(
+      () =>
+        new Promise((resolve) => {
+          answer = resolve;
+        }),
+    );
+    vi.stubGlobal("fetch", fetchMock);
+    const { container } = render(
+      <AnnotationWorkspace fixture={{ ...DEMO_FIXTURE, annotations: [] }} />,
+    );
+    const viewport = screen.getByLabelText("Shelf annotation canvas");
+    const click = { button: 0, pointerId: 1, clientX: 250, clientY: 250 };
+
+    fireEvent.keyDown(viewport, { key: "m" });
+    fireEvent.pointerDown(viewport, click);
+    fireEvent.pointerDown(viewport, click);
+    expect(fetchMock).toHaveBeenCalledTimes(1);
+    expect(container.querySelector(".smart-box-pending")).not.toBeNull();
+
+    await act(async () => {
+      answer(response(503, { detail: { code: "smart_box_unavailable" } }));
+    });
+
+    expect(
+      await screen.findByText("Smart box is off: no SAM service is configured."),
+    ).toHaveAttribute("role", "status");
+    expect(container.querySelector(".smart-box-pending")).toBeNull();
+    expect(container.querySelectorAll(".box-row")).toHaveLength(0);
+  });
+
+  it("keeps the smart box out of gap review", () => {
+    render(<AnnotationWorkspace fixture={DEMO_FIXTURE} purpose="gap-review" />);
+
+    expect(screen.queryByRole("button", { name: "Smart box" })).not.toBeInTheDocument();
+  });
+
   it("does not run editing shortcuts from an input", () => {
     const { container } = render(<AnnotationWorkspace fixture={DEMO_FIXTURE} />);
     const search = screen.getByPlaceholderText("SKU, class, state, or ID");

@@ -50,6 +50,7 @@ const TOOL_KEYS: Partial<Record<string, CanvasTool>> = {
   v: "select",
   h: "pan",
   b: "product",
+  m: "smart",
   g: "gap",
 };
 

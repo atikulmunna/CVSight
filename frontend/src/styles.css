@@ -2590,8 +2590,13 @@ code {
 }
 
 /* Pan cursors come last so holding Space while drawing still shows the hand. */
-.canvas-viewport.is-drawing {
+.canvas-viewport.is-drawing,
+.canvas-viewport.tool-smart {
   cursor: crosshair;
+}
+
+.canvas-viewport.is-smart-pending {
+  cursor: progress;
 }
 
 .canvas-viewport.is-pan-ready {
@@ -2766,6 +2771,38 @@ code {
   border: 1px dashed var(--brand);
   background: color-mix(in srgb, var(--brand) 12%, transparent);
   pointer-events: none;
+}
+
+/* Marks the clicked point while SAM looks for the product under it. */
+.smart-box-pending {
+  position: absolute;
+  z-index: 3;
+  width: 22px;
+  height: 22px;
+  margin: -11px 0 0 -11px;
+  border: 2px solid var(--brand);
+  border-radius: 50%;
+  pointer-events: none;
+  animation: smart-box-pulse 0.9s ease-in-out infinite;
+}
+
+@keyframes smart-box-pulse {
+  50% {
+    transform: scale(1.35);
+    opacity: 0.5;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .smart-box-pending {
+    animation: none;
+  }
+}
+
+.canvas-context .smart-box-message {
+  max-width: 280px;
+  color: var(--ov-flagged);
+  white-space: normal;
 }
 
 .draw-crosshair {

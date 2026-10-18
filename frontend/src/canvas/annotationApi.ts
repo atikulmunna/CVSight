@@ -197,7 +197,8 @@ function overlayState(
   return source === "propagated" ? "propagated" : "unverified";
 }
 
-function errorCode(value: unknown): string {
+// The stable code in an API error body, { "detail": { "code": ... } }.
+export function errorCode(value: unknown): string {
   if (!value || typeof value !== "object") {
     return "request_failed";
   }

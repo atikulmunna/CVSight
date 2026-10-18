@@ -63,6 +63,7 @@ import {
 import { useAnnotationAutosave, type SaveStatus } from "./useAnnotationAutosave";
 import { useCanvasBenchmark } from "./useCanvasBenchmark";
 import { useCanvasPointer } from "./useCanvasPointer";
+import { useSmartBox } from "./useSmartBox";
 import { useSkuAssignmentCatalog } from "./useSkuAssignmentCatalog";
 import type { Sku } from "../catalog/model";
 
@@ -144,7 +145,7 @@ export function AnnotationWorkspace({
       ? ["select", "pan"]
       : isGapReview
         ? ["select", "pan", "gap"]
-        : ["select", "pan", "product", "gap"];
+        : ["select", "pan", "product", "smart", "gap"];
   const [display, setDisplay] = useState<DisplaySettings>(loadDisplaySettings);
   const [hideAll, setHideAll] = useState(false);
   const [helpOpen, setHelpOpen] = useState(false);
@@ -157,6 +158,11 @@ export function AnnotationWorkspace({
   });
   const duplicateCounterRef = useRef(0);
   const {
+    pendingPoint: smartBoxPoint,
+    message: smartBoxMessage,
+    request: requestSmartBoxAt,
+  } = useSmartBox({ fixture, activeAnnotations, onBox: completeDrawnBox });
+  const {
     panning,
     draftBox,
     draftGeometry,
@@ -168,6 +174,7 @@ export function AnnotationWorkspace({
   } = useCanvasPointer({
     fixture,
     drawMode: mode === "verify" ? drawMode : null,
+    smartMode: mode === "verify" && tool === "smart",
     tool,
     spaceHeld,
     transform,
@@ -176,6 +183,7 @@ export function AnnotationWorkspace({
     activeAnnotations,
     selectableAnnotations: orderedAnnotations,
     onBoxDrawn: completeDrawnBox,
+    onSmartClick: (point, imageIndex) => void requestSmartBoxAt(point, imageIndex),
     onGeometryChanged: (annotationId, geometry) =>
       autosave.edit(annotationId, "update", (box) => ({
         ...box,
@@ -631,12 +639,19 @@ export function AnnotationWorkspace({
             {isGapReview ? "Gap review" : "Shelf photo"}
           </span>
           <span>{fixture.name}</span>
+          {smartBoxMessage && (
+            <span className="smart-box-message" role="status">
+              {smartBoxMessage}
+            </span>
+          )}
           {(hideAll || display.hiddenClasses.length > 0) && <span>Some boxes hidden</span>}
         </div>
         <div
           className={`canvas-viewport tool-${tool}${panning ? " is-panning" : ""}${
             spaceHeld || tool === "pan" ? " is-pan-ready" : ""
-          }${drawMode ? ` is-drawing is-drawing-${drawMode}` : ""}`}
+          }${drawMode ? ` is-drawing is-drawing-${drawMode}` : ""}${
+            smartBoxPoint ? " is-smart-pending" : ""
+          }`}
           ref={viewportRef}
           tabIndex={0}
           aria-label="Shelf annotation canvas"
@@ -693,7 +708,17 @@ export function AnnotationWorkspace({
               onGeometryStart={startGeometryDrag}
             />
           </div>
-          {drawMode && (
+          {smartBoxPoint && (
+            <div
+              className="smart-box-pending"
+              aria-hidden="true"
+              style={{
+                left: transform.x + smartBoxPoint.x * transform.scale,
+                top: transform.y + smartBoxPoint.y * transform.scale,
+              }}
+            />
+          )}
+          {(drawMode || tool === "smart") && (
             <div className="draw-crosshair" ref={crosshairRef} aria-hidden="true" />
           )}
           {marquee?.moved && (
@@ -763,7 +788,7 @@ export function AnnotationWorkspace({
             <span>
               {mode === "assign"
                 ? "1-9 assign · S same as previous · U unknown"
-                : `A accept · R reject · F flag${isGapReview ? "" : " · B box"} · G gap`}
+                : `A accept · R reject · F flag${isGapReview ? "" : " · B box · M smart box"} · G gap`}
             </span>
             <span>Ctrl+Z undo</span>
             <button type="button" onClick={() => setHelpOpen(true)}>
