@@ -7,6 +7,7 @@ from collections.abc import Mapping
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Literal
+from urllib.parse import urlsplit
 
 from sqlalchemy.engine import make_url
 from sqlalchemy.exc import ArgumentError
@@ -16,6 +17,9 @@ MEDIA_ROOT_ENV = "SHELFSIGHT_MEDIA_ROOT"
 IMPORT_ROOT_ENV = "SHELFSIGHT_IMPORT_ROOT"
 AUTH_USERS_ENV = "SHELFSIGHT_AUTH_USERS"
 SESSION_COOKIE_SECURE_ENV = "SHELFSIGHT_SESSION_COOKIE_SECURE"
+SEGMENTER_URL_ENV = "SHELFSIGHT_SEGMENTER_URL"
+SEGMENTER_TOKEN_ENV = "SHELFSIGHT_SEGMENTER_TOKEN"
+MIN_SEGMENTER_TOKEN_LENGTH = 32
 USERNAME_PATTERN = re.compile(r"^[A-Za-z0-9][A-Za-z0-9._-]{0,63}$")
 Role = Literal["owner", "annotator", "reviewer"]
 
@@ -27,8 +31,34 @@ class AuthUser:
     password_hash: str
 
 
+@dataclass(frozen=True)
+class SegmenterSettings:
+    url: str
+    token: str
+
+
 class ConfigurationError(ValueError):
     """Raised when required application configuration is invalid."""
+
+
+def get_segmenter_settings(
+    environ: Mapping[str, str] | None = None,
+) -> SegmenterSettings | None:
+    """The SAM service behind the smart box, or None when none is configured."""
+    source = os.environ if environ is None else environ
+    url = source.get(SEGMENTER_URL_ENV, "").strip()
+    if not url:
+        return None
+    parsed = urlsplit(url)
+    if parsed.scheme not in {"http", "https"} or not parsed.netloc:
+        raise ConfigurationError(f"{SEGMENTER_URL_ENV} must be an http or https URL")
+    token = source.get(SEGMENTER_TOKEN_ENV, "").strip()
+    if len(token) < MIN_SEGMENTER_TOKEN_LENGTH:
+        raise ConfigurationError(
+            f"{SEGMENTER_TOKEN_ENV} must hold the service token, "
+            f"at least {MIN_SEGMENTER_TOKEN_LENGTH} characters"
+        )
+    return SegmenterSettings(url=url.rstrip("/"), token=token)
 
 
 def get_database_url(environ: Mapping[str, str] | None = None) -> str:

@@ -29,6 +29,7 @@ from shelfsight_api.propagation_api import router as propagation_router
 from shelfsight_api.recognition_api import router as recognition_router
 from shelfsight_api.review_api import router as review_router
 from shelfsight_api.sku_api import router as sku_router
+from shelfsight_api.smart_box_api import router as smart_box_router
 
 
 class HealthResponse(BaseModel):
@@ -55,6 +56,7 @@ app.include_router(prelabel_router, dependencies=[Depends(require_owner)])
 app.include_router(labeled_import_router, dependencies=[Depends(require_owner)])
 app.include_router(propagation_router, dependencies=[Depends(require_annotation_user)])
 app.include_router(recognition_router, dependencies=[Depends(require_annotation_user)])
+app.include_router(smart_box_router, dependencies=[Depends(require_annotation_user)])
 app.include_router(review_router, dependencies=[Depends(require_reviewer)])
 
 

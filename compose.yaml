@@ -53,6 +53,10 @@ services:
       <<: *api-environment
       # Offered as the starting address in the Models page's Register a model panel.
       SHELFSIGHT_DETECTOR_RUNTIME_URL: ${SHELFSIGHT_DETECTOR_RUNTIME_URL:-}
+      # Optional: the SAM service behind the canvas smart box. A tunnel on this PC is
+      # reached from the container as http://host.docker.internal:PORT.
+      SHELFSIGHT_SEGMENTER_URL: ${SHELFSIGHT_SEGMENTER_URL:-}
+      SHELFSIGHT_SEGMENTER_TOKEN: ${SHELFSIGHT_SEGMENTER_TOKEN:-}
     volumes:
       - storage:/data
       # Datasets to import sit in this folder next to compose.yaml; the API only reads it.
