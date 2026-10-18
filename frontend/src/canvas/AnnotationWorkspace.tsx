@@ -9,6 +9,7 @@ import {
 import { AnnotationOverlay } from "./AnnotationOverlay";
 import { AutosavePanel } from "./AutosavePanel";
 import { BenchmarkPanel } from "./BenchmarkPanel";
+import { BoxList } from "./BoxList";
 import {
   acceptBox,
   assignSku,
@@ -43,7 +44,7 @@ import { GroupSelectionDetails, SelectionDetails } from "./SelectionDetails";
 import { ShortcutHelp } from "./ShortcutHelp";
 import { SkuAssignmentPanel } from "./SkuAssignmentPanel";
 import type { AnnotationBox, AnnotationClass, CanvasFixture } from "./model";
-import { skuLabel, spatialReadingOrder } from "./model";
+import { spatialReadingOrder } from "./model";
 import {
   addToSelection,
   rectBetween,
@@ -76,8 +77,6 @@ type AnnotationWorkspaceProps = {
   ) => void;
 };
 
-const LIST_ROW_HEIGHT = 50;
-const LIST_OVERSCAN = 5;
 const HANDLE_SCREEN_SIZE = 9;
 const DEFAULT_VIEWPORT = { width: 900, height: 700 };
 
@@ -136,9 +135,6 @@ export function AnnotationWorkspace({
     x: 0,
     y: 0,
   });
-  const [search, setSearch] = useState("");
-  const [listScrollTop, setListScrollTop] = useState(0);
-  const [listViewportHeight, setListViewportHeight] = useState(900);
   const [viewportDimensions, setViewportDimensions] = useState(DEFAULT_VIEWPORT);
   const [spaceHeld, setSpaceHeld] = useState(false);
   const [tool, setTool] = useState<CanvasTool>("select");
@@ -159,7 +155,6 @@ export function AnnotationWorkspace({
     select: setSelectedId,
     viewportRef,
   });
-  const listRef = useRef<HTMLDivElement>(null);
   const duplicateCounterRef = useRef(0);
   const {
     panning,
@@ -218,17 +213,6 @@ export function AnnotationWorkspace({
     skuPickerOpen &&
     selectedBox?.classType === "product" &&
     selectedBox.lifecycleState !== "rejected";
-  const filteredAnnotations = useMemo(() => {
-    const query = search.trim().toLowerCase();
-    if (!query) {
-      return orderedAnnotations;
-    }
-    return orderedAnnotations.filter((box) =>
-      `${box.id} ${box.sku} ${box.state} ${box.classType}`
-        .toLowerCase()
-        .includes(query),
-    );
-  }, [orderedAnnotations, search]);
 
   useEffect(() => {
     onAnnotationsChange?.(autosave.annotations);
@@ -250,7 +234,6 @@ export function AnnotationWorkspace({
     const handleResize = () => {
       fitView();
       setViewportDimensions(viewportSize(viewportRef.current));
-      setListViewportHeight(listRef.current?.clientHeight || 900);
     };
     handleResize();
     window.addEventListener("resize", handleResize);
@@ -264,19 +247,7 @@ export function AnnotationWorkspace({
     setTransform((current) =>
       revealBox(current, viewportSize(viewportRef.current), selectedBox),
     );
-    const index = filteredAnnotations.findIndex((box) => box.id === selectedBox.id);
-    const list = listRef.current;
-    if (index < 0 || !list) {
-      return;
-    }
-    const rowTop = index * LIST_ROW_HEIGHT;
-    const rowBottom = rowTop + LIST_ROW_HEIGHT;
-    if (rowTop < list.scrollTop) {
-      list.scrollTop = rowTop;
-    } else if (rowBottom > list.scrollTop + list.clientHeight) {
-      list.scrollTop = rowBottom - list.clientHeight;
-    }
-  }, [filteredAnnotations, selectedBox]);
+  }, [selectedBox]);
 
   const selectRelative = useCallback(
     (delta: number) => {
@@ -643,90 +614,16 @@ export function AnnotationWorkspace({
     }
   }
 
-  const visibleStart = Math.max(
-    0,
-    Math.floor(listScrollTop / LIST_ROW_HEIGHT) - LIST_OVERSCAN,
-  );
-  const visibleEnd = Math.min(
-    filteredAnnotations.length,
-    visibleStart +
-      Math.ceil(listViewportHeight / LIST_ROW_HEIGHT) +
-      LIST_OVERSCAN * 2,
-  );
-  const visibleRows = filteredAnnotations.slice(visibleStart, visibleEnd);
-
   return (
     <main className="annotation-workspace">
-      <aside className="box-panel" aria-label="Annotation list">
-        <div className="panel-heading">
-          <div>
-            <span className="eyebrow">
-              {isGapReview
-                ? "Visible gaps"
-                : mode === "assign"
-                  ? "Verified products"
-                  : "Facings"}
-            </span>
-            <strong>{filteredAnnotations.length} shown</strong>
-          </div>
-          <span className="panel-count">{activeAnnotations.length}</span>
-        </div>
-        <label className="search-row">
-          <span>Search boxes</span>
-          <input
-            type="search"
-            value={search}
-            placeholder="SKU, class, state, or ID"
-            onChange={(event) => setSearch(event.target.value)}
-          />
-        </label>
-        <div
-          className="box-list"
-          ref={listRef}
-          role="listbox"
-          aria-label="Boxes in spatial reading order"
-          aria-multiselectable="true"
-          onScroll={(event) => setListScrollTop(event.currentTarget.scrollTop)}
-        >
-          <div
-            className="box-list-spacer"
-            style={{ height: filteredAnnotations.length * LIST_ROW_HEIGHT }}
-          >
-            {visibleRows.map((box, visibleIndex) => {
-              const index = visibleStart + visibleIndex;
-              return (
-                <button
-                  type="button"
-                  className={`box-row${selection.ids.has(box.id) ? " is-selected" : ""}`}
-                  style={{ top: index * LIST_ROW_HEIGHT }}
-                  data-annotation-id={box.id}
-                  role="option"
-                  aria-selected={selection.ids.has(box.id)}
-                  onClick={(event) =>
-                    selectAnnotation(box.id, event.shiftKey || event.ctrlKey || event.metaKey)
-                  }
-                  key={box.id}
-                >
-                  <span className="state-marker" data-state={box.state}>
-                    {stateSymbol(box.state)}
-                  </span>
-                  <span className="box-copy">
-                    <strong>{skuLabel(box)}</strong>
-                    <span>
-                      {box.id} · {box.classType.replace("_", " ")}
-                    </span>
-                  </span>
-                  <span className="box-confidence">
-                    {box.confidence === null
-                      ? "N/A"
-                      : `${Math.round(box.confidence * 100)}%`}
-                  </span>
-                </button>
-              );
-            })}
-          </div>
-        </div>
-      </aside>
+      <BoxList
+        title={isGapReview ? "Visible gaps" : mode === "assign" ? "Verified products" : "Facings"}
+        boxes={orderedAnnotations}
+        totalCount={activeAnnotations.length}
+        selectedIds={selection.ids}
+        focusedId={selectedBox?.id ?? null}
+        onSelect={selectAnnotation}
+      />
 
       <section className="canvas-column">
         <div className="canvas-context">
@@ -952,16 +849,6 @@ export function AnnotationWorkspace({
       {helpOpen && <ShortcutHelp context={{ mode, isGapReview }} onClose={closeHelp} />}
     </main>
   );
-}
-
-function stateSymbol(state: AnnotationBox["state"]): string {
-  const symbols: Record<AnnotationBox["state"], string> = {
-    unverified: "?",
-    verified: "✓",
-    propagated: "⇉",
-    flagged: "!",
-  };
-  return symbols[state];
 }
 
 function viewportSize(element: HTMLDivElement | null) {
