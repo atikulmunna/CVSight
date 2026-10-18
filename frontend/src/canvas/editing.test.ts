@@ -10,6 +10,7 @@ import {
   flagBox,
   nudgeBox,
   rejectBox,
+  reopenBox,
   resizeBox,
 } from "./editing";
 import type { AnnotationBox } from "./model";
@@ -151,6 +152,19 @@ describe("annotation editing", () => {
       reviewState: "flagged",
     });
     expect(rejectBox(BOX).lifecycleState).toBe("rejected");
+  });
+
+  it("reopens only a verified box, back to an unreviewed proposal", () => {
+    const accepted = acceptBox(BOX);
+
+    expect(reopenBox(accepted)).toMatchObject({
+      state: "unverified",
+      lifecycleState: "proposed",
+      reviewState: "unreviewed",
+      sku: BOX.sku,
+    });
+    expect(reopenBox(BOX)).toBe(BOX);
+    expect(reopenBox(rejectBox(accepted)).lifecycleState).toBe("rejected");
   });
 
   it("does not edit rejected annotations", () => {

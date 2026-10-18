@@ -43,13 +43,21 @@ const TOOLS: ToolSpec[] = [
   },
 ];
 
+type HistoryControls = {
+  canUndo: boolean;
+  canRedo: boolean;
+  onUndo: () => void;
+  onRedo: () => void;
+};
+
 type CanvasToolsProps = {
   tool: CanvasTool;
   available: readonly CanvasTool[];
   onChange: (tool: CanvasTool) => void;
+  history: HistoryControls;
 };
 
-export function CanvasTools({ tool, available, onChange }: CanvasToolsProps) {
+export function CanvasTools({ tool, available, onChange, history }: CanvasToolsProps) {
   return (
     <div className="canvas-tools" role="toolbar" aria-label="Canvas tools" aria-orientation="vertical">
       {TOOLS.filter((spec) => available.includes(spec.tool)).map((spec) => (
@@ -68,6 +76,31 @@ export function CanvasTools({ tool, available, onChange }: CanvasToolsProps) {
           <kbd>{spec.shortcut}</kbd>
         </button>
       ))}
+      <span className="canvas-tools-divider" aria-hidden="true" />
+      <button
+        type="button"
+        className="canvas-tool"
+        aria-label="Undo"
+        title="Undo (Ctrl+Z)"
+        disabled={!history.canUndo}
+        onClick={history.onUndo}
+      >
+        <svg viewBox="0 0 24 24" aria-hidden="true">
+          <path d="M9 14 4 9l5-5M4 9h10.5a5.5 5.5 0 0 1 0 11H11" />
+        </svg>
+      </button>
+      <button
+        type="button"
+        className="canvas-tool"
+        aria-label="Redo"
+        title="Redo (Ctrl+Shift+Z)"
+        disabled={!history.canRedo}
+        onClick={history.onRedo}
+      >
+        <svg viewBox="0 0 24 24" aria-hidden="true">
+          <path d="m15 14 5-5-5-5M20 9H9.5a5.5 5.5 0 0 0 0 11H13" />
+        </svg>
+      </button>
     </div>
   );
 }

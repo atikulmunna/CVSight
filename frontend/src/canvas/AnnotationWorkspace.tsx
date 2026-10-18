@@ -8,6 +8,8 @@ import {
 import { flushSync } from "react-dom";
 
 import { AnnotationOverlay } from "./AnnotationOverlay";
+import { AutosavePanel } from "./AutosavePanel";
+import { BenchmarkOutput } from "./BenchmarkOutput";
 import {
   assessHost,
   measureFrameIntervals,
@@ -31,21 +33,17 @@ import {
   type GeometryHandle,
 } from "./editing";
 import { CanvasTools, type CanvasTool } from "./CanvasTools";
+import { SelectionDetails } from "./SelectionDetails";
 import { SkuAssignmentPanel } from "./SkuAssignmentPanel";
 import type { AnnotationBox, AnnotationClass, CanvasFixture } from "./model";
-import { overlayCue, spatialReadingOrder } from "./model";
+import { skuLabel, spatialReadingOrder } from "./model";
 import {
   fitTransform,
   revealBox,
   zoomTransform,
   type SceneTransform,
 } from "./transform";
-import {
-  useAnnotationAutosave,
-  type AnnotationConflict,
-  type AutosaveMode,
-  type SaveStatus,
-} from "./useAnnotationAutosave";
+import { useAnnotationAutosave, type SaveStatus } from "./useAnnotationAutosave";
 import { useSkuAssignmentCatalog } from "./useSkuAssignmentCatalog";
 import type { Sku } from "../catalog/model";
 
@@ -287,6 +285,18 @@ export function AnnotationWorkspace({
     );
   }
 
+  function stepHistory(direction: "undo" | "redo") {
+    const moved = direction === "undo" ? autosave.undo() : autosave.redo();
+    if (moved.length === 0) {
+      return;
+    }
+    // Selecting the changed box pans to it, so the reviewer sees what was undone.
+    setSelectedId(moved.find((box) => box.lifecycleState !== "rejected")?.id ?? null);
+    if (mode === "verify") {
+      closeSkuPicker();
+    }
+  }
+
   function acceptSelected() {
     if (!selectedId || !selectedBox || isResolvedAnnotation(selectedBox)) {
       return;
@@ -368,12 +378,14 @@ export function AnnotationWorkspace({
     const currentIndex = orderedAnnotations.findIndex(
       (annotation) => annotation.id === selectedId,
     );
-    if (needsAcceptance) {
-      autosave.edit(selectedId, "accept", acceptBox);
-    }
-    autosave.edit(selectedId, "assign", (box) =>
-      assignSku(box, sku.id, sku.name),
-    );
+    autosave.action(() => {
+      if (needsAcceptance) {
+        autosave.edit(selectedId, "accept", acceptBox);
+      }
+      autosave.edit(selectedId, "assign", (box) =>
+        assignSku(box, sku.id, sku.name),
+      );
+    });
     assignmentCatalog.remember(sku);
     setLastAssignedSku(sku);
     if (mode === "assign") {
@@ -432,6 +444,15 @@ export function AnnotationWorkspace({
       return;
     }
     const key = event.key.toLowerCase();
+    // Ctrl and Cmd combinations are undo, redo, or the browser's own (Ctrl+R reloads),
+    // never the single-key shortcuts below.
+    if (event.ctrlKey || event.metaKey) {
+      if (key === "z" || key === "y") {
+        event.preventDefault();
+        stepHistory(key === "y" || event.shiftKey ? "redo" : "undo");
+      }
+      return;
+    }
     const candidateIndex = Number(key) - 1;
     if (
       mode === "assign" &&
@@ -644,16 +665,19 @@ export function AnnotationWorkspace({
     if (drawStart?.pointerId === event.pointerId) {
       const completed = drawnBox(drawStart, scenePoint(event, transform));
       if (completed) {
-        autosave.add(completed);
         setSelectedId(completed.id);
         if (completed.classType === "product" && lastAssignedSku) {
           // Shelves repeat products, so a new box takes the previous SKU through the
           // same accept and assign steps as the picker; / changes it.
           const sku = lastAssignedSku;
-          autosave.edit(completed.id, "accept", acceptBox);
-          autosave.edit(completed.id, "assign", (box) => assignSku(box, sku.id, sku.name));
+          autosave.action(() => {
+            autosave.add(completed);
+            autosave.edit(completed.id, "accept", acceptBox);
+            autosave.edit(completed.id, "assign", (box) => assignSku(box, sku.id, sku.name));
+          });
           closeSkuPicker();
         } else {
+          autosave.add(completed);
           // A drawn product needs its SKU next, so the picker opens on it straight away.
           setSkuPickerOpen(completed.classType === "product");
         }
@@ -923,8 +947,19 @@ export function AnnotationWorkspace({
               Fit
             </button>
           </div>
-          <CanvasTools tool={tool} available={availableTools} onChange={chooseTool} />
+          <CanvasTools
+            tool={tool}
+            available={availableTools}
+            onChange={chooseTool}
+            history={{
+              canUndo: autosave.canUndo,
+              canRedo: autosave.canRedo,
+              onUndo: () => stepHistory("undo"),
+              onRedo: () => stepHistory("redo"),
+            }}
+          />
           <div className="shortcut-strip">
+            <span>Ctrl+Z undo · Ctrl+Shift+Z redo</span>
             {mode === "assign" ? (
               <>
                 <span>1-9 assign candidate</span>
@@ -1015,292 +1050,6 @@ export function AnnotationWorkspace({
   );
 }
 
-function SelectionDetails({
-  fixture,
-  box,
-  onAccept,
-  onReject,
-  onFlag,
-  onDuplicate,
-  onShelfRowChange,
-  onClassChange,
-  showVerificationActions,
-  lockGapClass,
-}: {
-  fixture: CanvasFixture;
-  box: AnnotationBox;
-  onAccept: () => void;
-  onReject: () => void;
-  onFlag: () => void;
-  onDuplicate: () => void;
-  onShelfRowChange: (shelfRow: number | null) => void;
-  onClassChange: (classType: AnnotationClass) => void;
-  showVerificationActions: boolean;
-  lockGapClass: boolean;
-}) {
-  const sourceImage = fixture.images[box.imageIndex]!;
-  const backgroundScale = Math.max(2, Math.min(5, 150 / Math.max(box.width, 30)));
-  const centerX = box.x - sourceImage.x + box.width / 2;
-  const centerY = box.y - sourceImage.y + box.height / 2;
-  return (
-    <div className="selection-details">
-      <div
-        className="selected-crop"
-        aria-label="Selected product crop"
-        style={{
-          backgroundImage: `url("${sourceImage.url}")`,
-          backgroundSize: `${sourceImage.width * backgroundScale}px ${
-            sourceImage.height * backgroundScale
-          }px`,
-          backgroundPosition: `${-centerX * backgroundScale + 140}px ${
-            -centerY * backgroundScale + 80
-          }px`,
-        }}
-      />
-      {showVerificationActions && (
-        <div className="verification-actions" aria-label="Box verification actions">
-          <button
-            type="button"
-            className="primary-action"
-            onClick={onAccept}
-            disabled={
-              box.lifecycleState === "verified" && box.reviewState === "accepted"
-            }
-          >
-            {box.lifecycleState === "verified" && box.reviewState === "accepted"
-              ? "Accepted"
-              : "Accept"} <kbd>A</kbd>
-          </button>
-          <button type="button" className="reject-action" onClick={onReject}>
-            Reject <kbd>R</kbd>
-          </button>
-          <button type="button" onClick={onFlag}>
-            Flag <kbd>F</kbd>
-          </button>
-          <button type="button" onClick={onDuplicate}>
-            Duplicate <kbd>D</kbd>
-          </button>
-        </div>
-      )}
-      <dl>
-        <div>
-          <dt>{box.classType === "gap" ? "Origin" : "Assigned SKU"}</dt>
-          <dd>
-            {box.classType === "gap"
-              ? box.confidence === null
-                ? "Human drawn or corrected"
-                : "Initial geometry candidate"
-              : skuLabel(box)}
-          </dd>
-        </div>
-        <div>
-          <dt>Workflow</dt>
-          <dd>
-            {box.state}, {overlayCue(box)} cue
-          </dd>
-        </div>
-        <div>
-          <dt>Class</dt>
-          <dd>
-            {lockGapClass ? (
-              "Visible gap"
-            ) : (
-              <select
-              className="annotation-class-select"
-              aria-label="Annotation class"
-              value={box.classType}
-              onChange={(event) =>
-                onClassChange(event.currentTarget.value as AnnotationClass)
-              }
-            >
-              <option value="product">Product</option>
-              <option value="gap">Visible gap</option>
-              <option value="shelf_label">Shelf label</option>
-              </select>
-            )}
-          </dd>
-        </div>
-        <div>
-          <dt>Shelf row</dt>
-          <dd>
-            <input
-              className="shelf-row-input"
-              aria-label="Shelf row number"
-              type="number"
-              min="0"
-              step="1"
-              placeholder="Auto"
-              value={box.shelfRow ?? ""}
-              onChange={(event) => {
-                const value = event.currentTarget.value;
-                if (value === "") {
-                  onShelfRowChange(null);
-                  return;
-                }
-                const row = Number(value);
-                if (Number.isInteger(row) && row >= 0) {
-                  onShelfRowChange(row);
-                }
-              }}
-            />
-          </dd>
-        </div>
-        <div>
-          <dt>{box.classType === "gap" ? "Candidate score" : "Confidence"}</dt>
-          <dd>
-            {box.confidence === null ? "Not applicable" : box.confidence.toFixed(2)}
-          </dd>
-        </div>
-        <div>
-          <dt>Bounding box</dt>
-          <dd>
-            {Math.round(box.x)}, {Math.round(box.y)}, {Math.round(box.width)},{" "}
-            {Math.round(box.height)}
-          </dd>
-        </div>
-      </dl>
-    </div>
-  );
-}
-
-function AutosavePanel({
-  mode,
-  onModeChange,
-  status,
-  message,
-  onSave,
-  conflict,
-  onUseServer,
-  onKeepLocal,
-}: {
-  mode: AutosaveMode;
-  onModeChange: (mode: AutosaveMode) => void;
-  status: SaveStatus;
-  message: string;
-  onSave: () => void;
-  conflict: AnnotationConflict | null;
-  onUseServer: () => void;
-  onKeepLocal: () => void;
-}) {
-  return (
-    <section className="autosave-panel" aria-label="Save status">
-      <div className="autosave-heading">
-        <span className="eyebrow">Save status</span>
-        <span className="save-state" data-status={status} role="status">
-          {status}
-        </span>
-      </div>
-      <p>{message}</p>
-      <div className="autosave-controls">
-        <label>
-          Autosave
-          <select
-            value={mode}
-            onChange={(event) =>
-              onModeChange(event.target.value as AutosaveMode)
-            }
-          >
-            <option value="quick">After 300 ms</option>
-            <option value="safe">After 1 second</option>
-            <option value="manual">Manual</option>
-          </select>
-        </label>
-        <button type="button" onClick={onSave} disabled={status === "saved"}>
-          Save now
-        </button>
-      </div>
-      {conflict && (
-        <div className="conflict-panel" role="alert">
-          <strong>Both versions are preserved</strong>
-          <span>
-            Server revision {conflict.server.revision}; your local edit is still
-            on the canvas.
-          </span>
-          <div>
-            <button type="button" onClick={onKeepLocal}>
-              Keep my edit
-            </button>
-            <button type="button" onClick={onUseServer}>
-              Use server
-            </button>
-          </div>
-        </div>
-      )}
-    </section>
-  );
-}
-
-function BenchmarkOutput({
-  benchmark,
-  error,
-}: {
-  benchmark: CanvasBenchmark | null;
-  error: string | null;
-}) {
-  if (error) {
-    return (
-      <p className="benchmark-output benchmark-error" role="alert">
-        {error}
-      </p>
-    );
-  }
-  if (!benchmark) {
-    return (
-      <p className="benchmark-output">
-        Measure p50, p95, and maximum frame and selection timings with the loaded
-        fixture.
-      </p>
-    );
-  }
-  return (
-    <div className="benchmark-output" data-testid="benchmark-results">
-      {!benchmark.host.valid && (
-        <p className="benchmark-invalid" role="alert" data-testid="benchmark-invalid">
-          <strong>Run not valid on this machine.</strong> The timings below describe the
-          host, not the canvas: {benchmark.host.reasons.join("; ")}. Close other
-          applications and measure again.
-        </p>
-      )}
-      <dl>
-      <Metric
-        label="Browser frame baseline"
-        value={benchmark.browserFrameBaseline}
-      />
-      <Metric label="Canvas frame interval" value={benchmark.frameInterval} />
-      <Metric label="Selection update" value={benchmark.selectionUpdate} />
-      <Metric label="Input latency" value={benchmark.inputLatency} />
-      <div>
-        <dt>Measured at</dt>
-        <dd data-testid="benchmark-timestamp">
-          {new Date(benchmark.measuredAt).toLocaleTimeString()}
-        </dd>
-      </div>
-      <div>
-        <dt>Host</dt>
-        <dd data-testid="benchmark-host">{benchmark.host.valid ? "Valid" : "Not valid"}</dd>
-      </div>
-      </dl>
-    </div>
-  );
-}
-
-function Metric({
-  label,
-  value,
-}: {
-  label: string;
-  value: { p50Ms: number; p95Ms: number; maxMs: number };
-}) {
-  return (
-    <div>
-      <dt>{label}</dt>
-      <dd>
-        {value.p50Ms} / {value.p95Ms} / {value.maxMs} ms
-      </dd>
-    </div>
-  );
-}
-
 function stateSymbol(state: AnnotationBox["state"]): string {
   const symbols: Record<AnnotationBox["state"], string> = {
     unverified: "?",
@@ -1309,16 +1058,6 @@ function stateSymbol(state: AnnotationBox["state"]): string {
     flagged: "!",
   };
   return symbols[state];
-}
-
-function skuLabel(box: AnnotationBox): string {
-  if (box.classType === "gap") {
-    return "Visible gap";
-  }
-  if (box.classType === "shelf_label") {
-    return "Shelf label";
-  }
-  return box.skuId === null ? "Unassigned" : box.sku;
 }
 
 function viewportSize(element: HTMLDivElement | null) {

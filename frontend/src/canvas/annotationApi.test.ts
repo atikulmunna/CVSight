@@ -53,6 +53,26 @@ describe("annotation API client", () => {
     );
   });
 
+  it.each(["reopen", "restore"] as const)(
+    "sends %s as a revision action without annotation fields",
+    async (intent) => {
+      const fetcher = vi
+        .fn()
+        .mockResolvedValue(response(200, annotationResponse({ revision: 5 })));
+
+      await expect(saveAnnotation(BOX, intent, fetcher)).resolves.toMatchObject({
+        revision: 5,
+      });
+      expect(fetcher).toHaveBeenCalledWith(
+        `/api/annotations/server-1/${intent}`,
+        expect.objectContaining({
+          method: "POST",
+          body: JSON.stringify({ expected_revision: 4 }),
+        }),
+      );
+    },
+  );
+
   it("sends complete annotation fields for an update", async () => {
     const fetcher = vi
       .fn()

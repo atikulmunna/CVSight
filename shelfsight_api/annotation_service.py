@@ -68,6 +68,37 @@ def accept_image_annotation(
     return get_current_annotation(connection, annotation_id)
 
 
+def reopen_image_annotation(
+    connection: Connection,
+    annotation_id: UUID,
+    expected_revision: int,
+    actor: str,
+) -> dict[str, Any]:
+    """Return a verified annotation to an unreviewed proposal, as undoing an accept does.
+
+    Update keeps the lifecycle state and restore only leaves rejection, so without this
+    transition an acceptance could not be taken back.
+    """
+    current = get_current_annotation(connection, annotation_id)
+    _require_expected_revision(current, expected_revision)
+    if current["lifecycle_state"] != "verified":
+        raise InvalidAnnotationStateError("only a verified annotation can be reopened")
+
+    revision_values = _copy_revision_values(current)
+    revision_values["lifecycle_state"] = "proposed"
+    revision_values["review_state"] = "unreviewed"
+    revision_values["source"] = "human"
+    revision_values["provenance"] = _provenance(actor, "reopen")
+    append_annotation_revision(
+        connection,
+        annotation_id,
+        expected_revision,
+        revision_values,
+    )
+    _mark_image_in_progress(connection, current["image_id"])
+    return get_current_annotation(connection, annotation_id)
+
+
 def assign_annotation_sku(
     connection: Connection,
     annotation_id: UUID,

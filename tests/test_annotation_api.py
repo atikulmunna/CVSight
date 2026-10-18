@@ -218,6 +218,75 @@ def test_accept_transitions_proposal_and_rejects_repeated_or_stale_actions(
     assert stale_response.json()["detail"]["code"] == "stale_revision"
 
 
+def test_reopen_returns_an_accepted_box_to_review_and_keeps_its_values(
+    annotation_target: tuple[UUID, UUID, UUID],
+) -> None:
+    _, image_id, sku_id = annotation_target
+    created = create_annotation(image_id, sku_id, shelf_row=2)
+    client.post(
+        f"/api/annotations/{created['id']}/accept",
+        headers=ACTOR_HEADERS,
+        json={"expected_revision": 1},
+    )
+
+    stale_response = client.post(
+        f"/api/annotations/{created['id']}/reopen",
+        headers=ACTOR_HEADERS,
+        json={"expected_revision": 1},
+    )
+    reopened_response = client.post(
+        f"/api/annotations/{created['id']}/reopen",
+        headers=ACTOR_HEADERS,
+        json={"expected_revision": 2},
+    )
+    repeated_response = client.post(
+        f"/api/annotations/{created['id']}/reopen",
+        headers=ACTOR_HEADERS,
+        json={"expected_revision": 3},
+    )
+
+    assert stale_response.status_code == 409
+    assert stale_response.json()["detail"]["code"] == "stale_revision"
+    assert reopened_response.status_code == 200
+    reopened = reopened_response.json()
+    assert reopened["revision"] == 3
+    assert reopened["lifecycle_state"] == "proposed"
+    assert reopened["review_state"] == "unreviewed"
+    assert reopened["sku_id"] == str(sku_id)
+    assert reopened["shelf_row"] == 2
+    assert reopened["provenance"] == {
+        "actor": "annotator:test",
+        "action": "reopen",
+        "via": "api",
+    }
+    assert repeated_response.status_code == 409
+    assert repeated_response.json()["detail"]["code"] == "invalid_state_transition"
+
+
+def test_reopen_refuses_a_rejected_box(
+    annotation_target: tuple[UUID, UUID, UUID],
+) -> None:
+    _, image_id, sku_id = annotation_target
+    created = create_annotation(image_id, sku_id, lifecycle_state="verified")
+    client.post(
+        f"/api/annotations/{created['id']}/reject",
+        headers=ACTOR_HEADERS,
+        json={"expected_revision": 1},
+    )
+
+    response = client.post(
+        f"/api/annotations/{created['id']}/reopen",
+        headers=ACTOR_HEADERS,
+        json={"expected_revision": 2},
+    )
+
+    assert response.status_code == 409
+    assert response.json()["detail"]["code"] == "invalid_state_transition"
+    assert client.get(f"/api/annotations/{created['id']}").json()["lifecycle_state"] == (
+        "rejected"
+    )
+
+
 def test_assignment_requires_verification_and_preserves_each_audit_revision(
     database_engine: Engine,
     annotation_target: tuple[UUID, UUID, UUID],

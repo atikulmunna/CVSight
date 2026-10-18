@@ -7,6 +7,16 @@ import {
 } from "./annotationApi";
 import type { EditIntent } from "./editing";
 import {
+  EMPTY_HISTORY,
+  mergeChange,
+  recordAction,
+  takeRedo,
+  takeUndo,
+  transitionSteps,
+  type BoxChange,
+  type EditHistory,
+} from "./history";
+import {
   parseCanvasFixture,
   type AnnotationBox,
   type CanvasFixture,
@@ -45,9 +55,13 @@ export function useAnnotationAutosave(fixture: CanvasFixture) {
   );
   const [conflict, setConflict] = useState<AnnotationConflict | null>(null);
   const [queueVersion, setQueueVersion] = useState(0);
+  const [history, setHistory] = useState<EditHistory>(EMPTY_HISTORY);
   const annotationsRef = useRef(annotations);
   const pendingRef = useRef(restored.pending);
   const savingRef = useRef(false);
+  const historyRef = useRef<EditHistory>(EMPTY_HISTORY);
+  // Collects the changes of the user action in progress, or null outside one.
+  const actionRef = useRef<BoxChange[] | null>(null);
   const storageKey = workspaceStorageKey(fixture);
 
   const store = useCallback(
@@ -84,7 +98,15 @@ export function useAnnotationAutosave(fixture: CanvasFixture) {
     (box: AnnotationBox, intent: EditIntent) => {
       const queue = pendingRef.current;
       const last = queue.at(-1);
-      if (intent === "update" && last?.id === box.id && last.intent === "update") {
+      // While saving, the first queued edit is in flight and leaves the queue when its
+      // response arrives, so a newer edit folded into it would be lost.
+      const lastInFlight = savingRef.current && queue.length === 1;
+      if (
+        intent === "update" &&
+        last?.id === box.id &&
+        last.intent === "update" &&
+        !lastInFlight
+      ) {
         queue[queue.length - 1] = { id: box.id, intent, box };
       } else {
         queue.push({ id: box.id, intent, box });
@@ -95,6 +117,42 @@ export function useAnnotationAutosave(fixture: CanvasFixture) {
       setQueueVersion((value) => value + 1);
     },
     [mode, store],
+  );
+
+  const replaceHistory = useCallback((next: EditHistory) => {
+    historyRef.current = next;
+    setHistory(next);
+  }, []);
+
+  const record = useCallback(
+    (change: BoxChange) => {
+      if (actionRef.current) {
+        actionRef.current = mergeChange(actionRef.current, change);
+        return;
+      }
+      replaceHistory(recordAction(historyRef.current, [change]));
+    },
+    [replaceHistory],
+  );
+
+  // Groups the edits one user action makes, such as drawing a box and naming it, into
+  // one undo step.
+  const action = useCallback(
+    (apply: () => void) => {
+      if (actionRef.current) {
+        apply();
+        return;
+      }
+      actionRef.current = [];
+      try {
+        apply();
+      } finally {
+        const changes = actionRef.current ?? [];
+        actionRef.current = null;
+        replaceHistory(recordAction(historyRef.current, changes));
+      }
+    },
+    [replaceHistory],
   );
 
   const edit = useCallback(
@@ -116,8 +174,9 @@ export function useAnnotationAutosave(fixture: CanvasFixture) {
       next[index] = nextBox;
       replaceAnnotations(next);
       queueEdit(nextBox, intent);
+      record({ id, before: current[index]!, after: nextBox });
     },
-    [queueEdit, replaceAnnotations],
+    [queueEdit, record, replaceAnnotations],
   );
 
   const add = useCallback(
@@ -125,9 +184,52 @@ export function useAnnotationAutosave(fixture: CanvasFixture) {
       const next = [...annotationsRef.current, box];
       replaceAnnotations(next);
       queueEdit(box, "create");
+      record({ id: box.id, before: null, after: box });
+    },
+    [queueEdit, record, replaceAnnotations],
+  );
+
+  // Moves each changed box to its state on one side of an action and returns the boxes
+  // as they now stand. The moves are new edits, so they are not recorded again.
+  const moveTo = useCallback(
+    (changes: BoxChange[], target: (change: BoxChange) => AnnotationBox | null) => {
+      const moved: AnnotationBox[] = [];
+      for (const change of changes) {
+        const current = annotationsRef.current.find((box) => box.id === change.id);
+        if (!current) {
+          continue;
+        }
+        const steps = transitionSteps(current, target(change));
+        for (const step of steps) {
+          replaceAnnotations(
+            annotationsRef.current.map((item) => (item.id === step.box.id ? step.box : item)),
+          );
+          queueEdit(step.box, step.intent);
+        }
+        moved.push(steps.at(-1)?.box ?? current);
+      }
+      return moved;
     },
     [queueEdit, replaceAnnotations],
   );
+
+  const undo = useCallback(() => {
+    const taken = conflict ? null : takeUndo(historyRef.current);
+    if (!taken) {
+      return [];
+    }
+    replaceHistory(taken.history);
+    return moveTo(taken.changes, (change) => change.before);
+  }, [conflict, moveTo, replaceHistory]);
+
+  const redo = useCallback(() => {
+    const taken = conflict ? null : takeRedo(historyRef.current);
+    if (!taken) {
+      return [];
+    }
+    replaceHistory(taken.history);
+    return moveTo(taken.changes, (change) => change.after);
+  }, [conflict, moveTo, replaceHistory]);
 
   const flush = useCallback(async () => {
     if (savingRef.current || conflict || pendingRef.current.length === 0) {
@@ -220,13 +322,16 @@ export function useAnnotationAutosave(fixture: CanvasFixture) {
     annotationsRef.current = next;
     setAnnotations(next);
     store(next, pendingRef.current);
+    // The recorded states of this box no longer match the server, so undoing to one
+    // could overwrite the version just chosen.
+    replaceHistory(EMPTY_HISTORY);
     setConflict(null);
     setStatus(pendingRef.current.length > 0 ? "saving" : "saved");
     setMessage(
       pendingRef.current.length > 0 ? "Saving changes" : "Using server version",
     );
     setQueueVersion((value) => value + 1);
-  }, [conflict, store]);
+  }, [conflict, replaceHistory, store]);
 
   const keepLocalVersion = useCallback(() => {
     if (!conflict) {
@@ -281,6 +386,11 @@ export function useAnnotationAutosave(fixture: CanvasFixture) {
     annotations,
     edit,
     add,
+    action,
+    undo,
+    redo,
+    canUndo: history.undo.length > 0 && !conflict,
+    canRedo: history.redo.length > 0 && !conflict,
     mode,
     setMode,
     status,
@@ -419,6 +529,8 @@ function isEditIntent(value: unknown): value is EditIntent {
     value === "reject" ||
     value === "update" ||
     value === "create" ||
-    value === "assign"
+    value === "assign" ||
+    value === "reopen" ||
+    value === "restore"
   );
 }

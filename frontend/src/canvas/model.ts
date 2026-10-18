@@ -325,3 +325,13 @@ function verticalCenter(box: AnnotationBox): number {
 function horizontalOrder(left: AnnotationBox, right: AnnotationBox): number {
   return left.x - right.x || left.id.localeCompare(right.id);
 }
+
+export function skuLabel(box: AnnotationBox): string {
+  if (box.classType === "gap") {
+    return "Visible gap";
+  }
+  if (box.classType === "shelf_label") {
+    return "Shelf label";
+  }
+  return box.skuId === null ? "Unassigned" : box.sku;
+}

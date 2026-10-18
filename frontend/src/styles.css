@@ -2827,6 +2827,16 @@ code {
   background: var(--ws-elevated);
 }
 
+.canvas-tool:disabled {
+  background: transparent;
+}
+
+.canvas-tools-divider {
+  height: 1px;
+  margin: 2px 6px;
+  background: var(--ws-line);
+}
+
 .canvas-tool.is-active {
   color: #ffffff;
   background: var(--brand);

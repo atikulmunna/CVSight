@@ -1,6 +1,13 @@
 import type { AnnotationBox, AnnotationClass } from "./model";
 
-export type EditIntent = "accept" | "reject" | "update" | "create" | "assign";
+export type EditIntent =
+  | "accept"
+  | "reject"
+  | "update"
+  | "create"
+  | "assign"
+  | "reopen"
+  | "restore";
 
 export type SceneBounds = {
   width: number;
@@ -27,6 +34,18 @@ export function acceptBox(box: AnnotationBox): AnnotationBox {
     state: "verified",
     lifecycleState: "verified",
     reviewState: "accepted",
+  };
+}
+
+export function reopenBox(box: AnnotationBox): AnnotationBox {
+  if (box.lifecycleState !== "verified") {
+    return box;
+  }
+  return {
+    ...box,
+    state: "unverified",
+    lifecycleState: "proposed",
+    reviewState: "unreviewed",
   };
 }
 

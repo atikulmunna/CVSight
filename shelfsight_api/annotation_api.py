@@ -19,6 +19,7 @@ from shelfsight_api.annotation_service import (
     get_current_annotation,
     list_current_annotations,
     reject_image_annotation,
+    reopen_image_annotation,
     restore_image_annotation,
     update_image_annotation,
 )
@@ -213,6 +214,29 @@ def accept_annotation(
     try:
         with get_engine().begin() as connection:
             row = accept_image_annotation(
+                connection,
+                annotation_id,
+                request.expected_revision,
+                actor,
+            )
+        return AnnotationResponse.model_validate(row)
+    except Exception as error:
+        _raise_annotation_error(error)
+        raise
+
+
+@router.post(
+    "/annotations/{annotation_id}/reopen",
+    response_model=AnnotationResponse,
+)
+def reopen_annotation(
+    annotation_id: UUID,
+    request: RevisionActionRequest,
+    actor: AnnotationActor,
+) -> AnnotationResponse:
+    try:
+        with get_engine().begin() as connection:
+            row = reopen_image_annotation(
                 connection,
                 annotation_id,
                 request.expected_revision,

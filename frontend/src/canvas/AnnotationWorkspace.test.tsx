@@ -147,7 +147,7 @@ describe("AnnotationWorkspace", () => {
 
     expect(
       [...tools.querySelectorAll("button")].map((button) => button.getAttribute("aria-label")),
-    ).toEqual(["Select", "Pan"]);
+    ).toEqual(["Select", "Pan", "Undo", "Redo"]);
   });
 
   it("resizes the selected box from a handle and moves it by dragging", () => {
@@ -478,6 +478,159 @@ describe("AnnotationWorkspace", () => {
     expect(screen.getByText("Choose a box on the canvas or in the list.")).toBeInTheDocument();
   });
 
+  it("undoes and redoes decisions and geometry from the keyboard and the tool rail", () => {
+    vi.stubGlobal("fetch", vi.fn().mockRejectedValue(new TypeError("offline")));
+    const proposed = DEMO_FIXTURE.annotations.slice(1, 3).map((box) => ({
+      ...box,
+      state: "unverified" as const,
+      lifecycleState: "proposed" as const,
+      reviewState: "unreviewed" as const,
+    }));
+    const fixture = { ...DEMO_FIXTURE, name: "Undo fixture", annotations: proposed };
+    const { container } = render(<AnnotationWorkspace fixture={fixture} />);
+    const viewport = screen.getByLabelText("Shelf annotation canvas");
+    const undo = screen.getByRole("button", { name: "Undo" });
+    const redo = screen.getByRole("button", { name: "Redo" });
+    const selected = () => container.querySelector<SVGGElement>(".annotation.is-selected");
+    const firstId = selected()!.getAttribute("data-annotation-id")!;
+    const first = () => container.querySelector(`.annotation[data-annotation-id="${firstId}"]`);
+    const selectedX = () =>
+      Number(selected()?.querySelector(".overlay-core")?.getAttribute("x"));
+
+    expect(undo).toBeDisabled();
+    expect(redo).toBeDisabled();
+    fireEvent.keyDown(viewport, { key: "a" });
+    expect(first()).toHaveAttribute("data-state", "verified");
+    expect(first()).not.toHaveClass("is-selected");
+
+    fireEvent.keyDown(viewport, { key: "z", ctrlKey: true });
+    expect(first()).toHaveAttribute("data-state", "unverified");
+    expect(first()).toHaveClass("is-selected");
+    expect(redo).toBeEnabled();
+
+    fireEvent.keyDown(viewport, { key: "Z", ctrlKey: true, shiftKey: true });
+    expect(first()).toHaveAttribute("data-state", "verified");
+    expect(redo).toBeDisabled();
+
+    fireEvent.click(undo);
+    expect(first()).toHaveAttribute("data-state", "unverified");
+    fireEvent.click(redo);
+    expect(first()).toHaveAttribute("data-state", "verified");
+
+    fireEvent.keyDown(viewport, { key: "z", metaKey: true });
+    const originalX = selectedX();
+    fireEvent.keyDown(viewport, { key: "ArrowRight", altKey: true });
+    expect(selectedX()).toBe(originalX + 1);
+    fireEvent.keyDown(viewport, { key: "y", ctrlKey: true });
+    expect(selectedX()).toBe(originalX + 1);
+    fireEvent.keyDown(viewport, { key: "z", ctrlKey: true });
+    expect(selectedX()).toBe(originalX);
+    expect(first()).toHaveAttribute("data-state", "unverified");
+  });
+
+  it("undoes drawing and naming a box as one step and redoes it", () => {
+    vi.stubGlobal("fetch", vi.fn().mockRejectedValue(new TypeError("offline")));
+    const fixture = { ...DEMO_FIXTURE, name: "Undo drawing fixture", annotations: [] };
+    const { container } = render(<AnnotationWorkspace fixture={fixture} />);
+    const viewport = screen.getByLabelText("Shelf annotation canvas");
+    Object.defineProperty(viewport, "setPointerCapture", { value: () => undefined });
+    const rows = () => [...container.querySelectorAll<HTMLElement>(".box-row")];
+
+    fireEvent.keyDown(viewport, { key: "b" });
+    drag(viewport, { x: 200, y: 200 }, { x: 320, y: 330 });
+    fireEvent.click(
+      screen.getAllByRole("button", { name: /Aurora Cola 250ml 1 pack/ })[0]!,
+    );
+    drag(viewport, { x: 420, y: 200 }, { x: 520, y: 330 });
+    expect(rows()).toHaveLength(2);
+    expect(rows()[1]).toHaveTextContent("Aurora Cola 250ml 1 pack");
+
+    fireEvent.keyDown(viewport, { key: "z", ctrlKey: true });
+    expect(rows()).toHaveLength(1);
+    expect(rows()[0]).toHaveTextContent("Aurora Cola 250ml 1 pack");
+
+    fireEvent.keyDown(viewport, { key: "z", ctrlKey: true });
+    expect(rows()[0]).toHaveTextContent("Unassigned");
+
+    fireEvent.keyDown(viewport, { key: "z", ctrlKey: true });
+    expect(rows()).toHaveLength(0);
+
+    fireEvent.keyDown(viewport, { key: "z", ctrlKey: true, shiftKey: true });
+    expect(rows()).toHaveLength(1);
+    expect(rows()[0]).toHaveTextContent("Unassigned");
+    expect(rows()[0]).toHaveAttribute("aria-selected", "true");
+  });
+
+  it("undoes a saved acceptance by reopening the box at its new revision", async () => {
+    vi.useFakeTimers();
+    const fetchMock = vi.fn().mockImplementation((input: RequestInfo | URL) =>
+      Promise.resolve(
+        String(input).endsWith("/accept")
+          ? response(200, {
+              ...annotationResponse(2, "unreviewed"),
+              lifecycle_state: "verified",
+              review_state: "accepted",
+            })
+          : response(200, annotationResponse(3, "unreviewed")),
+      ),
+    );
+    vi.stubGlobal("fetch", fetchMock);
+    const base = persistentFixture();
+    // The box matches what the server echoes, as it would outside a test.
+    const fixture = {
+      ...base,
+      annotations: [
+        {
+          ...base.annotations[0]!,
+          x: 10,
+          y: 10,
+          width: 20,
+          height: 30,
+          skuId: null,
+          confidence: 0.8,
+          occluded: false,
+          truncated: false,
+          shelfRow: 0,
+        },
+      ],
+    };
+    render(<AnnotationWorkspace fixture={fixture} />);
+    const viewport = screen.getByLabelText("Shelf annotation canvas");
+
+    fireEvent.keyDown(viewport, { key: "a" });
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(1_000);
+    });
+    fireEvent.keyDown(viewport, { key: "z", ctrlKey: true });
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(1_000);
+    });
+
+    expect(fetchMock.mock.calls.map(([url]) => String(url))).toEqual([
+      "/api/annotations/00000000-0000-0000-0000-000000000001/accept",
+      "/api/annotations/00000000-0000-0000-0000-000000000001/reopen",
+    ]);
+    expect(JSON.parse(String(fetchMock.mock.calls[1]![1]?.body))).toEqual({
+      expected_revision: 2,
+    });
+    expect(screen.getByText("saved", { selector: ".save-state" })).toBeInTheDocument();
+  });
+
+  it("leaves Ctrl and Cmd combinations to the browser instead of editing", () => {
+    const { container } = render(<AnnotationWorkspace fixture={DEMO_FIXTURE} />);
+    const viewport = screen.getByLabelText("Shelf annotation canvas");
+    const selected = container.querySelector<SVGGElement>(".annotation.is-selected");
+    const state = selected?.getAttribute("data-state");
+
+    fireEvent.keyDown(viewport, { key: "r", ctrlKey: true });
+    fireEvent.keyDown(viewport, { key: "a", metaKey: true });
+    fireEvent.keyDown(viewport, { key: "d", ctrlKey: true });
+
+    expect(container.querySelectorAll(".annotation")).toHaveLength(320);
+    expect(selected).toHaveAttribute("data-state", state!);
+    expect(screen.getByRole("button", { name: "Undo" })).toBeDisabled();
+  });
+
   it("does not run editing shortcuts from an input", () => {
     const { container } = render(<AnnotationWorkspace fixture={DEMO_FIXTURE} />);
     const search = screen.getByPlaceholderText("SKU, class, state, or ID");
@@ -526,6 +679,41 @@ describe("AnnotationWorkspace", () => {
       expected_revision: 1,
       shelf_row: 3,
     });
+  });
+
+  it("saves an edit made while the previous save is still in flight", async () => {
+    vi.useFakeTimers();
+    let finishFirstSave: (value: unknown) => void = () => undefined;
+    const fetchMock = vi
+      .fn()
+      .mockImplementationOnce(
+        () =>
+          new Promise((resolve) => {
+            finishFirstSave = resolve;
+          }),
+      )
+      .mockResolvedValue(response(200, annotationResponse(3, "unreviewed", 3)));
+    vi.stubGlobal("fetch", fetchMock);
+    render(<AnnotationWorkspace fixture={persistentFixture()} />);
+    const rowInput = screen.getByLabelText("Shelf row number");
+
+    fireEvent.change(rowInput, { target: { value: "2" } });
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(1_000);
+    });
+    expect(fetchMock).toHaveBeenCalledTimes(1);
+    fireEvent.change(rowInput, { target: { value: "3" } });
+    await act(async () => {
+      finishFirstSave(response(200, annotationResponse(2, "unreviewed", 2)));
+      await vi.advanceTimersByTimeAsync(1_000);
+    });
+
+    expect(fetchMock).toHaveBeenCalledTimes(2);
+    expect(JSON.parse(String(fetchMock.mock.calls[1]![1]?.body))).toMatchObject({
+      expected_revision: 2,
+      shelf_row: 3,
+    });
+    expect(rowInput).toHaveValue(3);
   });
 
   it("converts a duplicated box into an unreviewed visible gap", () => {

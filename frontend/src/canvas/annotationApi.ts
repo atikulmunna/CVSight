@@ -80,7 +80,12 @@ function saveRequest(
   if (!box.serverId || box.revision === null) {
     return null;
   }
-  if (intent === "accept" || intent === "reject") {
+  if (
+    intent === "accept" ||
+    intent === "reject" ||
+    intent === "reopen" ||
+    intent === "restore"
+  ) {
     return {
       url: `/api/annotations/${encodeURIComponent(box.serverId)}/${intent}`,
       method: "POST",

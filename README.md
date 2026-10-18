@@ -811,14 +811,17 @@ The available routes are:
 - `POST /api/images/{image_id}/annotations`
 - `PUT /api/annotations/{annotation_id}`
 - `POST /api/annotations/{annotation_id}/accept`
+- `POST /api/annotations/{annotation_id}/reopen`
 - `POST /api/annotations/{annotation_id}/assign-sku`
 - `POST /api/annotations/{annotation_id}/reject`
 - `POST /api/annotations/{annotation_id}/restore`
 - `POST /api/annotations/batch`
 
 `PUT` is a full annotation replacement and requires `expected_revision`. Accept,
-reject, restore, and every batch operation also require the expected current revision.
-Accept transitions an active proposal to verified and accepted. A stale revision
+reopen, reject, restore, and every batch operation also require the expected current
+revision. Accept transitions an active proposal to verified and accepted. Reopen takes a
+verified box back to an unreviewed proposal and keeps its geometry and SKU; the canvas
+uses it to undo an acceptance. A stale revision
 returns HTTP 409 without overwriting newer work. Batch update, reject, and restore
 operations run in one transaction, so one failure rolls back the whole batch.
 
@@ -1301,6 +1304,14 @@ Canvas controls:
 - `Left Arrow` or `K` selects the previous box in spatial reading order.
 - `Right Arrow` or `J` selects the next box.
 - `A` accepts, `R` rejects, `F` flags, and `D` duplicates the selected box.
+- `Ctrl` plus `Z` undoes the last action and `Ctrl` plus `Shift` plus `Z` (or `Ctrl`
+  plus `Y`) redoes it; `Cmd` works the same on macOS, and the tool rail has Undo and
+  Redo buttons. Drawing a box that takes the previous SKU, or accepting and naming a box
+  in one pick, is one action. Undo never rewrites a saved revision: it saves a new one
+  through the same autosave, using reopen to take back an acceptance, reject to remove a
+  drawn box, and restore to bring back a rejected one. History lasts until the page is
+  reloaded, and choosing the server version in a conflict clears it. Other `Ctrl` and
+  `Cmd` combinations go to the browser, so `Ctrl` plus `R` reloads instead of rejecting.
 - `Alt` plus an arrow key nudges the selected box by one pixel.
 - `Alt` plus `Shift` plus an arrow key resizes the selected box by one pixel.
 - `+`, `-`, or the mouse wheel changes zoom.
