@@ -32,6 +32,12 @@ import {
   type EditIntent,
 } from "./editing";
 import { CanvasTools, type CanvasTool } from "./CanvasTools";
+import {
+  canvasCommand,
+  ZOOM_STEP,
+  type CanvasCommand,
+  type Direction,
+} from "./canvasKeys";
 import { copiedBoxes, copyBoxes } from "./clipboard";
 import {
   hiddenBoxClasses,
@@ -550,7 +556,7 @@ export function AnnotationWorkspace({
   }
 
   function editGeometry(
-    direction: "left" | "right" | "up" | "down",
+    direction: Direction,
     resize: boolean,
   ) {
     if (!selectedId || isGroup) {
@@ -574,103 +580,70 @@ export function AnnotationWorkspace({
       setSpaceHeld(true);
       return;
     }
-    const key = event.key.toLowerCase();
-    // Ctrl and Cmd combinations are canvas commands or the browser's own (Ctrl+R
-    // reloads), never the single-key shortcuts below.
-    if (event.ctrlKey || event.metaKey) {
-      handleCommandKey(key, event);
-      return;
-    }
-    const candidateIndex = Number(key) - 1;
-    if (
-      mode === "assign" &&
-      Number.isInteger(candidateIndex) &&
-      candidateIndex >= 0 &&
-      candidateIndex < assignmentCatalog.candidates.length
-    ) {
+    const command = canvasCommand(event, {
+      mode,
+      candidateCount: assignmentCatalog.candidates.length,
+      hasUnknownSku: assignmentCatalog.unknownSku !== null,
+      hasPreviousSku: lastAssignedSku !== null,
+      selectedIsProduct: selectedBox?.classType === "product",
+      hasSelection: selectedBoxes.length > 0,
+      hasCopy: copiedBoxes() !== null,
+    });
+    if (command) {
       event.preventDefault();
-      assignSelectedSku(assignmentCatalog.candidates[candidateIndex]!);
-    } else if (mode === "assign" && key === "u" && assignmentCatalog.unknownSku) {
-      event.preventDefault();
-      assignSelectedSku(assignmentCatalog.unknownSku);
-    } else if (mode === "assign" && key === "s" && lastAssignedSku) {
-      event.preventDefault();
-      assignSelectedSku(lastAssignedSku);
-    } else if (mode === "assign" && key === "/") {
-      event.preventDefault();
-      assignmentCatalog.searchInputRef.current?.focus();
-    } else if (
-      mode === "verify" &&
-      event.altKey &&
-      (key === "arrowright" ||
-        key === "arrowleft" ||
-        key === "arrowup" ||
-        key === "arrowdown")
-    ) {
-      event.preventDefault();
-      editGeometry(key.replace("arrow", "") as "left" | "right" | "up" | "down", event.shiftKey);
-    } else if (mode === "verify" && key === "a") {
-      event.preventDefault();
-      acceptSelected();
-    } else if (
-      mode === "verify" &&
-      (key === "r" || key === "delete" || key === "backspace")
-    ) {
-      event.preventDefault();
-      rejectSelected();
-    } else if (mode === "verify" && key === "/" && selectedBox?.classType === "product") {
-      event.preventDefault();
-      setSkuPickerOpen(true);
-      assignmentCatalog.searchInputRef.current?.focus();
-    } else if (mode === "verify" && key === "f") {
-      event.preventDefault();
-      flagSelected();
-    } else if (mode === "verify" && key === "d") {
-      event.preventDefault();
-      duplicateSelected();
-    } else if (key === "?") {
-      event.preventDefault();
-      setHelpOpen(true);
-    } else if (key === "o") {
-      event.preventDefault();
-      setHideAll((current) => !current);
-    } else if (key === "v" || key === "h" || key === "b" || key === "g") {
-      event.preventDefault();
-      chooseTool(({ v: "select", h: "pan", b: "product", g: "gap" } as const)[key]);
-    } else if (key === "arrowright" || key === "j") {
-      event.preventDefault();
-      selectRelative(1);
-    } else if (key === "arrowleft" || key === "k") {
-      event.preventDefault();
-      selectRelative(-1);
-    } else if (key === "escape") {
-      setTool("select");
-      cancelDrawing();
-      setSelectedId(null);
-      setSkuPickerOpen(false);
-    } else if (key === "+" || key === "=") {
-      event.preventDefault();
-      zoomBy(1.2);
-    } else if (key === "-") {
-      event.preventDefault();
-      zoomBy(1 / 1.2);
+      runCommand(command);
     }
   }
 
-  // Copy and paste with nothing to act on leave the keys to the browser.
-  function handleCommandKey(key: string, event: React.KeyboardEvent<HTMLDivElement>) {
-    if (key === "z" || key === "y") {
-      event.preventDefault();
-      stepHistory(key === "y" || event.shiftKey ? "redo" : "undo");
-    } else if (key === "a") {
-      event.preventDefault();
-      selectAll();
-    } else if (key === "c" && selectedBoxes.length > 0) {
-      event.preventDefault();
-      copySelection();
-    } else if (key === "v" && mode === "verify" && copiedBoxes()) {
-      event.preventDefault();
-      pasteCopies();
+  // canvasCommand asks for an assignment only when its SKU exists, so the lookups below
+  // always find one.
+  function runCommand(command: CanvasCommand) {
+    switch (command.type) {
+      case "undo":
+      case "redo":
+        return stepHistory(command.type);
+      case "selectAll":
+        return selectAll();
+      case "copy":
+        return copySelection();
+      case "paste":
+        return pasteCopies();
+      case "assignCandidate":
+        return assignSelectedSku(assignmentCatalog.candidates[command.index]!);
+      case "assignUnknown":
+        return assignSelectedSku(assignmentCatalog.unknownSku!);
+      case "assignPrevious":
+        return assignSelectedSku(lastAssignedSku!);
+      case "searchCatalog":
+        return assignmentCatalog.searchInputRef.current?.focus();
+      case "editGeometry":
+        return editGeometry(command.direction, command.resize);
+      case "accept":
+        return acceptSelected();
+      case "reject":
+        return rejectSelected();
+      case "changeSku":
+        setSkuPickerOpen(true);
+        return assignmentCatalog.searchInputRef.current?.focus();
+      case "flag":
+        return flagSelected();
+      case "duplicate":
+        return duplicateSelected();
+      case "showShortcuts":
+        return setHelpOpen(true);
+      case "toggleBoxes":
+        return setHideAll((current) => !current);
+      case "chooseTool":
+        return chooseTool(command.tool);
+      case "step":
+        return selectRelative(command.delta);
+      case "clear":
+        setTool("select");
+        cancelDrawing();
+        setSelectedId(null);
+        return setSkuPickerOpen(false);
+      case "zoom":
+        return zoomBy(command.factor);
     }
   }
 
@@ -929,11 +902,11 @@ export function AnnotationWorkspace({
             </div>
           )}
           <div className="zoom-controls" aria-label="Canvas zoom controls">
-            <button type="button" aria-label="Zoom in" onClick={() => zoomBy(1.2)}>
+            <button type="button" aria-label="Zoom in" onClick={() => zoomBy(ZOOM_STEP)}>
               +
             </button>
             <output aria-label="Zoom level">{Math.round(transform.scale * 100)}%</output>
-            <button type="button" aria-label="Zoom out" onClick={() => zoomBy(1 / 1.2)}>
+            <button type="button" aria-label="Zoom out" onClick={() => zoomBy(1 / ZOOM_STEP)}>
               −
             </button>
             <button type="button" onClick={fitView}>
