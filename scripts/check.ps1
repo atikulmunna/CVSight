@@ -29,7 +29,7 @@ finally {
 
 uv run python -m pytest --basetemp .pytest-run
 Assert-NativeSuccess "Python tests"
-uv run ruff check benchmark_tool shelfsight_api tests migrations
+uv run ruff check benchmark_tool shelfsight_api runtimes tests migrations
 Assert-NativeSuccess "Ruff"
 uv run mypy
 Assert-NativeSuccess "mypy"
