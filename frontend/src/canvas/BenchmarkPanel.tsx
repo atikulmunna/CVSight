@@ -1,6 +1,33 @@
 import type { CanvasBenchmark } from "./benchmark";
 
-export function BenchmarkOutput({
+export function BenchmarkPanel({
+  benchmark,
+  error,
+  running,
+  onRun,
+}: {
+  benchmark: CanvasBenchmark | null;
+  error: string | null;
+  running: boolean;
+  onRun: () => void;
+}) {
+  return (
+    <section className="performance-panel" aria-label="Canvas performance">
+      <div className="panel-heading">
+        <div>
+          <span className="eyebrow">Performance</span>
+          <strong>Production canvas check</strong>
+        </div>
+        <button type="button" onClick={onRun} disabled={running}>
+          {running ? "Measuring" : "Measure"}
+        </button>
+      </div>
+      <BenchmarkOutput benchmark={benchmark} error={error} />
+    </section>
+  );
+}
+
+function BenchmarkOutput({
   benchmark,
   error,
 }: {

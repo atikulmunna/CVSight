@@ -5,18 +5,10 @@ import {
   useRef,
   useState,
 } from "react";
-import { flushSync } from "react-dom";
 
 import { AnnotationOverlay } from "./AnnotationOverlay";
 import { AutosavePanel } from "./AutosavePanel";
-import { BenchmarkOutput } from "./BenchmarkOutput";
-import {
-  assessHost,
-  measureFrameIntervals,
-  nextFrame,
-  summarizeTimings,
-  type CanvasBenchmark,
-} from "./benchmark";
+import { BenchmarkPanel } from "./BenchmarkPanel";
 import {
   acceptBox,
   assignSku,
@@ -68,6 +60,7 @@ import {
   type SceneTransform,
 } from "./transform";
 import { useAnnotationAutosave, type SaveStatus } from "./useAnnotationAutosave";
+import { useCanvasBenchmark } from "./useCanvasBenchmark";
 import { useCanvasPointer } from "./useCanvasPointer";
 import { useSkuAssignmentCatalog } from "./useSkuAssignmentCatalog";
 import type { Sku } from "../catalog/model";
@@ -159,10 +152,13 @@ export function AnnotationWorkspace({
   const [display, setDisplay] = useState<DisplaySettings>(loadDisplaySettings);
   const [hideAll, setHideAll] = useState(false);
   const [helpOpen, setHelpOpen] = useState(false);
-  const [benchmark, setBenchmark] = useState<CanvasBenchmark | null>(null);
-  const [benchmarkError, setBenchmarkError] = useState<string | null>(null);
-  const [benchmarking, setBenchmarking] = useState(false);
   const viewportRef = useRef<HTMLDivElement>(null);
+  const benchmark = useCanvasBenchmark({
+    annotations: orderedAnnotations,
+    selectedId,
+    select: setSelectedId,
+    viewportRef,
+  });
   const listRef = useRef<HTMLDivElement>(null);
   const duplicateCounterRef = useRef(0);
   const {
@@ -647,64 +643,6 @@ export function AnnotationWorkspace({
     }
   }
 
-  async function runBenchmark() {
-    if (benchmarking || orderedAnnotations.length === 0) {
-      return;
-    }
-    setBenchmarking(true);
-    setBenchmark(null);
-    setBenchmarkError(null);
-    const originalSelection = selectedId;
-    try {
-      const browserFrameBaseline = await measureFrameIntervals(60);
-      const annotationNodes = Array.from(
-        viewportRef.current?.querySelectorAll<SVGGElement>(".annotation") ?? [],
-      );
-      const frameIntervals = await measureFrameIntervals(
-        90,
-        (index, active) => {
-          const annotation =
-            annotationNodes[(index * 19) % annotationNodes.length];
-          annotation?.classList.toggle("benchmark-pulse", active);
-        },
-      );
-      const selectionUpdates: number[] = [];
-      for (let index = 0; index < 200; index += 1) {
-        const annotation = orderedAnnotations[index % orderedAnnotations.length]!;
-        const startedAt = performance.now();
-        flushSync(() => setSelectedId(annotation.id));
-        selectionUpdates.push(performance.now() - startedAt);
-        if ((index + 1) % 5 === 0) {
-          await nextFrame();
-        }
-      }
-
-      const inputLatencies: number[] = [];
-      for (let index = 0; index < 45; index += 1) {
-        const annotation = orderedAnnotations[index % orderedAnnotations.length]!;
-        const startedAt = performance.now();
-        flushSync(() => setSelectedId(annotation.id));
-        await nextFrame();
-        inputLatencies.push(performance.now() - startedAt);
-      }
-      const baselineSummary = summarizeTimings(browserFrameBaseline);
-      const frameSummary = summarizeTimings(frameIntervals);
-      setBenchmark({
-        browserFrameBaseline: baselineSummary,
-        frameInterval: frameSummary,
-        selectionUpdate: summarizeTimings(selectionUpdates),
-        inputLatency: summarizeTimings(inputLatencies),
-        measuredAt: new Date().toISOString(),
-        host: assessHost(baselineSummary, frameSummary),
-      });
-    } catch {
-      setBenchmarkError("Measurement failed. Reload the page and try again.");
-    } finally {
-      setSelectedId(originalSelection);
-      setBenchmarking(false);
-    }
-  }
-
   const visibleStart = Math.max(
     0,
     Math.floor(listScrollTop / LIST_ROW_HEIGHT) - LIST_OVERSCAN,
@@ -1003,22 +941,12 @@ export function AnnotationWorkspace({
           onHideAllChange={setHideAll}
         />
         {mode === "verify" && (
-          <section className="performance-panel" aria-label="Canvas performance">
-            <div className="panel-heading">
-              <div>
-                <span className="eyebrow">Performance</span>
-                <strong>Production canvas check</strong>
-              </div>
-              <button
-                type="button"
-                onClick={() => void runBenchmark()}
-                disabled={benchmarking}
-              >
-                {benchmarking ? "Measuring" : "Measure"}
-              </button>
-            </div>
-            <BenchmarkOutput benchmark={benchmark} error={benchmarkError} />
-          </section>
+          <BenchmarkPanel
+            benchmark={benchmark.benchmark}
+            error={benchmark.error}
+            running={benchmark.running}
+            onRun={() => void benchmark.run()}
+          />
         )}
       </aside>
       {helpOpen && <ShortcutHelp context={{ mode, isGapReview }} onClose={closeHelp} />}
