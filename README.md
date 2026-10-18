@@ -1322,6 +1322,13 @@ Canvas controls:
   unreviewed proposals that keep their class and SKU. On the photo they came from they
   land offset by 8 pixels; on another photo they keep their place, so boxes copied on
   one shelf photo carry to the next. The copy lasts until the page reloads.
+- `?` opens every shortcut for the current mode; the strip under the canvas keeps only
+  the most used ones and a button for the full list.
+- The Display panel sets photo brightness and contrast, a fill for boxes, and which
+  classes show on the canvas; `O` hides or shows every box. A hidden box still shows
+  while it is selected. These settings change nothing in the project and are kept in
+  this browser, except hiding every box, which lasts for the current photo.
+- The drawing tools show a crosshair at the pointer.
 - `Alt` plus an arrow key nudges the selected box by one pixel.
 - `Alt` plus `Shift` plus an arrow key resizes the selected box by one pixel.
 - `+`, `-`, or the mouse wheel changes zoom.

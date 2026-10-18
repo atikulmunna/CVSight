@@ -37,7 +37,16 @@ import {
 } from "./editing";
 import { CanvasTools, type CanvasTool } from "./CanvasTools";
 import { copiedBoxes, copyBoxes } from "./clipboard";
+import {
+  hiddenBoxClasses,
+  imageFilter,
+  loadDisplaySettings,
+  saveDisplaySettings,
+  type DisplaySettings,
+} from "./display";
+import { DisplayPanel } from "./DisplayPanel";
 import { GroupSelectionDetails, SelectionDetails } from "./SelectionDetails";
+import { ShortcutHelp } from "./ShortcutHelp";
 import { SkuAssignmentPanel } from "./SkuAssignmentPanel";
 import type { AnnotationBox, AnnotationClass, CanvasFixture } from "./model";
 import { skuLabel, spatialReadingOrder } from "./model";
@@ -191,11 +200,15 @@ export function AnnotationWorkspace({
   const [geometryDrag, setGeometryDrag] = useState<GeometryDrag | null>(null);
   const [draftGeometry, setDraftGeometry] = useState<(BoxGeometry & { id: string }) | null>(null);
   const [marquee, setMarquee] = useState<Marquee | null>(null);
+  const [display, setDisplay] = useState<DisplaySettings>(loadDisplaySettings);
+  const [hideAll, setHideAll] = useState(false);
+  const [helpOpen, setHelpOpen] = useState(false);
   const [benchmark, setBenchmark] = useState<CanvasBenchmark | null>(null);
   const [benchmarkError, setBenchmarkError] = useState<string | null>(null);
   const [benchmarking, setBenchmarking] = useState(false);
   const viewportRef = useRef<HTMLDivElement>(null);
   const listRef = useRef<HTMLDivElement>(null);
+  const crosshairRef = useRef<HTMLDivElement>(null);
   const duplicateCounterRef = useRef(0);
   const drawCounterRef = useRef(0);
   const pasteCounterRef = useRef(0);
@@ -458,6 +471,29 @@ export function AnnotationWorkspace({
     }
   }
 
+  function changeDisplay(next: DisplaySettings) {
+    setDisplay(next);
+    saveDisplaySettings(next);
+  }
+
+  function closeHelp() {
+    setHelpOpen(false);
+    viewportRef.current?.focus();
+  }
+
+  // The crosshair follows the pointer through the DOM, so hovering never re-renders the
+  // canvas.
+  function moveCrosshair(event: React.PointerEvent<HTMLDivElement>) {
+    const crosshair = crosshairRef.current;
+    if (!crosshair) {
+      return;
+    }
+    const bounds = event.currentTarget.getBoundingClientRect();
+    crosshair.style.setProperty("--crosshair-x", `${event.clientX - bounds.left}px`);
+    crosshair.style.setProperty("--crosshair-y", `${event.clientY - bounds.top}px`);
+    crosshair.classList.add("is-visible");
+  }
+
   function changeSelectedShelfRow(shelfRow: number | null) {
     if (!selectedId) {
       return;
@@ -601,6 +637,12 @@ export function AnnotationWorkspace({
     } else if (mode === "verify" && key === "d") {
       event.preventDefault();
       duplicateSelected();
+    } else if (key === "?") {
+      event.preventDefault();
+      setHelpOpen(true);
+    } else if (key === "o") {
+      event.preventDefault();
+      setHideAll((current) => !current);
     } else if (key === "v" || key === "h" || key === "b" || key === "g") {
       event.preventDefault();
       chooseTool(({ v: "select", h: "pan", b: "product", g: "gap" } as const)[key]);
@@ -747,6 +789,7 @@ export function AnnotationWorkspace({
   }
 
   function handlePointerMove(event: React.PointerEvent<HTMLDivElement>) {
+    moveCrosshair(event);
     if (geometryDrag?.pointerId === event.pointerId) {
       const geometry = draggedGeometry(geometryDrag, event);
       if (geometry) {
@@ -1010,6 +1053,7 @@ export function AnnotationWorkspace({
             {isGapReview ? "Gap review" : "Shelf photo"}
           </span>
           <span>{fixture.name}</span>
+          {(hideAll || display.hiddenClasses.length > 0) && <span>Some boxes hidden</span>}
         </div>
         <div
           className={`canvas-viewport tool-${tool}${panStart ? " is-panning" : ""}${
@@ -1029,17 +1073,25 @@ export function AnnotationWorkspace({
           onPointerMove={handlePointerMove}
           onPointerUp={finishPointerAction}
           onPointerCancel={finishPointerAction}
+          onPointerLeave={() => crosshairRef.current?.classList.remove("is-visible")}
           onWheel={handleWheel}
         >
           <div
-            className="canvas-scene"
-            style={{
-              width: fixture.width,
-              height: fixture.height,
-              transform: `translate(${transform.x}px, ${transform.y}px) scale(${transform.scale})`,
-            }}
+            className={`canvas-scene${hiddenBoxClasses(display, hideAll)}`}
+            style={
+              {
+                width: fixture.width,
+                height: fixture.height,
+                transform: `translate(${transform.x}px, ${transform.y}px) scale(${transform.scale})`,
+                "--ov-fill-op": display.boxFill / 100,
+              } as React.CSSProperties
+            }
           >
-            <div className="image-layer" aria-label="Shelf image">
+            <div
+              className="image-layer"
+              aria-label="Shelf image"
+              style={{ filter: imageFilter(display) }}
+            >
               {fixture.images.map((image) => (
                 <img
                   src={image.url}
@@ -1068,6 +1120,9 @@ export function AnnotationWorkspace({
               onGeometryStart={startGeometryDrag}
             />
           </div>
+          {drawMode && (
+            <div className="draw-crosshair" ref={crosshairRef} aria-hidden="true" />
+          )}
           {marquee?.moved && (
             <div
               className="selection-marquee"
@@ -1129,31 +1184,15 @@ export function AnnotationWorkspace({
             }}
           />
           <div className="shortcut-strip">
-            <span>Ctrl+Z undo · Ctrl+Shift+Z redo</span>
             <span>
-              Shift+click or drag selects several
-              {mode === "verify" ? " · Ctrl+C copy · Ctrl+V paste" : ""}
+              {mode === "assign"
+                ? "1-9 assign · S same as previous · U unknown"
+                : `A accept · R reject · F flag${isGapReview ? "" : " · B box"} · G gap`}
             </span>
-            {mode === "assign" ? (
-              <>
-                <span>1-9 assign candidate</span>
-                <span>S same as previous · U unknown</span>
-                <span>/ search</span>
-              </>
-            ) : (
-              <>
-                <span>A accept · R or Del reject · F flag · D duplicate</span>
-                <span>
-                  V select · H pan ·{" "}
-                  {isGapReview ? "G gap" : "B box, repeats last SKU · / change SKU · G gap"}
-                  {" "}· Esc select
-                </span>
-                <span>Drag a selected box or its handles · Alt + arrows nudge, Shift resizes</span>
-              </>
-            )}
-            <span>J K next or previous</span>
-            <span>+ − zoom</span>
-            <span>Hold Space to pan</span>
+            <span>Ctrl+Z undo</span>
+            <button type="button" onClick={() => setHelpOpen(true)}>
+              <kbd>?</kbd> All shortcuts
+            </button>
           </div>
         </div>
       </section>
@@ -1216,6 +1255,12 @@ export function AnnotationWorkspace({
           onUseServer={autosave.useServerVersion}
           onKeepLocal={autosave.keepLocalVersion}
         />
+        <DisplayPanel
+          settings={display}
+          hideAll={hideAll}
+          onChange={changeDisplay}
+          onHideAllChange={setHideAll}
+        />
         {mode === "verify" && (
           <section className="performance-panel" aria-label="Canvas performance">
             <div className="panel-heading">
@@ -1235,6 +1280,7 @@ export function AnnotationWorkspace({
           </section>
         )}
       </aside>
+      {helpOpen && <ShortcutHelp context={{ mode, isGapReview }} onClose={closeHelp} />}
     </main>
   );
 }

@@ -2659,17 +2659,24 @@ code {
   stroke-width: var(--ov-core-w);
 }
 
+/* Box fill is a display setting; at its default of 0 every box stays hollow. */
+.overlay-core {
+  fill-opacity: var(--ov-fill-op, 0);
+}
+
 .overlay-secondary,
 .overlay-secondary-halo {
   pointer-events: none;
 }
 
 .annotation[data-state="unverified"] .overlay-core {
+  fill: var(--ov-unverified);
   stroke: var(--ov-unverified);
   stroke-dasharray: 6 4;
 }
 
 .annotation[data-state="verified"] .overlay-core {
+  fill: var(--ov-verified);
   stroke: var(--ov-verified);
   stroke-opacity: var(--ov-verified-op);
 }
@@ -2679,15 +2686,29 @@ code {
   stroke: var(--ov-propagated);
 }
 
+.annotation[data-state="propagated"] .overlay-core {
+  fill: var(--ov-propagated);
+}
+
 .annotation[data-state="flagged"] .overlay-core {
+  fill: var(--ov-flagged);
   stroke: var(--ov-flagged);
   stroke-width: 2px;
 }
 
 .annotation[data-class="gap"] .overlay-core {
   fill: url("#gap-hatch");
+  fill-opacity: 1;
   stroke: var(--ov-gap);
   stroke-dasharray: 3 3;
+}
+
+/* Hidden boxes stay visible while selected, so an edit never happens blind. */
+.canvas-scene.hides-all .annotation:not(.is-selected),
+.canvas-scene.hides-product .annotation[data-class="product"]:not(.is-selected),
+.canvas-scene.hides-gap .annotation[data-class="gap"]:not(.is-selected),
+.canvas-scene.hides-shelf_label .annotation[data-class="shelf_label"]:not(.is-selected) {
+  display: none;
 }
 
 .annotation[data-class="shelf_label"] .overlay-core {
@@ -2745,6 +2766,40 @@ code {
   border: 1px dashed var(--brand);
   background: color-mix(in srgb, var(--brand) 12%, transparent);
   pointer-events: none;
+}
+
+.draw-crosshair {
+  position: absolute;
+  z-index: 2;
+  inset: 0;
+  display: none;
+  pointer-events: none;
+}
+
+.draw-crosshair.is-visible {
+  display: block;
+}
+
+.draw-crosshair::before,
+.draw-crosshair::after {
+  position: absolute;
+  content: "";
+  background: rgb(255 255 255 / 55%);
+  box-shadow: 0 0 0 1px rgb(0 0 0 / 35%);
+}
+
+.draw-crosshair::before {
+  top: 0;
+  bottom: 0;
+  left: var(--crosshair-x);
+  width: 1px;
+}
+
+.draw-crosshair::after {
+  top: var(--crosshair-y);
+  right: 0;
+  left: 0;
+  height: 1px;
 }
 
 .zoom-controls {
@@ -3421,6 +3476,133 @@ kbd {
 .conflict-panel button {
   min-height: 28px;
   font-size: 8px;
+}
+
+.display-panel {
+  display: grid;
+  gap: 8px;
+  padding: 12px 14px;
+  border-top: 1px solid var(--ws-line);
+}
+
+.display-heading {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+}
+
+.display-heading .eyebrow {
+  margin: 0;
+}
+
+.display-heading button {
+  min-height: 26px;
+  padding: 0 10px;
+  font-size: 10px;
+}
+
+.display-slider {
+  display: grid;
+  grid-template-columns: 72px minmax(0, 1fr) 40px;
+  align-items: center;
+  gap: 8px;
+  color: var(--ws-text-2);
+  font-size: 10px;
+}
+
+.display-slider output {
+  font-family: var(--font-mono);
+  text-align: right;
+}
+
+.display-toggles {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px 12px;
+  color: var(--ws-text-2);
+  font-size: 10px;
+}
+
+.display-toggles label {
+  display: flex;
+  align-items: center;
+  gap: 5px;
+}
+
+.shortcut-help-backdrop {
+  position: fixed;
+  z-index: 50;
+  inset: 0;
+  display: grid;
+  place-items: center;
+  padding: 16px;
+  background: rgb(0 0 0 / 45%);
+}
+
+.shortcut-help {
+  width: min(760px, 100%);
+  max-height: calc(100vh - 32px);
+  overflow: auto;
+  padding: 18px 20px;
+  color: var(--ws-text);
+  background: var(--surface);
+  border: 1px solid var(--ws-line);
+  border-radius: 12px;
+  box-shadow: 0 24px 60px rgb(0 0 0 / 35%);
+}
+
+.shortcut-help-heading {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+}
+
+.shortcut-help-heading button {
+  min-width: 32px;
+  min-height: 32px;
+  padding: 0;
+  font-size: 18px;
+}
+
+.shortcut-help > p {
+  margin: 4px 0 14px;
+  color: var(--ws-text-2);
+  font-size: 11px;
+}
+
+.shortcut-help-groups {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(210px, 1fr));
+  gap: 14px 24px;
+}
+
+.shortcut-help h3 {
+  margin: 0 0 6px;
+  font-size: 12px;
+}
+
+.shortcut-help dl {
+  margin: 0;
+}
+
+.shortcut-help dl div {
+  display: flex;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 4px 0;
+  border-bottom: 1px solid var(--ws-line);
+  font-size: 11px;
+}
+
+.shortcut-help dt kbd {
+  font-size: 10px;
+  opacity: 1;
+}
+
+.shortcut-help dd {
+  margin: 0;
+  color: var(--ws-text-2);
+  text-align: right;
 }
 
 .performance-panel {

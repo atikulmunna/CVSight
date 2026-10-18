@@ -818,6 +818,98 @@ describe("AnnotationWorkspace", () => {
     expect(row("B004")).not.toHaveTextContent("Unknown / Other");
   });
 
+  it("lists the shortcuts for the current mode with ? and returns to the canvas", () => {
+    const fixture = { ...DEMO_FIXTURE, name: "Help fixture", annotations: proposedBoxes(2) };
+    const first = render(<AnnotationWorkspace fixture={fixture} />);
+    const viewport = screen.getByLabelText("Shelf annotation canvas");
+
+    fireEvent.keyDown(viewport, { key: "?", shiftKey: true });
+    const dialog = screen.getByRole("dialog", { name: "Keyboard shortcuts" });
+    expect(dialog).toHaveTextContent("Draw a box, named with the previous SKU");
+    expect(dialog).not.toHaveTextContent("Assign a candidate SKU");
+    expect(screen.getByRole("button", { name: "Close shortcuts" })).toHaveFocus();
+
+    fireEvent.keyDown(dialog, { key: "Escape" });
+    expect(screen.queryByRole("dialog")).not.toBeInTheDocument();
+    expect(viewport).toHaveFocus();
+    first.unmount();
+
+    vi.stubGlobal("fetch", vi.fn().mockRejectedValue(new TypeError("offline")));
+    render(
+      <AnnotationWorkspace
+        fixture={{ ...DEMO_FIXTURE, annotations: DEMO_FIXTURE.annotations.slice(1, 3) }}
+        mode="assign"
+      />,
+    );
+    fireEvent.click(screen.getByRole("button", { name: /All shortcuts/ }));
+    expect(screen.getByRole("dialog")).toHaveTextContent("Assign a candidate SKU");
+    expect(screen.getByRole("dialog")).not.toHaveTextContent("Draw a gap");
+  });
+
+  it("hides boxes by class or all at once and keeps class choices for the next photo", () => {
+    const fixture = { ...DEMO_FIXTURE, name: "Hide fixture", annotations: proposedBoxes(2) };
+    const first = render(<AnnotationWorkspace fixture={fixture} />);
+    const viewport = screen.getByLabelText("Shelf annotation canvas");
+    const scene = () => first.container.querySelector(".canvas-scene")!;
+
+    expect(screen.queryByText("Some boxes hidden")).not.toBeInTheDocument();
+    fireEvent.click(screen.getByRole("checkbox", { name: "Gaps" }));
+    expect(scene()).toHaveClass("hides-gap");
+    expect(screen.getByText("Some boxes hidden")).toBeInTheDocument();
+
+    fireEvent.keyDown(viewport, { key: "o" });
+    expect(scene()).toHaveClass("hides-all");
+    expect(screen.getByRole("checkbox", { name: "Products" })).toBeDisabled();
+    fireEvent.keyDown(viewport, { key: "o" });
+    expect(scene()).not.toHaveClass("hides-all");
+
+    fireEvent.keyDown(viewport, { key: "o" });
+    first.unmount();
+    const second = render(<AnnotationWorkspace fixture={fixture} />);
+    const sceneAfter = second.container.querySelector(".canvas-scene")!;
+    expect(sceneAfter).toHaveClass("hides-gap");
+    expect(sceneAfter).not.toHaveClass("hides-all");
+  });
+
+  it("adjusts photo brightness, contrast, and box fill without touching annotations", () => {
+    const fixture = { ...DEMO_FIXTURE, name: "Display fixture", annotations: proposedBoxes(2) };
+    const { container } = render(<AnnotationWorkspace fixture={fixture} />);
+    const scene = container.querySelector<HTMLElement>(".canvas-scene")!;
+    const imageLayer = container.querySelector<HTMLElement>(".image-layer")!;
+
+    fireEvent.change(screen.getByLabelText(/Brightness/), { target: { value: "150" } });
+    fireEvent.change(screen.getByLabelText(/Contrast/), { target: { value: "80" } });
+    fireEvent.change(screen.getByLabelText(/Box fill/), { target: { value: "30" } });
+
+    expect(imageLayer.style.filter).toBe("brightness(1.5) contrast(0.8)");
+    expect(scene.style.getPropertyValue("--ov-fill-op")).toBe("0.3");
+    expect(screen.getByRole("button", { name: "Undo" })).toBeDisabled();
+
+    fireEvent.click(screen.getByRole("button", { name: "Reset" }));
+    expect(imageLayer.style.filter).toBe("");
+    expect(scene.style.getPropertyValue("--ov-fill-op")).toBe("0");
+  });
+
+  it("shows a crosshair at the pointer only while drawing", () => {
+    const { container } = render(
+      <AnnotationWorkspace fixture={{ ...DEMO_FIXTURE, annotations: proposedBoxes(1) }} />,
+    );
+    const viewport = screen.getByLabelText("Shelf annotation canvas");
+    const crosshair = () => container.querySelector<HTMLElement>(".draw-crosshair");
+
+    expect(crosshair()).toBeNull();
+    fireEvent.keyDown(viewport, { key: "b" });
+    fireEvent.pointerMove(viewport, { pointerId: 1, clientX: 120, clientY: 80 });
+    expect(crosshair()).toHaveClass("is-visible");
+    expect(crosshair()!.style.getPropertyValue("--crosshair-x")).toBe("120px");
+    expect(crosshair()!.style.getPropertyValue("--crosshair-y")).toBe("80px");
+
+    fireEvent.pointerLeave(viewport);
+    expect(crosshair()).not.toHaveClass("is-visible");
+    fireEvent.keyDown(viewport, { key: "v" });
+    expect(crosshair()).toBeNull();
+  });
+
   it("does not run editing shortcuts from an input", () => {
     const { container } = render(<AnnotationWorkspace fixture={DEMO_FIXTURE} />);
     const search = screen.getByPlaceholderText("SKU, class, state, or ID");
