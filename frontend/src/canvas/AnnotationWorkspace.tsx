@@ -21,19 +21,15 @@ import {
   acceptBox,
   assignSku,
   changeBoxClass,
-  createDrawnBox,
-  dragGeometry,
   duplicateBox,
   flagBox,
+  localBoxId,
   nudgeBox,
   pasteBox,
   rejectBox,
   resizeBox,
-  type BoxGeometry,
   type DrawnClass,
   type EditIntent,
-  type GeometryHandle,
-  type ScenePoint,
 } from "./editing";
 import { CanvasTools, type CanvasTool } from "./CanvasTools";
 import { copiedBoxes, copyBoxes } from "./clipboard";
@@ -52,7 +48,6 @@ import type { AnnotationBox, AnnotationClass, CanvasFixture } from "./model";
 import { skuLabel, spatialReadingOrder } from "./model";
 import {
   addToSelection,
-  boxesInside,
   rectBetween,
   selectMany,
   selectOnly,
@@ -67,6 +62,7 @@ import {
   type SceneTransform,
 } from "./transform";
 import { useAnnotationAutosave, type SaveStatus } from "./useAnnotationAutosave";
+import { useCanvasPointer } from "./useCanvasPointer";
 import { useSkuAssignmentCatalog } from "./useSkuAssignmentCatalog";
 import type { Sku } from "../catalog/model";
 
@@ -81,49 +77,9 @@ type AnnotationWorkspaceProps = {
   ) => void;
 };
 
-type PanStart = {
-  pointerId: number;
-  clientX: number;
-  clientY: number;
-  transformX: number;
-  transformY: number;
-};
-
-type GeometryDrag = {
-  pointerId: number;
-  annotationId: string;
-  handle: GeometryHandle;
-  start: { x: number; y: number };
-  original: BoxGeometry;
-  moved: boolean;
-};
-
-type DrawStart = {
-  pointerId: number;
-  classType: DrawnClass;
-  id: string;
-  imageIndex: number;
-  shelfRow: number;
-  x: number;
-  y: number;
-};
-
-type Marquee = {
-  pointerId: number;
-  start: ScenePoint;
-  end: ScenePoint;
-  // Shift, Ctrl, or Cmd adds the boxes inside to the selection instead of replacing it.
-  extend: boolean;
-  moved: boolean;
-  // A click, not a drag, on the space around the photo clears the selection.
-  clearsOnClick: boolean;
-};
-
 const LIST_ROW_HEIGHT = 50;
 const LIST_OVERSCAN = 5;
 const HANDLE_SCREEN_SIZE = 9;
-// Pointer travel, in screen pixels, before a press on a box counts as a drag.
-const DRAG_THRESHOLD = 3;
 const DEFAULT_VIEWPORT = { width: 900, height: 700 };
 
 export function AnnotationWorkspace({
@@ -186,7 +142,6 @@ export function AnnotationWorkspace({
   const [listViewportHeight, setListViewportHeight] = useState(900);
   const [viewportDimensions, setViewportDimensions] = useState(DEFAULT_VIEWPORT);
   const [spaceHeld, setSpaceHeld] = useState(false);
-  const [panStart, setPanStart] = useState<PanStart | null>(null);
   const [tool, setTool] = useState<CanvasTool>("select");
   const drawMode: DrawnClass | null = tool === "product" || tool === "gap" ? tool : null;
   const availableTools: readonly CanvasTool[] =
@@ -195,11 +150,6 @@ export function AnnotationWorkspace({
       : isGapReview
         ? ["select", "pan", "gap"]
         : ["select", "pan", "product", "gap"];
-  const [drawStart, setDrawStart] = useState<DrawStart | null>(null);
-  const [draftBox, setDraftBox] = useState<AnnotationBox | null>(null);
-  const [geometryDrag, setGeometryDrag] = useState<GeometryDrag | null>(null);
-  const [draftGeometry, setDraftGeometry] = useState<(BoxGeometry & { id: string }) | null>(null);
-  const [marquee, setMarquee] = useState<Marquee | null>(null);
   const [display, setDisplay] = useState<DisplaySettings>(loadDisplaySettings);
   const [hideAll, setHideAll] = useState(false);
   const [helpOpen, setHelpOpen] = useState(false);
@@ -208,10 +158,40 @@ export function AnnotationWorkspace({
   const [benchmarking, setBenchmarking] = useState(false);
   const viewportRef = useRef<HTMLDivElement>(null);
   const listRef = useRef<HTMLDivElement>(null);
-  const crosshairRef = useRef<HTMLDivElement>(null);
   const duplicateCounterRef = useRef(0);
-  const drawCounterRef = useRef(0);
-  const pasteCounterRef = useRef(0);
+  const {
+    panning,
+    draftBox,
+    draftGeometry,
+    marquee,
+    crosshairRef,
+    cancelDrawing,
+    startGeometryDrag,
+    handlers: pointerHandlers,
+  } = useCanvasPointer({
+    fixture,
+    drawMode: mode === "verify" ? drawMode : null,
+    tool,
+    spaceHeld,
+    transform,
+    setTransform,
+    viewportRef,
+    activeAnnotations,
+    selectableAnnotations: orderedAnnotations,
+    onBoxDrawn: completeDrawnBox,
+    onGeometryChanged: (annotationId, geometry) =>
+      autosave.edit(annotationId, "update", (box) => ({
+        ...box,
+        ...geometry,
+        confidence: null,
+      })),
+    onBoxClicked: (annotationId) => selectAnnotation(annotationId),
+    onMarqueeSelect: selectInside,
+    onBackgroundClick: () => {
+      setSelectedId(null);
+      setSkuPickerOpen(false);
+    },
+  });
 
   const displayedAnnotations = useMemo(() => {
     const boxes = draftGeometry
@@ -450,8 +430,7 @@ export function AnnotationWorkspace({
     if (!copied) {
       return;
     }
-    pasteCounterRef.current += 1;
-    const batch = `pasted-${Date.now()}-${pasteCounterRef.current}`;
+    const batch = localBoxId("pasted");
     const pasted = copied.boxes
       .filter((box) => !isGapReview || box.classType === "gap")
       .map((box, index) =>
@@ -481,17 +460,30 @@ export function AnnotationWorkspace({
     viewportRef.current?.focus();
   }
 
-  // The crosshair follows the pointer through the DOM, so hovering never re-renders the
-  // canvas.
-  function moveCrosshair(event: React.PointerEvent<HTMLDivElement>) {
-    const crosshair = crosshairRef.current;
-    if (!crosshair) {
-      return;
+  function completeDrawnBox(completed: AnnotationBox) {
+    setSelectedId(completed.id);
+    if (completed.classType === "product" && lastAssignedSku) {
+      // Shelves repeat products, so a new box takes the previous SKU through the same
+      // accept and assign steps as the picker; / changes it.
+      const sku = lastAssignedSku;
+      autosave.action(() => {
+        autosave.add(completed);
+        autosave.edit(completed.id, "accept", acceptBox);
+        autosave.edit(completed.id, "assign", (box) => assignSku(box, sku.id, sku.name));
+      });
+      closeSkuPicker();
+    } else {
+      autosave.add(completed);
+      // A drawn product needs its SKU next, so the picker opens on it straight away.
+      setSkuPickerOpen(completed.classType === "product");
     }
-    const bounds = event.currentTarget.getBoundingClientRect();
-    crosshair.style.setProperty("--crosshair-x", `${event.clientX - bounds.left}px`);
-    crosshair.style.setProperty("--crosshair-y", `${event.clientY - bounds.top}px`);
-    crosshair.classList.add("is-visible");
+  }
+
+  function selectInside(ids: string[], extend: boolean) {
+    setSelection((current) => (extend ? addToSelection(current, ids) : selectMany(ids)));
+    if (mode === "verify") {
+      setSkuPickerOpen(false);
+    }
   }
 
   function changeSelectedShelfRow(shelfRow: number | null) {
@@ -554,8 +546,7 @@ export function AnnotationWorkspace({
       return;
     }
     setTool((current) => (current === next && next !== "select" ? "select" : next));
-    setDrawStart(null);
-    setDraftBox(null);
+    cancelDrawing();
   }
 
   function editGeometry(
@@ -654,8 +645,7 @@ export function AnnotationWorkspace({
       selectRelative(-1);
     } else if (key === "escape") {
       setTool("select");
-      setDrawStart(null);
-      setDraftBox(null);
+      cancelDrawing();
       setSelectedId(null);
       setSkuPickerOpen(false);
     } else if (key === "+" || key === "=") {
@@ -682,226 +672,6 @@ export function AnnotationWorkspace({
       event.preventDefault();
       pasteCopies();
     }
-  }
-
-  function handlePointerDown(event: React.PointerEvent<HTMLDivElement>) {
-    // Toolbars and the SKU picker sit inside the viewport; their clicks are theirs.
-    if (isControlTarget(event.target)) {
-      return;
-    }
-    const shouldPan =
-      event.button === 1 || (event.button === 0 && (spaceHeld || tool === "pan"));
-    if (mode === "verify" && drawMode && event.button === 0 && !spaceHeld) {
-      event.preventDefault();
-      const point = scenePoint(event, transform);
-      const imageIndex = imageIndexAtPoint(fixture, point);
-      if (imageIndex < 0) {
-        return;
-      }
-      event.currentTarget.setPointerCapture(event.pointerId);
-      drawCounterRef.current += 1;
-      const start: DrawStart = {
-        pointerId: event.pointerId,
-        classType: drawMode,
-        id: `${drawMode}-${Date.now()}-${drawCounterRef.current}`,
-        imageIndex,
-        shelfRow: nearestShelfRow(activeAnnotations, point.y),
-        ...point,
-      };
-      setDrawStart(start);
-      setDraftBox(drawnBox(start, { x: point.x + 4, y: point.y + 4 }));
-      return;
-    }
-    if (!shouldPan) {
-      if (event.button === 0 && tool === "select") {
-        event.currentTarget.setPointerCapture?.(event.pointerId);
-        const point = scenePoint(event, transform);
-        setMarquee({
-          pointerId: event.pointerId,
-          start: point,
-          end: point,
-          extend: event.shiftKey || event.ctrlKey || event.metaKey,
-          moved: false,
-          clearsOnClick: event.target === event.currentTarget,
-        });
-      }
-      return;
-    }
-    event.preventDefault();
-    event.currentTarget.setPointerCapture(event.pointerId);
-    setPanStart({
-      pointerId: event.pointerId,
-      clientX: event.clientX,
-      clientY: event.clientY,
-      transformX: transform.x,
-      transformY: transform.y,
-    });
-  }
-
-  function drawnBox(start: DrawStart, end: { x: number; y: number }) {
-    return createDrawnBox(
-      start.classType,
-      start.id,
-      fixture.images[start.imageIndex]!.id,
-      start.imageIndex,
-      start,
-      end,
-      fixture,
-      start.shelfRow,
-    );
-  }
-
-  function startGeometryDrag(
-    annotationId: string,
-    handle: GeometryHandle,
-    event: React.PointerEvent<SVGGElement>,
-  ) {
-    const box = activeAnnotations.find((annotation) => annotation.id === annotationId);
-    const viewport = viewportRef.current;
-    if (!box || !viewport) {
-      return;
-    }
-    viewport.setPointerCapture?.(event.pointerId);
-    const bounds = viewport.getBoundingClientRect();
-    setGeometryDrag({
-      pointerId: event.pointerId,
-      annotationId,
-      handle,
-      start: {
-        x: (event.clientX - bounds.left - transform.x) / transform.scale,
-        y: (event.clientY - bounds.top - transform.y) / transform.scale,
-      },
-      original: { x: box.x, y: box.y, width: box.width, height: box.height },
-      moved: false,
-    });
-  }
-
-  // The geometry a drag reaches at this pointer position, or null while it is still
-  // within the click threshold.
-  function draggedGeometry(drag: GeometryDrag, event: React.PointerEvent<HTMLDivElement>) {
-    const point = scenePoint(event, transform);
-    const deltaX = point.x - drag.start.x;
-    const deltaY = point.y - drag.start.y;
-    if (!drag.moved && Math.hypot(deltaX, deltaY) * transform.scale < DRAG_THRESHOLD) {
-      return null;
-    }
-    return dragGeometry(drag.original, drag.handle, deltaX, deltaY, fixture);
-  }
-
-  function handlePointerMove(event: React.PointerEvent<HTMLDivElement>) {
-    moveCrosshair(event);
-    if (geometryDrag?.pointerId === event.pointerId) {
-      const geometry = draggedGeometry(geometryDrag, event);
-      if (geometry) {
-        if (!geometryDrag.moved) {
-          setGeometryDrag({ ...geometryDrag, moved: true });
-        }
-        setDraftGeometry({ id: geometryDrag.annotationId, ...geometry });
-      }
-      return;
-    }
-    if (drawStart?.pointerId === event.pointerId) {
-      setDraftBox(drawnBox(drawStart, scenePoint(event, transform)));
-      return;
-    }
-    if (marquee?.pointerId === event.pointerId) {
-      const end = scenePoint(event, transform);
-      setMarquee({ ...marquee, end, moved: marquee.moved || dragged(marquee.start, end) });
-      return;
-    }
-    if (!panStart || panStart.pointerId !== event.pointerId) {
-      return;
-    }
-    setTransform((current) => ({
-      ...current,
-      x: panStart.transformX + event.clientX - panStart.clientX,
-      y: panStart.transformY + event.clientY - panStart.clientY,
-    }));
-  }
-
-  function finishPointerAction(event: React.PointerEvent<HTMLDivElement>) {
-    if (geometryDrag?.pointerId === event.pointerId) {
-      // Final geometry comes from the release point, so it never trails the last move.
-      const geometry = draggedGeometry(geometryDrag, event);
-      if (geometry) {
-        autosave.edit(geometryDrag.annotationId, "update", (box) => ({
-          ...box,
-          ...geometry,
-          confidence: null,
-        }));
-      } else if (geometryDrag.handle === "move") {
-        selectAnnotation(geometryDrag.annotationId);
-      }
-      setGeometryDrag(null);
-      setDraftGeometry(null);
-      return;
-    }
-    if (drawStart?.pointerId === event.pointerId) {
-      const completed = drawnBox(drawStart, scenePoint(event, transform));
-      if (completed) {
-        setSelectedId(completed.id);
-        if (completed.classType === "product" && lastAssignedSku) {
-          // Shelves repeat products, so a new box takes the previous SKU through the
-          // same accept and assign steps as the picker; / changes it.
-          const sku = lastAssignedSku;
-          autosave.action(() => {
-            autosave.add(completed);
-            autosave.edit(completed.id, "accept", acceptBox);
-            autosave.edit(completed.id, "assign", (box) => assignSku(box, sku.id, sku.name));
-          });
-          closeSkuPicker();
-        } else {
-          autosave.add(completed);
-          // A drawn product needs its SKU next, so the picker opens on it straight away.
-          setSkuPickerOpen(completed.classType === "product");
-        }
-      }
-      setDrawStart(null);
-      setDraftBox(null);
-      return;
-    }
-    if (marquee?.pointerId === event.pointerId) {
-      finishMarquee(marquee, scenePoint(event, transform));
-      setMarquee(null);
-      return;
-    }
-    if (panStart?.pointerId === event.pointerId) {
-      setPanStart(null);
-    }
-  }
-
-  // Whether pointer travel between two scene points is a drag rather than a click.
-  function dragged(start: ScenePoint, end: ScenePoint): boolean {
-    return Math.hypot(end.x - start.x, end.y - start.y) * transform.scale >= DRAG_THRESHOLD;
-  }
-
-  function finishMarquee(current: Marquee, end: ScenePoint) {
-    if (!current.moved && !dragged(current.start, end)) {
-      if (current.clearsOnClick) {
-        setSelectedId(null);
-        setSkuPickerOpen(false);
-      }
-      return;
-    }
-    const ids = boxesInside(orderedAnnotations, rectBetween(current.start, end));
-    setSelection((selection) =>
-      current.extend ? addToSelection(selection, ids) : selectMany(ids),
-    );
-    if (mode === "verify") {
-      setSkuPickerOpen(false);
-    }
-  }
-
-  function handleWheel(event: React.WheelEvent<HTMLDivElement>) {
-    event.preventDefault();
-    const bounds = event.currentTarget.getBoundingClientRect();
-    const multiplier = Math.exp(-event.deltaY * 0.0015);
-    setTransform((current) =>
-      zoomTransform(current, current.scale * multiplier, {
-        x: event.clientX - bounds.left,
-        y: event.clientY - bounds.top,
-      }),
-    );
   }
 
   async function runBenchmark() {
@@ -1056,7 +826,7 @@ export function AnnotationWorkspace({
           {(hideAll || display.hiddenClasses.length > 0) && <span>Some boxes hidden</span>}
         </div>
         <div
-          className={`canvas-viewport tool-${tool}${panStart ? " is-panning" : ""}${
+          className={`canvas-viewport tool-${tool}${panning ? " is-panning" : ""}${
             spaceHeld || tool === "pan" ? " is-pan-ready" : ""
           }${drawMode ? ` is-drawing is-drawing-${drawMode}` : ""}`}
           ref={viewportRef}
@@ -1069,12 +839,7 @@ export function AnnotationWorkspace({
             }
           }}
           onBlur={() => setSpaceHeld(false)}
-          onPointerDown={handlePointerDown}
-          onPointerMove={handlePointerMove}
-          onPointerUp={finishPointerAction}
-          onPointerCancel={finishPointerAction}
-          onPointerLeave={() => crosshairRef.current?.classList.remove("is-visible")}
-          onWheel={handleWheel}
+          {...pointerHandlers}
         >
           <div
             className={`canvas-scene${hiddenBoxClasses(display, hideAll)}`}
@@ -1127,7 +892,10 @@ export function AnnotationWorkspace({
             <div
               className="selection-marquee"
               aria-hidden="true"
-              style={screenRect(rectBetween(marquee.start, marquee.end), transform)}
+              style={screenRect(
+                rectBetween(marquee.start, marquee.end),
+                transform,
+              )}
             />
           )}
           {showSkuPicker && selectedBox && (
@@ -1351,47 +1119,6 @@ function isEditableTarget(target: EventTarget | null): boolean {
     target instanceof HTMLTextAreaElement ||
     target instanceof HTMLSelectElement
   );
-}
-
-function isControlTarget(target: EventTarget | null): boolean {
-  return target instanceof Element && target.closest("button, input, select, textarea") !== null;
-}
-
-function scenePoint(
-  event: React.PointerEvent<HTMLDivElement>,
-  transform: SceneTransform,
-) {
-  const bounds = event.currentTarget.getBoundingClientRect();
-  return {
-    x: (event.clientX - bounds.left - transform.x) / transform.scale,
-    y: (event.clientY - bounds.top - transform.y) / transform.scale,
-  };
-}
-
-function imageIndexAtPoint(
-  fixture: CanvasFixture,
-  point: { x: number; y: number },
-): number {
-  return fixture.images.findIndex(
-    (image) =>
-      point.x >= image.x &&
-      point.x <= image.x + image.width &&
-      point.y >= image.y &&
-      point.y <= image.y + image.height,
-  );
-}
-
-function nearestShelfRow(annotations: AnnotationBox[], y: number): number {
-  const rowCandidates = annotations.filter((box) => box.shelfRow !== null);
-  if (rowCandidates.length === 0) {
-    return 0;
-  }
-  return rowCandidates.reduce((closest, box) =>
-    Math.abs(box.y + box.height / 2 - y) <
-    Math.abs(closest.y + closest.height / 2 - y)
-      ? box
-      : closest,
-  ).shelfRow!;
 }
 
 function isResolvedAnnotation(box: AnnotationBox): boolean {

@@ -22,6 +22,15 @@ export type ScenePoint = {
 const MIN_BOX_SIZE = 4;
 const DUPLICATE_OFFSET = 8;
 
+let localIdCount = 0;
+
+// An id for a box the server has not saved yet. The time keeps ids unique across
+// reloads, which restart the count, so a restored draft never collides with a new box.
+export function localBoxId(prefix: string): string {
+  localIdCount += 1;
+  return `${prefix}-${Date.now()}-${localIdCount}`;
+}
+
 export function acceptBox(box: AnnotationBox): AnnotationBox {
   if (
     box.lifecycleState === "rejected" ||

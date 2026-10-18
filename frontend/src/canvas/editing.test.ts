@@ -8,6 +8,7 @@ import {
   dragGeometry,
   duplicateBox,
   flagBox,
+  localBoxId,
   nudgeBox,
   pasteBox,
   rejectBox,
@@ -243,6 +244,14 @@ describe("annotation editing", () => {
       reviewState: "unreviewed",
       confidence: null,
     });
+  });
+
+  it("gives every unsaved box a distinct id that starts with its prefix", () => {
+    const first = localBoxId("pasted");
+    const second = localBoxId("pasted");
+
+    expect(first).toMatch(/^pasted-\d+-\d+$/);
+    expect(second).not.toBe(first);
   });
 
   it("pastes a new proposal offset on its own photo and in place on another", () => {
