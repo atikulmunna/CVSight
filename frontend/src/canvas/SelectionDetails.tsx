@@ -91,18 +91,7 @@ export function SelectionDetails({
             {lockGapClass ? (
               "Visible gap"
             ) : (
-              <select
-              className="annotation-class-select"
-              aria-label="Annotation class"
-              value={box.classType}
-              onChange={(event) =>
-                onClassChange(event.currentTarget.value as AnnotationClass)
-              }
-            >
-              <option value="product">Product</option>
-              <option value="gap">Visible gap</option>
-              <option value="shelf_label">Shelf label</option>
-              </select>
+              <ClassSelect value={box.classType} onChange={onClassChange} />
             )}
           </dd>
         </div>
@@ -146,5 +135,102 @@ export function SelectionDetails({
         </div>
       </dl>
     </div>
+  );
+}
+
+// Several boxes share the actions of one; geometry stays a single-box edit.
+export function GroupSelectionDetails({
+  boxes,
+  onAccept,
+  onReject,
+  onFlag,
+  onDuplicate,
+  onClassChange,
+  showVerificationActions,
+  lockGapClass,
+}: {
+  boxes: AnnotationBox[];
+  onAccept: () => void;
+  onReject: () => void;
+  onFlag: () => void;
+  onDuplicate: () => void;
+  onClassChange: (classType: AnnotationClass) => void;
+  showVerificationActions: boolean;
+  lockGapClass: boolean;
+}) {
+  const accepted = boxes.filter(
+    (box) => box.lifecycleState === "verified" && box.reviewState === "accepted",
+  ).length;
+  const classTypes = new Set(boxes.map((box) => box.classType));
+  return (
+    <div className="selection-details">
+      <p className="group-summary">
+        {boxes.length} boxes, {accepted} accepted. Actions apply to all of them. Select one
+        box to move or resize it.
+      </p>
+      {showVerificationActions && (
+        <div className="verification-actions" aria-label="Box verification actions">
+          <button
+            type="button"
+            className="primary-action"
+            onClick={onAccept}
+            disabled={accepted === boxes.length}
+          >
+            Accept all <kbd>A</kbd>
+          </button>
+          <button type="button" className="reject-action" onClick={onReject}>
+            Reject all <kbd>R</kbd>
+          </button>
+          <button type="button" onClick={onFlag}>
+            Flag all <kbd>F</kbd>
+          </button>
+          <button type="button" onClick={onDuplicate}>
+            Duplicate all <kbd>D</kbd>
+          </button>
+        </div>
+      )}
+      <dl>
+        <div>
+          <dt>Class</dt>
+          <dd>
+            {lockGapClass ? (
+              "Visible gap"
+            ) : (
+              <ClassSelect
+                value={classTypes.size === 1 ? boxes[0]!.classType : null}
+                onChange={onClassChange}
+              />
+            )}
+          </dd>
+        </div>
+      </dl>
+    </div>
+  );
+}
+
+// A null value means the selected boxes have different classes.
+function ClassSelect({
+  value,
+  onChange,
+}: {
+  value: AnnotationClass | null;
+  onChange: (classType: AnnotationClass) => void;
+}) {
+  return (
+    <select
+      className="annotation-class-select"
+      aria-label="Annotation class"
+      value={value ?? ""}
+      onChange={(event) => onChange(event.currentTarget.value as AnnotationClass)}
+    >
+      {value === null && (
+        <option value="" disabled>
+          Mixed
+        </option>
+      )}
+      <option value="product">Product</option>
+      <option value="gap">Visible gap</option>
+      <option value="shelf_label">Shelf label</option>
+    </select>
   );
 }

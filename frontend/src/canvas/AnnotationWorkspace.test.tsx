@@ -623,12 +623,199 @@ describe("AnnotationWorkspace", () => {
     const state = selected?.getAttribute("data-state");
 
     fireEvent.keyDown(viewport, { key: "r", ctrlKey: true });
-    fireEvent.keyDown(viewport, { key: "a", metaKey: true });
+    fireEvent.keyDown(viewport, { key: "f", metaKey: true });
     fireEvent.keyDown(viewport, { key: "d", ctrlKey: true });
 
     expect(container.querySelectorAll(".annotation")).toHaveLength(320);
     expect(selected).toHaveAttribute("data-state", state!);
     expect(screen.getByRole("button", { name: "Undo" })).toBeDisabled();
+  });
+
+  it("selects several boxes with Shift and decides them in one undoable step", () => {
+    vi.stubGlobal("fetch", vi.fn().mockRejectedValue(new TypeError("offline")));
+    const fixture = {
+      ...DEMO_FIXTURE,
+      name: "Group decision fixture",
+      annotations: proposedBoxes(3),
+    };
+    const { container } = render(<AnnotationWorkspace fixture={fixture} />);
+    const viewport = screen.getByLabelText("Shelf annotation canvas");
+    const [first, second, third] = rowIds(container);
+    const overlay = (id: string) =>
+      container.querySelector(`.annotation[data-annotation-id="${id}"]`)!;
+
+    fireEvent.pointerDown(overlay(second!), { button: 0, shiftKey: true });
+    expect(overlay(first!)).toHaveClass("is-selected");
+    expect(overlay(second!)).toHaveClass("is-selected");
+    expect(container.querySelectorAll(".selection-handle")).toHaveLength(0);
+    expect(screen.getByText("2 boxes", { selector: ".detail-panel strong" })).toBeInTheDocument();
+
+    fireEvent.keyDown(viewport, { key: "a" });
+    expect(overlay(first!)).toHaveAttribute("data-state", "verified");
+    expect(overlay(second!)).toHaveAttribute("data-state", "verified");
+    expect(overlay(third!)).toHaveAttribute("data-state", "unverified");
+
+    fireEvent.keyDown(viewport, { key: "z", ctrlKey: true });
+    expect(overlay(first!)).toHaveAttribute("data-state", "unverified");
+    expect(overlay(second!)).toHaveAttribute("data-state", "unverified");
+
+    fireEvent.click(container.querySelector(`.box-row[data-annotation-id="${first}"]`)!, {
+      shiftKey: true,
+    });
+    expect(overlay(first!)).not.toHaveClass("is-selected");
+    expect(overlay(second!)).toHaveClass("is-selected");
+    expect(container.querySelectorAll(".selection-handle")).toHaveLength(8);
+  });
+
+  it("changes the class of a group and rejects it, then brings it back", () => {
+    vi.stubGlobal("fetch", vi.fn().mockRejectedValue(new TypeError("offline")));
+    const fixture = {
+      ...DEMO_FIXTURE,
+      name: "Group reject fixture",
+      annotations: proposedBoxes(3),
+    };
+    const { container } = render(<AnnotationWorkspace fixture={fixture} />);
+    const [first, second] = rowIds(container);
+    const row = (id: string) =>
+      container.querySelector(`.box-row[data-annotation-id="${id}"]`)!;
+
+    fireEvent.click(row(second!), { shiftKey: true });
+    fireEvent.change(screen.getByLabelText("Annotation class"), {
+      target: { value: "gap" },
+    });
+    expect(row(first!)).toHaveTextContent("Visible gap");
+    expect(row(second!)).toHaveTextContent("Visible gap");
+
+    fireEvent.click(screen.getByRole("button", { name: /Reject all/ }));
+    expect(container.querySelectorAll(".box-row")).toHaveLength(1);
+    expect(screen.getByText("Choose a box on the canvas or in the list.")).toBeInTheDocument();
+
+    fireEvent.click(screen.getByRole("button", { name: "Undo" }));
+    expect(container.querySelectorAll(".box-row")).toHaveLength(3);
+    expect(screen.getByText("2 boxes", { selector: ".detail-panel strong" })).toBeInTheDocument();
+  });
+
+  it("selects the boxes inside a dragged marquee and clears on a click beside the photo", () => {
+    const fixture = {
+      ...DEMO_FIXTURE,
+      name: "Marquee fixture",
+      annotations: proposedBoxes(3),
+    };
+    const { container } = render(<AnnotationWorkspace fixture={fixture} />);
+    const viewport = screen.getByLabelText("Shelf annotation canvas");
+    const selectedCount = () => container.querySelectorAll(".annotation.is-selected").length;
+
+    drag(viewport, { x: 0, y: 0 }, { x: 5_000, y: 5_000 });
+    expect(selectedCount()).toBe(3);
+    expect(container.querySelector(".selection-marquee")).toBeNull();
+
+    fireEvent.pointerDown(viewport, { button: 0, pointerId: 2, clientX: 5, clientY: 5 });
+    fireEvent.pointerUp(viewport, { pointerId: 2, clientX: 5, clientY: 5 });
+    expect(selectedCount()).toBe(0);
+
+    fireEvent.keyDown(viewport, { key: "ArrowRight" });
+    expect(selectedCount()).toBe(1);
+    fireEvent.pointerDown(viewport, {
+      button: 0,
+      pointerId: 3,
+      shiftKey: true,
+      clientX: 6_000,
+      clientY: 6_000,
+    });
+    fireEvent.pointerMove(viewport, { pointerId: 3, clientX: 6_100, clientY: 6_100 });
+    expect(container.querySelector(".selection-marquee")).not.toBeNull();
+    fireEvent.pointerUp(viewport, { pointerId: 3, clientX: 6_100, clientY: 6_100 });
+    expect(selectedCount()).toBe(1);
+
+    drag(viewport, { x: 6_000, y: 6_000 }, { x: 6_100, y: 6_100 });
+    expect(selectedCount()).toBe(0);
+  });
+
+  it("selects every box with Ctrl+A", () => {
+    const fixture = { ...DEMO_FIXTURE, name: "Select all fixture", annotations: proposedBoxes(3) };
+    const { container } = render(<AnnotationWorkspace fixture={fixture} />);
+
+    fireEvent.keyDown(screen.getByLabelText("Shelf annotation canvas"), {
+      key: "a",
+      ctrlKey: true,
+    });
+
+    expect(container.querySelectorAll(".annotation.is-selected")).toHaveLength(3);
+    expect(container.querySelectorAll('.box-row[aria-selected="true"]')).toHaveLength(3);
+    expect(container.querySelectorAll(".annotation")[0]).toHaveAttribute(
+      "data-state",
+      "unverified",
+    );
+  });
+
+  it("copies boxes and pastes them offset on the same photo and in place on another", async () => {
+    vi.useFakeTimers();
+    const fetchMock = vi.fn().mockRejectedValue(new TypeError("offline"));
+    vi.stubGlobal("fetch", fetchMock);
+    const source = { ...DEMO_FIXTURE, name: "Copy source", annotations: proposedBoxes(1) };
+    const original = source.annotations[0]!;
+    const first = render(<AnnotationWorkspace fixture={source} />);
+    let viewport = screen.getByLabelText("Shelf annotation canvas");
+    const selectedX = (container: HTMLElement) =>
+      Number(container.querySelector(".annotation.is-selected .overlay-core")?.getAttribute("x"));
+
+    fireEvent.keyDown(viewport, { key: "c", ctrlKey: true });
+    fireEvent.keyDown(viewport, { key: "v", ctrlKey: true });
+    expect(first.container.querySelectorAll(".annotation")).toHaveLength(2);
+    expect(
+      first.container.querySelector(".annotation.is-selected")?.getAttribute("data-annotation-id"),
+    ).toMatch(/^pasted-/);
+    expect(selectedX(first.container)).toBe(original.x + 8);
+
+    fireEvent.keyDown(viewport, { key: "z", ctrlKey: true });
+    expect(first.container.querySelectorAll(".annotation")).toHaveLength(1);
+    first.unmount();
+
+    const target = {
+      ...DEMO_FIXTURE,
+      name: "Paste target",
+      images: [{ ...DEMO_FIXTURE.images[0]!, id: "other-shelf" }],
+      annotations: [],
+    };
+    const second = render(<AnnotationWorkspace fixture={target} />);
+    viewport = screen.getByLabelText("Shelf annotation canvas");
+    fireEvent.keyDown(viewport, { key: "v", metaKey: true });
+
+    expect(second.container.querySelectorAll(".annotation")).toHaveLength(1);
+    expect(selectedX(second.container)).toBe(original.x);
+    expect(second.container.querySelector(".annotation")).toHaveAttribute(
+      "data-state",
+      "unverified",
+    );
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(1_000);
+    });
+    expect(fetchMock).toHaveBeenCalledWith(
+      "/api/images/other-shelf/annotations",
+      expect.objectContaining({ method: "POST" }),
+    );
+  });
+
+  it("names every selected product with one SKU while assigning", async () => {
+    vi.stubGlobal("fetch", vi.fn().mockRejectedValue(new TypeError("offline")));
+    const fixture = {
+      ...DEMO_FIXTURE,
+      name: "Group assignment fixture",
+      annotations: DEMO_FIXTURE.annotations.slice(1, 4),
+    };
+    const { container } = render(<AnnotationWorkspace fixture={fixture} mode="assign" />);
+    const viewport = screen.getByLabelText("Shelf annotation canvas");
+    const row = (id: string) =>
+      container.querySelector(`.box-row[data-annotation-id="${id}"]`)!;
+    await screen.findByLabelText("SKU assignment search");
+
+    fireEvent.click(row("B003"), { shiftKey: true });
+    expect(screen.getByText("Assign identity to 2 boxes")).toBeInTheDocument();
+    fireEvent.keyDown(viewport, { key: "u" });
+
+    expect(row("B002")).toHaveTextContent("Unknown / Other");
+    expect(row("B003")).toHaveTextContent("Unknown / Other");
+    expect(row("B004")).not.toHaveTextContent("Unknown / Other");
   });
 
   it("does not run editing shortcuts from an input", () => {
@@ -1105,6 +1292,21 @@ describe("AnnotationWorkspace", () => {
     expect(fetchMock).toHaveBeenCalledTimes(3);
   });
 });
+
+function proposedBoxes(count: number) {
+  return DEMO_FIXTURE.annotations.slice(1, 1 + count).map((box) => ({
+    ...box,
+    state: "unverified" as const,
+    lifecycleState: "proposed" as const,
+    reviewState: "unreviewed" as const,
+  }));
+}
+
+function rowIds(container: HTMLElement) {
+  return [...container.querySelectorAll(".box-row")].map(
+    (row) => row.getAttribute("data-annotation-id")!,
+  );
+}
 
 function persistentFixture() {
   return {

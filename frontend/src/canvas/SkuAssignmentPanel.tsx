@@ -5,6 +5,8 @@ import type { AnnotationBox } from "./model";
 
 type SkuAssignmentPanelProps = {
   box: AnnotationBox;
+  // How many selected product boxes an assignment names, when more than this one.
+  targetCount?: number;
   candidates: Sku[];
   query: string;
   recentSkus: Sku[];
@@ -21,6 +23,7 @@ type SkuAssignmentPanelProps = {
 
 export function SkuAssignmentPanel({
   box,
+  targetCount = 1,
   candidates,
   query,
   recentSkus,
@@ -42,7 +45,9 @@ export function SkuAssignmentPanel({
     >
       <div className="assignment-heading">
         <div>
-          <span className="eyebrow">Assign identity</span>
+          <span className="eyebrow">
+            {targetCount > 1 ? `Assign identity to ${targetCount} boxes` : "Assign identity"}
+          </span>
           <strong>{box.skuId ? box.sku : "No SKU assigned"}</strong>
         </div>
         <span className="catalog-source">

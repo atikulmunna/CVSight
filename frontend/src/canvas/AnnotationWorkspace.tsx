@@ -26,17 +26,31 @@ import {
   duplicateBox,
   flagBox,
   nudgeBox,
+  pasteBox,
   rejectBox,
   resizeBox,
   type BoxGeometry,
   type DrawnClass,
+  type EditIntent,
   type GeometryHandle,
+  type ScenePoint,
 } from "./editing";
 import { CanvasTools, type CanvasTool } from "./CanvasTools";
-import { SelectionDetails } from "./SelectionDetails";
+import { copiedBoxes, copyBoxes } from "./clipboard";
+import { GroupSelectionDetails, SelectionDetails } from "./SelectionDetails";
 import { SkuAssignmentPanel } from "./SkuAssignmentPanel";
 import type { AnnotationBox, AnnotationClass, CanvasFixture } from "./model";
 import { skuLabel, spatialReadingOrder } from "./model";
+import {
+  addToSelection,
+  boxesInside,
+  rectBetween,
+  selectMany,
+  selectOnly,
+  toggleSelected,
+  type SceneRect,
+  type Selection,
+} from "./selection";
 import {
   fitTransform,
   revealBox,
@@ -85,6 +99,17 @@ type DrawStart = {
   y: number;
 };
 
+type Marquee = {
+  pointerId: number;
+  start: ScenePoint;
+  end: ScenePoint;
+  // Shift, Ctrl, or Cmd adds the boxes inside to the selection instead of replacing it.
+  extend: boolean;
+  moved: boolean;
+  // A click, not a drag, on the space around the photo clears the selection.
+  clearsOnClick: boolean;
+};
+
 const LIST_ROW_HEIGHT = 50;
 const LIST_OVERSCAN = 5;
 const HANDLE_SCREEN_SIZE = 9;
@@ -129,11 +154,18 @@ export function AnnotationWorkspace({
     () => spatialReadingOrder(workspaceAnnotations),
     [workspaceAnnotations],
   );
-  const [selectedId, setSelectedId] = useState<string | null>(
-    (isGapReview
-      ? orderedAnnotations.find((box) => !isResolvedAnnotation(box))
-      : orderedAnnotations[0]
-    )?.id ?? orderedAnnotations[0]?.id ?? null,
+  const [selection, setSelection] = useState<Selection>(() =>
+    selectOnly(
+      (isGapReview
+        ? orderedAnnotations.find((box) => !isResolvedAnnotation(box))
+        : orderedAnnotations[0]
+      )?.id ?? orderedAnnotations[0]?.id ?? null,
+    ),
+  );
+  const selectedId = selection.primary;
+  const setSelectedId = useCallback(
+    (id: string | null) => setSelection(selectOnly(id)),
+    [],
   );
   const [transform, setTransform] = useState<SceneTransform>({
     scale: 1,
@@ -158,6 +190,7 @@ export function AnnotationWorkspace({
   const [draftBox, setDraftBox] = useState<AnnotationBox | null>(null);
   const [geometryDrag, setGeometryDrag] = useState<GeometryDrag | null>(null);
   const [draftGeometry, setDraftGeometry] = useState<(BoxGeometry & { id: string }) | null>(null);
+  const [marquee, setMarquee] = useState<Marquee | null>(null);
   const [benchmark, setBenchmark] = useState<CanvasBenchmark | null>(null);
   const [benchmarkError, setBenchmarkError] = useState<string | null>(null);
   const [benchmarking, setBenchmarking] = useState(false);
@@ -165,6 +198,7 @@ export function AnnotationWorkspace({
   const listRef = useRef<HTMLDivElement>(null);
   const duplicateCounterRef = useRef(0);
   const drawCounterRef = useRef(0);
+  const pasteCounterRef = useRef(0);
 
   const displayedAnnotations = useMemo(() => {
     const boxes = draftGeometry
@@ -176,6 +210,15 @@ export function AnnotationWorkspace({
   }, [activeAnnotations, draftBox, draftGeometry]);
   const selectedBox =
     orderedAnnotations.find((annotation) => annotation.id === selectedId) ?? null;
+  const selectedBoxes = useMemo(
+    () => orderedAnnotations.filter((annotation) => selection.ids.has(annotation.id)),
+    [orderedAnnotations, selection.ids],
+  );
+  const isGroup = selectedBoxes.length > 1;
+  const groupIds = useMemo(
+    () => (isGroup ? new Set(selectedBoxes.map((box) => box.id)) : undefined),
+    [isGroup, selectedBoxes],
+  );
   const showSkuPicker =
     skuPickerOpen &&
     selectedBox?.classType === "product" &&
@@ -253,10 +296,17 @@ export function AnnotationWorkspace({
             orderedAnnotations.length;
       setSelectedId(orderedAnnotations[nextIndex]!.id);
     },
-    [orderedAnnotations, selectedId],
+    [orderedAnnotations, selectedId, setSelectedId],
   );
 
-  function selectAnnotation(annotationId: string) {
+  function selectAnnotation(annotationId: string, extend = false) {
+    if (extend) {
+      setSelection((current) => toggleSelected(current, annotationId));
+      if (mode === "verify") {
+        setSkuPickerOpen(false);
+      }
+      return;
+    }
     setSelectedId(annotationId);
     const annotation = activeAnnotations.find((box) => box.id === annotationId);
     setSkuPickerOpen(annotation?.classType === "product");
@@ -290,14 +340,43 @@ export function AnnotationWorkspace({
     if (moved.length === 0) {
       return;
     }
-    // Selecting the changed box pans to it, so the reviewer sees what was undone.
-    setSelectedId(moved.find((box) => box.lifecycleState !== "rejected")?.id ?? null);
+    // Selecting the changed boxes pans to them, so the reviewer sees what was undone.
+    setSelection(
+      selectMany(
+        moved.filter((box) => box.lifecycleState !== "rejected").map((box) => box.id),
+      ),
+    );
     if (mode === "verify") {
       closeSkuPicker();
     }
   }
 
+  // One action over every selected box, so a group decision undoes in one step.
+  function editSelection(
+    intent: EditIntent,
+    update: (box: AnnotationBox) => AnnotationBox,
+  ) {
+    autosave.action(() => {
+      for (const box of selectedBoxes) {
+        autosave.edit(box.id, intent, update);
+      }
+    });
+  }
+
+  function addBoxes(boxes: AnnotationBox[]) {
+    autosave.action(() => {
+      for (const box of boxes) {
+        autosave.add(box);
+      }
+    });
+    setSelection(selectMany(boxes.map((box) => box.id)));
+  }
+
   function acceptSelected() {
+    if (isGroup) {
+      editSelection("accept", acceptBox);
+      return;
+    }
     if (!selectedId || !selectedBox || isResolvedAnnotation(selectedBox)) {
       return;
     }
@@ -313,12 +392,16 @@ export function AnnotationWorkspace({
   }
 
   function flagSelected() {
-    if (selectedId) {
-      autosave.edit(selectedId, "update", flagBox);
-    }
+    editSelection("update", flagBox);
   }
 
   function rejectSelected() {
+    if (isGroup) {
+      editSelection("reject", rejectBox);
+      setSelectedId(null);
+      closeSkuPicker();
+      return;
+    }
     if (!selectedId) {
       return;
     }
@@ -333,17 +416,46 @@ export function AnnotationWorkspace({
   }
 
   function duplicateSelected() {
-    if (!selectedBox) {
+    if (selectedBoxes.length === 0) {
       return;
     }
-    duplicateCounterRef.current += 1;
-    const duplicate = duplicateBox(
-      selectedBox,
-      `${selectedBox.id}-copy-${duplicateCounterRef.current}`,
-      fixture,
+    addBoxes(
+      selectedBoxes.map((box) => {
+        duplicateCounterRef.current += 1;
+        return duplicateBox(box, `${box.id}-copy-${duplicateCounterRef.current}`, fixture);
+      }),
     );
-    autosave.add(duplicate);
-    setSelectedId(duplicate.id);
+  }
+
+  // A copy outlives this workspace, so it can be pasted into the next photo.
+  function copySelection() {
+    copyBoxes({ boxes: selectedBoxes, images: fixture.images });
+  }
+
+  function pasteCopies() {
+    const copied = copiedBoxes();
+    if (!copied) {
+      return;
+    }
+    pasteCounterRef.current += 1;
+    const batch = `pasted-${Date.now()}-${pasteCounterRef.current}`;
+    const pasted = copied.boxes
+      .filter((box) => !isGapReview || box.classType === "gap")
+      .map((box, index) =>
+        pasteBox(box, `${batch}-${index}`, copied.images[box.imageIndex], fixture.images),
+      );
+    if (pasted.length === 0) {
+      return;
+    }
+    addBoxes(pasted);
+    closeSkuPicker();
+  }
+
+  function selectAll() {
+    setSelection(selectMany(orderedAnnotations.map((box) => box.id)));
+    if (mode === "verify") {
+      closeSkuPicker();
+    }
   }
 
   function changeSelectedShelfRow(shelfRow: number | null) {
@@ -354,41 +466,33 @@ export function AnnotationWorkspace({
   }
 
   function changeSelectedClass(classType: AnnotationClass) {
-    if (!selectedId) {
-      return;
-    }
-    autosave.edit(selectedId, "update", (box) =>
-      changeBoxClass(box, classType),
-    );
-    setSkuPickerOpen(classType === "product");
+    editSelection("update", (box) => changeBoxClass(box, classType));
+    setSkuPickerOpen(!isGroup && classType === "product");
   }
 
+  // Naming accepts each box first, because only accepted products may carry a SKU.
   function assignSelectedSku(sku: Sku) {
-    if (!selectedId || !selectedBox) {
-      return;
-    }
-    const needsAcceptance =
-      selectedBox.lifecycleState !== "verified" ||
-      selectedBox.reviewState !== "accepted";
-    const assignable = needsAcceptance ? acceptBox(selectedBox) : selectedBox;
-    const updated = assignSku(assignable, sku.id, sku.name);
-    if (updated === selectedBox) {
+    const targets = selectedBoxes.filter((box) => box.classType === "product");
+    if (!selectedId || targets.length === 0) {
       return;
     }
     const currentIndex = orderedAnnotations.findIndex(
       (annotation) => annotation.id === selectedId,
     );
     autosave.action(() => {
-      if (needsAcceptance) {
-        autosave.edit(selectedId, "accept", acceptBox);
+      for (const target of targets) {
+        autosave.edit(target.id, "accept", acceptBox);
+        autosave.edit(target.id, "assign", (box) => assignSku(box, sku.id, sku.name));
       }
-      autosave.edit(selectedId, "assign", (box) =>
-        assignSku(box, sku.id, sku.name),
-      );
     });
     assignmentCatalog.remember(sku);
     setLastAssignedSku(sku);
-    if (mode === "assign") {
+    if (targets.length > 1) {
+      // A group stays selected, so the reviewer sees every box it named.
+      if (mode === "verify") {
+        closeSkuPicker();
+      }
+    } else if (mode === "assign") {
       const next = orderedAnnotations[currentIndex + 1];
       if (next) {
         setSelectedId(next.id);
@@ -422,7 +526,7 @@ export function AnnotationWorkspace({
     direction: "left" | "right" | "up" | "down",
     resize: boolean,
   ) {
-    if (!selectedId) {
+    if (!selectedId || isGroup) {
       return;
     }
     const deltaX = direction === "left" ? -1 : direction === "right" ? 1 : 0;
@@ -444,13 +548,10 @@ export function AnnotationWorkspace({
       return;
     }
     const key = event.key.toLowerCase();
-    // Ctrl and Cmd combinations are undo, redo, or the browser's own (Ctrl+R reloads),
-    // never the single-key shortcuts below.
+    // Ctrl and Cmd combinations are canvas commands or the browser's own (Ctrl+R
+    // reloads), never the single-key shortcuts below.
     if (event.ctrlKey || event.metaKey) {
-      if (key === "z" || key === "y") {
-        event.preventDefault();
-        stepHistory(key === "y" || event.shiftKey ? "redo" : "undo");
-      }
+      handleCommandKey(key, event);
       return;
     }
     const candidateIndex = Number(key) - 1;
@@ -524,6 +625,23 @@ export function AnnotationWorkspace({
     }
   }
 
+  // Copy and paste with nothing to act on leave the keys to the browser.
+  function handleCommandKey(key: string, event: React.KeyboardEvent<HTMLDivElement>) {
+    if (key === "z" || key === "y") {
+      event.preventDefault();
+      stepHistory(key === "y" || event.shiftKey ? "redo" : "undo");
+    } else if (key === "a") {
+      event.preventDefault();
+      selectAll();
+    } else if (key === "c" && selectedBoxes.length > 0) {
+      event.preventDefault();
+      copySelection();
+    } else if (key === "v" && mode === "verify" && copiedBoxes()) {
+      event.preventDefault();
+      pasteCopies();
+    }
+  }
+
   function handlePointerDown(event: React.PointerEvent<HTMLDivElement>) {
     // Toolbars and the SKU picker sit inside the viewport; their clicks are theirs.
     if (isControlTarget(event.target)) {
@@ -553,9 +671,17 @@ export function AnnotationWorkspace({
       return;
     }
     if (!shouldPan) {
-      if (event.button === 0 && event.target === event.currentTarget) {
-        setSelectedId(null);
-        setSkuPickerOpen(false);
+      if (event.button === 0 && tool === "select") {
+        event.currentTarget.setPointerCapture?.(event.pointerId);
+        const point = scenePoint(event, transform);
+        setMarquee({
+          pointerId: event.pointerId,
+          start: point,
+          end: point,
+          extend: event.shiftKey || event.ctrlKey || event.metaKey,
+          moved: false,
+          clearsOnClick: event.target === event.currentTarget,
+        });
       }
       return;
     }
@@ -635,6 +761,11 @@ export function AnnotationWorkspace({
       setDraftBox(drawnBox(drawStart, scenePoint(event, transform)));
       return;
     }
+    if (marquee?.pointerId === event.pointerId) {
+      const end = scenePoint(event, transform);
+      setMarquee({ ...marquee, end, moved: marquee.moved || dragged(marquee.start, end) });
+      return;
+    }
     if (!panStart || panStart.pointerId !== event.pointerId) {
       return;
     }
@@ -686,8 +817,35 @@ export function AnnotationWorkspace({
       setDraftBox(null);
       return;
     }
+    if (marquee?.pointerId === event.pointerId) {
+      finishMarquee(marquee, scenePoint(event, transform));
+      setMarquee(null);
+      return;
+    }
     if (panStart?.pointerId === event.pointerId) {
       setPanStart(null);
+    }
+  }
+
+  // Whether pointer travel between two scene points is a drag rather than a click.
+  function dragged(start: ScenePoint, end: ScenePoint): boolean {
+    return Math.hypot(end.x - start.x, end.y - start.y) * transform.scale >= DRAG_THRESHOLD;
+  }
+
+  function finishMarquee(current: Marquee, end: ScenePoint) {
+    if (!current.moved && !dragged(current.start, end)) {
+      if (current.clearsOnClick) {
+        setSelectedId(null);
+        setSkuPickerOpen(false);
+      }
+      return;
+    }
+    const ids = boxesInside(orderedAnnotations, rectBetween(current.start, end));
+    setSelection((selection) =>
+      current.extend ? addToSelection(selection, ids) : selectMany(ids),
+    );
+    if (mode === "verify") {
+      setSkuPickerOpen(false);
     }
   }
 
@@ -803,6 +961,7 @@ export function AnnotationWorkspace({
           ref={listRef}
           role="listbox"
           aria-label="Boxes in spatial reading order"
+          aria-multiselectable="true"
           onScroll={(event) => setListScrollTop(event.currentTarget.scrollTop)}
         >
           <div
@@ -814,12 +973,14 @@ export function AnnotationWorkspace({
               return (
                 <button
                   type="button"
-                  className={`box-row${box.id === selectedId ? " is-selected" : ""}`}
+                  className={`box-row${selection.ids.has(box.id) ? " is-selected" : ""}`}
                   style={{ top: index * LIST_ROW_HEIGHT }}
                   data-annotation-id={box.id}
                   role="option"
-                  aria-selected={box.id === selectedId}
-                  onClick={() => selectAnnotation(box.id)}
+                  aria-selected={selection.ids.has(box.id)}
+                  onClick={(event) =>
+                    selectAnnotation(box.id, event.shiftKey || event.ctrlKey || event.metaKey)
+                  }
                   key={box.id}
                 >
                   <span className="state-marker" data-state={box.state}>
@@ -898,7 +1059,8 @@ export function AnnotationWorkspace({
               annotations={displayedAnnotations}
               width={fixture.width}
               height={fixture.height}
-              selectedId={selectedId}
+              selectedId={isGroup ? null : selectedId}
+              groupIds={groupIds}
               interactive={!spaceHeld && tool === "select"}
               handleSize={HANDLE_SCREEN_SIZE / transform.scale}
               handlesActive={!spaceHeld && tool !== "pan"}
@@ -906,6 +1068,13 @@ export function AnnotationWorkspace({
               onGeometryStart={startGeometryDrag}
             />
           </div>
+          {marquee?.moved && (
+            <div
+              className="selection-marquee"
+              aria-hidden="true"
+              style={screenRect(rectBetween(marquee.start, marquee.end), transform)}
+            />
+          )}
           {showSkuPicker && selectedBox && (
             <div
               className="sku-picker-popover"
@@ -917,6 +1086,7 @@ export function AnnotationWorkspace({
             >
               <SkuAssignmentPanel
                 box={selectedBox}
+                targetCount={selectedBoxes.filter((box) => box.classType === "product").length}
                 candidates={assignmentCatalog.candidates}
                 query={assignmentCatalog.query}
                 recentSkus={assignmentCatalog.recentSkus}
@@ -931,7 +1101,7 @@ export function AnnotationWorkspace({
                   setSelectedId(null);
                   closeSkuPicker();
                 }}
-                onRemove={mode === "verify" ? rejectSelected : undefined}
+                onRemove={mode === "verify" && !isGroup ? rejectSelected : undefined}
               />
             </div>
           )}
@@ -960,6 +1130,10 @@ export function AnnotationWorkspace({
           />
           <div className="shortcut-strip">
             <span>Ctrl+Z undo · Ctrl+Shift+Z redo</span>
+            <span>
+              Shift+click or drag selects several
+              {mode === "verify" ? " · Ctrl+C copy · Ctrl+V paste" : ""}
+            </span>
             {mode === "assign" ? (
               <>
                 <span>1-9 assign candidate</span>
@@ -988,16 +1162,31 @@ export function AnnotationWorkspace({
         <div className="panel-heading">
           <div>
             <span className="eyebrow">
-              {isGapReview ? "Selected gap" : "Selected facing"}
+              {isGroup ? "Selection" : isGapReview ? "Selected gap" : "Selected facing"}
             </span>
-            <strong>{selectedBox?.id ?? "None"}</strong>
+            <strong>{isGroup ? `${selectedBoxes.length} boxes` : (selectedBox?.id ?? "None")}</strong>
           </div>
           <span className="panel-count">
-            {selectedBox ? orderedAnnotations.indexOf(selectedBox) + 1 : 0} /{" "}
-            {orderedAnnotations.length}
+            {isGroup
+              ? selectedBoxes.length
+              : selectedBox
+                ? orderedAnnotations.indexOf(selectedBox) + 1
+                : 0}{" "}
+            / {orderedAnnotations.length}
           </span>
         </div>
-        {selectedBox ? (
+        {isGroup ? (
+          <GroupSelectionDetails
+            boxes={selectedBoxes}
+            onAccept={acceptSelected}
+            onReject={rejectSelected}
+            onFlag={flagSelected}
+            onDuplicate={duplicateSelected}
+            onClassChange={changeSelectedClass}
+            showVerificationActions={mode === "verify"}
+            lockGapClass={isGapReview}
+          />
+        ) : selectedBox ? (
           <SelectionDetails
             fixture={fixture}
             box={selectedBox}
@@ -1094,6 +1283,15 @@ function skuPickerPosition(
       padding,
       Math.min(boxTop, viewport.height - estimatedHeight - padding),
     ),
+  };
+}
+
+function screenRect(rect: SceneRect, transform: SceneTransform) {
+  return {
+    left: transform.x + rect.x * transform.scale,
+    top: transform.y + rect.y * transform.scale,
+    width: rect.width * transform.scale,
+    height: rect.height * transform.scale,
   };
 }
 

@@ -1312,6 +1312,16 @@ Canvas controls:
   drawn box, and restore to bring back a rejected one. History lasts until the page is
   reloaded, and choosing the server version in a conflict clears it. Other `Ctrl` and
   `Cmd` combinations go to the browser, so `Ctrl` plus `R` reloads instead of rejecting.
+- `Shift`, `Ctrl`, or `Cmd` plus a click on a box, on the canvas or in the list, adds it
+  to the selection or takes it out. Dragging across empty canvas with the Select tool
+  selects the boxes wholly inside the rectangle, and holding `Shift` adds them to the
+  current selection. `Ctrl` plus `A` selects every box. With several boxes selected,
+  accept, reject, flag, duplicate, class change, and SKU naming apply to all of them as
+  one undo step; moving and resizing need a single selected box.
+- `Ctrl` plus `C` copies the selected boxes and `Ctrl` plus `V` pastes them as new
+  unreviewed proposals that keep their class and SKU. On the photo they came from they
+  land offset by 8 pixels; on another photo they keep their place, so boxes copied on
+  one shelf photo carry to the next. The copy lasts until the page reloads.
 - `Alt` plus an arrow key nudges the selected box by one pixel.
 - `Alt` plus `Shift` plus an arrow key resizes the selected box by one pixel.
 - `+`, `-`, or the mouse wheel changes zoom.

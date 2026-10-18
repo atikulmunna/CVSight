@@ -9,6 +9,7 @@ import {
   duplicateBox,
   flagBox,
   nudgeBox,
+  pasteBox,
   rejectBox,
   reopenBox,
   resizeBox,
@@ -242,5 +243,40 @@ describe("annotation editing", () => {
       reviewState: "unreviewed",
       confidence: null,
     });
+  });
+
+  it("pastes a new proposal offset on its own photo and in place on another", () => {
+    const photo = { id: "image-1", url: "", x: 0, y: 0, width: 100, height: 80 };
+    const narrower = { ...photo, id: "image-2", width: 60 };
+    const named = { ...acceptBox(BOX), skuId: "sku-1", x: 70, y: 10 };
+
+    expect(pasteBox(named, "paste-1", photo, [photo])).toMatchObject({
+      id: "paste-1",
+      serverId: null,
+      revision: null,
+      imageId: "image-1",
+      x: 78,
+      y: 18,
+      state: "unverified",
+      lifecycleState: "proposed",
+      reviewState: "unreviewed",
+      confidence: null,
+      skuId: "sku-1",
+    });
+    expect(pasteBox(named, "paste-2", photo, [narrower])).toMatchObject({
+      imageId: "image-2",
+      x: 40,
+      y: 10,
+      width: 20,
+    });
+  });
+
+  it("keeps a pasted box's place within its photo when photos are tiled", () => {
+    const secondTile = { id: "tile-2", url: "", x: 100, y: 0, width: 100, height: 80 };
+    const target = { id: "image-9", url: "", x: 0, y: 0, width: 100, height: 80 };
+
+    expect(
+      pasteBox({ ...BOX, x: 110, imageIndex: 1 }, "paste-3", secondTile, [target]),
+    ).toMatchObject({ imageId: "image-9", imageIndex: 0, x: 10 });
   });
 });

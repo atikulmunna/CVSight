@@ -2739,6 +2739,14 @@ code {
   cursor: move;
 }
 
+.selection-marquee {
+  position: absolute;
+  z-index: 3;
+  border: 1px dashed var(--brand);
+  background: color-mix(in srgb, var(--brand) 12%, transparent);
+  pointer-events: none;
+}
+
 .zoom-controls {
   position: absolute;
   z-index: 4;
@@ -2861,6 +2869,13 @@ code {
 
 .selection-details {
   padding: 14px;
+}
+
+.group-summary {
+  margin: 0 0 14px;
+  color: var(--text-secondary);
+  font-size: 10px;
+  line-height: 1.6;
 }
 
 .selected-crop {

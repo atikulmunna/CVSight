@@ -1,4 +1,4 @@
-import type { AnnotationBox, AnnotationClass } from "./model";
+import type { AnnotationBox, AnnotationClass, FixtureImage } from "./model";
 
 export type EditIntent =
   | "accept"
@@ -146,13 +146,48 @@ export function duplicateBox(
 ): AnnotationBox {
   const x = clamp(box.x + DUPLICATE_OFFSET, 0, bounds.width - box.width);
   const y = clamp(box.y + DUPLICATE_OFFSET, 0, bounds.height - box.height);
+  return { ...asNewProposal(box, id), x, y };
+}
+
+// A copied box keeps its place within its photo. On the photo it came from it lands
+// offset, like a duplicate, so it does not hide the original.
+export function pasteBox(
+  box: AnnotationBox,
+  id: string,
+  sourceImage: FixtureImage | undefined,
+  targetImages: readonly FixtureImage[],
+): AnnotationBox {
+  const imageIndex = Math.min(box.imageIndex, targetImages.length - 1);
+  const image = targetImages[imageIndex]!;
+  const offset = sourceImage?.id === image.id ? DUPLICATE_OFFSET : 0;
+  const width = Math.min(box.width, image.width);
+  const height = Math.min(box.height, image.height);
+  return {
+    ...asNewProposal(box, id),
+    imageId: image.id,
+    imageIndex,
+    x: clamp(
+      image.x + box.x - (sourceImage?.x ?? 0) + offset,
+      image.x,
+      image.x + image.width - width,
+    ),
+    y: clamp(
+      image.y + box.y - (sourceImage?.y ?? 0) + offset,
+      image.y,
+      image.y + image.height - height,
+    ),
+    width,
+    height,
+  };
+}
+
+// A copy is a new, unsaved proposal: a human verifies it again where it lands.
+function asNewProposal(box: AnnotationBox, id: string): AnnotationBox {
   return {
     ...box,
     id,
     serverId: null,
     revision: null,
-    x,
-    y,
     state: "unverified",
     lifecycleState: "proposed",
     reviewState: "unreviewed",
