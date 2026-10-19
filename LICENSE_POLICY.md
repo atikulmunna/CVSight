@@ -14,8 +14,9 @@ remain governed by their own licenses, and bundling them does not change those t
 ## Shipped repository contents
 
 The public source release contains application code, migrations, tests, PowerShell and
-POSIX shell operator scripts, container build files, documentation, the CVSight logo, and
-a generated demonstration shelf image. It does not contain customer shelf imagery, benchmark datasets, annotations,
+POSIX shell operator scripts, container build files, the optional SAM 3 smart box
+service source, documentation, the CVSight logo, and a generated demonstration shelf
+image. It does not contain customer shelf imagery, benchmark datasets, annotations,
 database dumps, model checkpoints, training exports, or local evaluation reports.
 
 The release license gate rejects common model, dataset, and archive suffixes in tracked
@@ -57,7 +58,7 @@ No model weight or dataset is shipped in this repository.
 | --- | --- | --- |
 | RF-DETR Nano code and official weights | Apache-2.0 | Permitted as an operator-supplied detector. Checkpoint bytes and version must be configured outside Git. |
 | OpenAI CLIP ViT-B/32 code | MIT | Permitted only as an exploratory, operator-supplied suggestion model. Current evidence does not permit automatic SKU assignment. |
-| SAM 3 source and checkpoint | Custom SAM license | Optional local refinement only. Redistribution is not approved by this release. Operators must review the upstream terms. |
+| SAM 3 source and checkpoint | Custom SAM license | Optional and operator-run: the box refiner worker and the smart box service in `runtimes/sam3_segmenter`, which is MIT code that imports SAM 3 without bundling it. Neither SAM 3 nor its checkpoint is shipped, and redistribution is not approved by this release. Operators must review the upstream terms. |
 | QPDS-Seg benchmark data | CC-BY-4.0 | Local benchmark input only. It is not shipped. Redistribution or derivatives require attribution. |
 | Externally trained detectors | Operator declared | Registered with external lineage, a named source, and the approved-license flag. They run as separate services behind the HTTP runtime contract, so their code and licenses, including AGPL runtimes such as Ultralytics, stay outside CVSight. |
 | Operator datasets and checkpoints | Operator declared | Training preparation refuses inputs without an approved name, license, source, and checkpoint checksum. |

@@ -52,6 +52,7 @@ detector, it pre-labels new photos for people to verify.
   - [Quality review and snapshot sign-off](#quality-review-and-snapshot-sign-off)
   - [Live annotation workspace](#live-annotation-workspace)
   - [Annotation canvas](#annotation-canvas)
+  - [Smart box](#smart-box)
 - [Contributing](#contributing)
 - [License](#license)
 
@@ -1329,6 +1330,8 @@ Canvas controls:
   while it is selected. These settings change nothing in the project and are kept in
   this browser, except hiding every box, which lasts for the current photo.
 - The drawing tools show a crosshair at the pointer.
+- `M` picks the smart box tool: a click on a product asks SAM 3 for the box around it.
+  It needs the SAM service described in [Smart box](#smart-box).
 - `Alt` plus an arrow key nudges the selected box by one pixel.
 - `Alt` plus `Shift` plus an arrow key resizes the selected box by one pixel.
 - `+`, `-`, or the mouse wheel changes zoom.
@@ -1370,6 +1373,61 @@ no canvas work, or when the canvas measurement comes out faster than the idle lo
 panel marks the run **not valid** and the timings describe the machine rather than the
 canvas. Only a valid run is evidence. The staged real images and fixture JSON remain
 local under the ignored `frontend/public/local-fixtures` directory.
+
+## Smart box
+
+The smart box tool turns a click on a product into a tight box. CVSight sends the click
+to `POST /api/images/{image_id}/smart-box`, and the API asks a SAM service for the box
+around the object at that point. Nothing is saved until the canvas creates the box
+through the annotation API, so it autosaves, takes the previous SKU, and undoes like a
+drawn box.
+
+The service is `runtimes/sam3_segmenter`. It runs SAM 3's image model with instance
+interactivity, the SAM 1 style click task; SAM 3.1 ships only a video tracking
+checkpoint, so `sam3.pt` is the newest checkpoint for single photos. A photo crosses the
+network once: the service keeps the encodings of the most recent photos, keyed by
+checksum, and the API uploads a photo only when the service does not hold it. Each
+click after that runs only SAM's light mask step.
+
+Start the service on a machine with a CUDA GPU, such as a cluster node, from a checkout
+of this repository. SAM 3 and its checkpoint stay outside the checkout:
+
+```bash
+conda create -n sam3 python=3.12 && conda activate sam3
+pip install torch==2.10.0 torchvision --index-url https://download.pytorch.org/whl/cu128
+git clone https://github.com/facebookresearch/sam3.git ~/sam3 && pip install -e ~/sam3
+pip install -r runtimes/sam3_segmenter/requirements.txt
+hf auth login        # once Meta has approved access to facebook/sam3
+hf download facebook/sam3 sam3.pt --local-dir ~/sam3-checkpoint
+export SAM_SEGMENTER_TOKEN="$(python -c 'import secrets; print(secrets.token_urlsafe(32))')"
+echo "$SAM_SEGMENTER_TOKEN"   # CVSight needs the same value
+python -m runtimes.sam3_segmenter --checkpoint ~/sam3-checkpoint/sam3.pt --host 0.0.0.0
+```
+
+The service listens on port 8093 unless `--port` says otherwise. Every request must
+carry the token, because on a shared cluster other users can reach the node's port. The
+token is read from the environment, never from the command line, so it stays out of the
+process list.
+
+From the PC that runs CVSight, forward a local port to the node through the cluster's
+login host, and keep this running while you label:
+
+```bash
+ssh -N -L 127.0.0.1:8093:NODE:8093 USER@LOGIN_HOST
+```
+
+Then point CVSight at the forwarded port in `.env`:
+
+```text
+SHELFSIGHT_SEGMENTER_URL=http://127.0.0.1:8093
+SHELFSIGHT_SEGMENTER_TOKEN=the value printed above
+```
+
+Inside Docker Compose the API container reaches the forward on the host as
+`http://host.docker.internal:8093`; set that URL and recreate the `api` service. When
+the service is unreachable, the token is wrong, or SAM finds nothing at a point, the
+canvas says so and drawing by hand still works. Each click costs one round trip to the
+service, so a distant cluster adds its network latency to every box.
 
 ## Contributing
 
