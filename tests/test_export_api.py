@@ -314,6 +314,87 @@ def test_yolo_export_lays_out_verified_boxes_by_split(
     assert manifest["policies"]["split_ratios"] == {"train": 70, "valid": 20, "test": 10}
 
 
+def test_segmentation_exports_carry_product_outlines(
+    database_engine: Engine,
+    tmp_path: Path,
+) -> None:
+    dataset_id, version_id, image_id = uuid4(), uuid4(), uuid4()
+    media_root = tmp_path / "media"
+    canonical_key = f"canonical/{image_id}.png"
+    (media_root / "canonical").mkdir(parents=True)
+    (media_root / canonical_key).write_bytes(_png_bytes(120, 80))
+    outline = [[10.0, 10.0], [40.0, 10.0], [25.0, 50.0]]
+    with database_engine.begin() as connection:
+        connection.execute(
+            insert(datasets).values(
+                id=dataset_id,
+                name=f"segmentation-{dataset_id}",
+                project_type="instance_segmentation",
+            )
+        )
+        connection.execute(insert(dataset_versions).values(id=version_id, dataset_id=dataset_id))
+        connection.execute(
+            insert(images).values(
+                id=image_id,
+                dataset_id=dataset_id,
+                original_media_key=f"original/{image_id}.png",
+                canonical_media_key=canonical_key,
+                thumbnail_media_key=f"thumbnails/{image_id}.jpg",
+                media_type="image/png",
+                original_filename="outlines.png",
+                content_sha256="b" * 64,
+                canonical_width=120,
+                canonical_height=80,
+                capture_metadata={"provided": {"split": "train"}},
+            )
+        )
+        connection.execute(
+            insert(dataset_version_images).values(
+                dataset_id=dataset_id, dataset_version_id=version_id, image_id=image_id
+            )
+        )
+        for class_type, polygon, (x, y, width, height) in [
+            ("product", outline, (10.0, 10.0, 30.0, 40.0)),
+            ("gap", None, (60.0, 20.0, 20.0, 25.0)),
+        ]:
+            create_annotation(
+                connection,
+                image_id,
+                {
+                    "x": x, "y": y, "width": width, "height": height, "polygon": polygon,
+                    "class_type": class_type, "sku_id": None,
+                    "lifecycle_state": "verified", "review_state": "accepted",
+                    "source": "human", "provenance": {}, "confidence": None,
+                    "occluded": False, "truncated": False, "shelf_row": 0,
+                },
+            )
+        snapshot_dataset_version(connection, version_id)
+    target = ExportTarget(dataset_id, version_id, image_id, media_root, {})
+    try:
+        with database_engine.connect() as connection:
+            coco_archive = _dataset_export(connection, target, "coco", "product")
+            yolo_archive = _dataset_export(connection, target, "yolo-seg", "product")
+    finally:
+        with database_engine.begin() as connection:
+            connection.execute(delete(datasets).where(datasets.c.id == dataset_id))
+
+    with ZipFile(BytesIO(coco_archive)) as bundle:
+        coco = json.loads(bundle.read("train/_annotations.coco.json"))
+        manifest = json.loads(bundle.read("manifest.json"))
+    with ZipFile(BytesIO(yolo_archive)) as bundle:
+        labels = bundle.read(f"labels/train/{image_id}.txt").decode().splitlines()
+    segmentations = sorted(annotation["segmentation"] for annotation in coco["annotations"])
+    assert segmentations == [[], [[10, 10, 40, 10, 25, 50]]]
+    assert manifest["counts"]["outlined_annotations"] == 1
+    outlined = "0 0.083333 0.125000 0.333333 0.125000 0.208333 0.625000"
+    assert outlined in labels
+    (boxed,) = [line for line in labels if line != outlined]
+    assert boxed.split()[1:] == [
+        "0.500000", "0.250000", "0.666667", "0.250000",
+        "0.666667", "0.562500", "0.500000", "0.562500",
+    ]
+
+
 def test_sku_mode_names_boxes_by_their_trainable_sku(
     database_engine: Engine,
     export_target: ExportTarget,

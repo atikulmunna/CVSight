@@ -1,7 +1,9 @@
 """Write a prepared, split dataset in the layouts that common training tools read.
 
 COCO, CSV, CreateML, and TFRecord use the Roboflow-style layout of one folder per split;
-YOLO uses the Ultralytics images and labels folders with data.yaml.
+YOLO and YOLO segmentation use the Ultralytics images and labels folders with data.yaml.
+Product outlines reach COCO as segmentations and YOLO segmentation as polygons; the other
+formats hold boxes only.
 """
 
 from __future__ import annotations
@@ -25,7 +27,7 @@ from shelfsight_api.tfrecord import (
     tfrecord_bytes,
 )
 
-DATASET_FORMATS = ("coco", "yolo", "csv", "createml", "tfrecord")
+DATASET_FORMATS = ("coco", "yolo", "yolo-seg", "csv", "createml", "tfrecord")
 YOLO_FOLDERS = {"train": "train", "valid": "val", "test": "test"}
 
 
@@ -37,6 +39,9 @@ class ExportBox:
     y: float
     width: float
     height: float
+    # A product's outline in instance segmentation projects, in the same pixels; the box
+    # is its bounds.
+    polygon: tuple[tuple[float, float], ...] | None = None
 
 
 @dataclass(frozen=True)
@@ -61,6 +66,7 @@ def write_dataset(
     writers: dict[str, Writer] = {
         "coco": _coco,
         "yolo": _yolo,
+        "yolo-seg": _yolo_seg,
         "csv": _csv,
         "createml": _createml,
         "tfrecord": _tfrecord,
@@ -87,7 +93,15 @@ def _coco(classes: Sequence[str], images: Sequence[ExportImage]) -> dict[str, by
                         "bbox": [
                             _round(box.x), _round(box.y), _round(box.width), _round(box.height)
                         ],
-                        "area": _round(box.width * box.height),
+                        # A box without an outline has no mask: COCO's empty segmentation.
+                        "segmentation": (
+                            [[_round(value) for point in box.polygon for value in point]]
+                            if box.polygon
+                            else []
+                        ),
+                        "area": _round(
+                            _polygon_area(box.polygon) if box.polygon else box.width * box.height
+                        ),
                         "iscrowd": 0,
                     }
                 )
@@ -105,6 +119,35 @@ def _coco(classes: Sequence[str], images: Sequence[ExportImage]) -> dict[str, by
 
 
 def _yolo(classes: Sequence[str], images: Sequence[ExportImage]) -> dict[str, bytes]:
+    return _ultralytics(classes, images, _yolo_box_line)
+
+
+def _yolo_seg(classes: Sequence[str], images: Sequence[ExportImage]) -> dict[str, bytes]:
+    return _ultralytics(classes, images, _yolo_polygon_line)
+
+
+def _yolo_box_line(box: ExportBox, image: ExportImage) -> str:
+    return (
+        f"{box.class_index} {(box.x + box.width / 2) / image.width:.6f} "
+        f"{(box.y + box.height / 2) / image.height:.6f} "
+        f"{box.width / image.width:.6f} {box.height / image.height:.6f}\n"
+    )
+
+
+# A segmentation label file cannot mix boxes and polygons, so a box without an outline is
+# written as its four corners.
+def _yolo_polygon_line(box: ExportBox, image: ExportImage) -> str:
+    right, bottom = box.x + box.width, box.y + box.height
+    polygon = box.polygon or ((box.x, box.y), (right, box.y), (right, bottom), (box.x, bottom))
+    points = " ".join(f"{x / image.width:.6f} {y / image.height:.6f}" for x, y in polygon)
+    return f"{box.class_index} {points}\n"
+
+
+def _ultralytics(
+    classes: Sequence[str],
+    images: Sequence[ExportImage],
+    label_line: Callable[[ExportBox, ExportImage], str],
+) -> dict[str, bytes]:
     entries: dict[str, bytes] = {}
     present = set()
     for image in images:
@@ -112,10 +155,7 @@ def _yolo(classes: Sequence[str], images: Sequence[ExportImage]) -> dict[str, by
         present.add(folder)
         entries[f"images/{folder}/{image.file_name}"] = image.data
         entries[f"labels/{folder}/{PurePosixPath(image.file_name).stem}.txt"] = "".join(
-            f"{box.class_index} {(box.x + box.width / 2) / image.width:.6f} "
-            f"{(box.y + box.height / 2) / image.height:.6f} "
-            f"{box.width / image.width:.6f} {box.height / image.height:.6f}\n"
-            for box in image.boxes
+            label_line(box, image) for box in image.boxes
         ).encode("utf-8")
     data = {
         "path": ".",
@@ -220,6 +260,15 @@ def _split_images(images: Sequence[ExportImage]) -> dict[str, bytes]:
 def _by_split(images: Sequence[ExportImage]) -> list[tuple[str, list[ExportImage]]]:
     grouped = [(split, [image for image in images if image.split == split]) for split in SPLITS]
     return [(split, split_images) for split, split_images in grouped if split_images]
+
+
+# The shoelace formula: the area enclosed by an outline.
+def _polygon_area(polygon: Sequence[tuple[float, float]]) -> float:
+    twice = sum(
+        x * next_y - next_x * y
+        for (x, y), (next_x, next_y) in zip(polygon, [*polygon[1:], polygon[0]], strict=True)
+    )
+    return abs(twice) / 2
 
 
 def _round(value: float) -> float:

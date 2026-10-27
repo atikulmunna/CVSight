@@ -31,6 +31,19 @@ VALID = ExportImage(
 )
 EMPTY_TRAIN = ExportImage("c.jpg", "train", 50, 50, "jpeg", b"jpeg-bytes-c", ())
 IMAGES = [TRAIN, VALID, EMPTY_TRAIN]
+# A triangle outline with its bounds as the box, next to a box without an outline.
+OUTLINED = ExportImage(
+    file_name="d.jpg",
+    split="train",
+    width=200,
+    height=100,
+    image_format="jpeg",
+    data=b"jpeg-bytes-d",
+    boxes=(
+        ExportBox(0, 10, 10, 30, 40, polygon=((10, 10), (40, 10), (25, 50))),
+        ExportBox(2, 100, 20, 50, 30),
+    ),
+)
 
 
 def test_coco_writes_one_annotation_file_per_split_with_sequential_ids() -> None:
@@ -42,7 +55,7 @@ def test_coco_writes_one_annotation_file_per_split_with_sequential_ids() -> None
     assert [a["id"] for a in train["annotations"]] == [1, 2]
     assert train["annotations"][1] == {
         "id": 2, "image_id": 1, "category_id": 2,
-        "bbox": [100, 50, 50, 50], "area": 2500, "iscrowd": 0,
+        "bbox": [100, 50, 50, 50], "segmentation": [], "area": 2500, "iscrowd": 0,
     }
     assert entries["train/a.jpg"] == b"jpeg-bytes-a"
     assert entries["valid/b.png"] == b"png-bytes-b"
@@ -59,6 +72,30 @@ def test_yolo_writes_normalized_centers_and_lists_only_present_splits() -> None:
     assert entries["images/val/b.png"] == b"png-bytes-b"
     data = yaml.safe_load(entries["data.yaml"])
     assert data == {
+        "path": ".", "train": "images/train", "val": "images/val", "nc": 3, "names": CLASSES,
+    }
+
+
+def test_coco_carries_an_outline_as_the_segmentation_and_its_area() -> None:
+    entries = write_dataset("coco", CLASSES, [OUTLINED])
+
+    outlined, boxed = json.loads(entries["train/_annotations.coco.json"])["annotations"]
+    assert outlined["segmentation"] == [[10, 10, 40, 10, 25, 50]]
+    assert outlined["bbox"] == [10, 10, 30, 40]
+    assert outlined["area"] == 600
+    assert boxed["segmentation"] == []
+    assert boxed["area"] == 1500
+
+
+def test_yolo_segmentation_writes_outlines_and_boxes_as_polygons() -> None:
+    entries = write_dataset("yolo-seg", CLASSES, [OUTLINED, VALID])
+
+    assert entries["labels/train/d.txt"] == (
+        b"0 0.050000 0.100000 0.200000 0.100000 0.125000 0.500000\n"
+        b"2 0.500000 0.200000 0.750000 0.200000 0.750000 0.500000 0.500000 0.500000\n"
+    )
+    assert entries["images/train/d.jpg"] == b"jpeg-bytes-d"
+    assert yaml.safe_load(entries["data.yaml"]) == {
         "path": ".", "train": "images/train", "val": "images/val", "nc": 3, "names": CLASSES,
     }
 

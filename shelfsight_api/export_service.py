@@ -44,8 +44,10 @@ COCO_CATEGORIES = (
 )
 CATEGORY_IDS = {category["name"]: category["id"] for category in COCO_CATEGORIES}
 UNKNOWN_SKU_CLASS = "unknown"
-ExportType = Literal["detection", "recognition", "coco", "yolo", "csv", "createml", "tfrecord"]
-DatasetFormat = Literal["coco", "yolo", "csv", "createml", "tfrecord"]
+ExportType = Literal[
+    "detection", "recognition", "coco", "yolo", "yolo-seg", "csv", "createml", "tfrecord"
+]
+DatasetFormat = Literal["coco", "yolo", "yolo-seg", "csv", "createml", "tfrecord"]
 ClassMode = Literal["product", "sku"]
 ZIP_TIMESTAMP = (1980, 1, 1, 0, 0, 0)
 
@@ -152,6 +154,7 @@ def build_dataset_export(
 
     Boxes are named by their class type, or in SKU mode by the SKU they show. A split
     already recorded for a photo, including an imported dataset's own split, is kept.
+    Product outlines travel with their boxes to the formats that hold them.
     """
     snapshot = load_snapshot(connection, dataset_version_id)
     accepted = [row for row in snapshot.annotations if is_training_annotation(row)]
@@ -169,6 +172,7 @@ def build_dataset_export(
                 float(row["y"]),
                 float(row["width"]),
                 float(row["height"]),
+                _export_polygon(row),
             )
         )
     splits = assign_splits([_split_candidate(image) for image in snapshot.images], ratios)
@@ -193,6 +197,7 @@ def build_dataset_export(
         {
             "images": len(images),
             "annotations": len(accepted),
+            "outlined_annotations": sum(row["polygon"] is not None for row in accepted),
             "excluded_annotations": len(snapshot.annotations) - len(accepted),
             "images_by_split": dict(sorted(Counter(image.split for image in images).items())),
         },
@@ -758,6 +763,26 @@ def _validate_geometry(row: Mapping[str, Any]) -> None:
         raise InvalidExportArchiveError("annotation geometry is invalid")
     if row["class_type"] not in CATEGORY_IDS:
         raise InvalidExportArchiveError("annotation class is invalid")
+
+
+def _export_polygon(row: Mapping[str, Any]) -> tuple[tuple[float, float], ...] | None:
+    polygon = row["polygon"]
+    if polygon is None:
+        return None
+    if not isinstance(polygon, list) or len(polygon) < 3:
+        raise InvalidExportArchiveError("annotation outline is invalid")
+    points = []
+    for point in polygon:
+        if (
+            not isinstance(point, list)
+            or len(point) != 2
+            or not all(
+                isinstance(value, (int, float)) and math.isfinite(value) for value in point
+            )
+        ):
+            raise InvalidExportArchiveError("annotation outline is invalid")
+        points.append((float(point[0]), float(point[1])))
+    return tuple(points)
 
 
 def is_training_annotation(row: Mapping[str, Any]) -> bool:
