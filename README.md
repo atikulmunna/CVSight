@@ -167,9 +167,11 @@ A project holds one collection of shelf photos and every annotation version made
 it. Work moves through the stages below; the first cycle is entirely human, and each
 later cycle starts from the promoted model's proposals.
 
-1. **Create a project** (owner). Choose **New project**, name it, and optionally attach
-   a SKU catalog CSV. The overview shows a first-image checklist until the first image
-   is reviewed.
+1. **Create a project** (owner). Choose **New project**, name it, pick its type, and
+   optionally attach a SKU catalog CSV. An **Object detection** project labels products
+   with boxes; an **Instance segmentation** project can also keep an outline of each
+   product. The type cannot be changed later. The overview shows a first-image
+   checklist until the first image is reviewed.
 2. **Add photos** (owner). Upload JPEG or PNG files on the Images page, up to 50 MiB
    each, or bulk import up to 250 files per request from the operator import root
    with `POST /api/datasets/{dataset_id}/versions/{version_id}/images/import`. An
@@ -826,6 +828,16 @@ uses it to undo an acceptance. A stale revision
 returns HTTP 409 without overwriting newer work. Batch update, reject, and restore
 operations run in one transaction, so one failure rolls back the whole batch.
 
+A product in an instance segmentation project may carry a `polygon`: its outline as 3
+to 1,000 `[x, y]` points in the same pixel coordinates. The box must be the outline's
+bounds, within 0.01 pixels, and the outline must stay inside the image. Gaps, shelf
+labels, and detection projects never have an outline; sending one returns
+`invalid_polygon`. Because `PUT` replaces the whole annotation, leaving `polygon` out
+removes the outline. Every revision keeps the outline it was saved with, and snapshots
+(schema `shelfsight-dataset-snapshot/v3`) freeze it with the box. In the canvas, an
+outline moves and scales with its box, and changing a product to another class drops
+it.
+
 SKU assignment accepts `expected_revision` and `sku_id`. The annotation must be an
 accepted product box and the target SKU must be active. Each assignment appends a
 revision with `assign_sku` provenance. Earlier model proposal and human verification
@@ -881,7 +893,9 @@ conflict returns `duplicate_upc` with the clashing values.
 Quoted commas and UTF-8 byte-order marks are supported. Project and catalog creation
 use one database transaction, so any catalog conflict rolls back the new project and
 all rows. `POST /api/datasets` accepts the validated rows in its optional `catalog`
-array and returns `imported_skus`.
+array and returns `imported_skus`. Its `project_type` is `object_detection` (the
+default) or `instance_segmentation`, and project summaries return it. Projects created
+before project types existed are detection projects.
 
 After creation, the web app opens the new project overview and shows a first-image
 checklist. The checklist leads the owner to upload a shelf image, open it, correct and
