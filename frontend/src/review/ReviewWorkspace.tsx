@@ -1,7 +1,7 @@
 import { useEffect, useState } from "react";
 
 import { AnnotationWorkspace } from "../canvas/AnnotationWorkspace";
-import { loadLiveFixture } from "../canvas/liveFixture";
+import { isUuid, loadLiveFixture } from "../canvas/liveFixture";
 import type { CanvasFixture } from "../canvas/model";
 import {
   loadReviewQueue,
@@ -11,6 +11,7 @@ import {
   type ReviewItem,
   type ReviewQueue,
 } from "./api";
+import { SkuLineupPanel } from "./SkuLineupPanel";
 
 type ReviewWorkspaceProps = {
   datasetVersionId: string | null;
@@ -117,6 +118,8 @@ export function ReviewWorkspace({ datasetVersionId }: ReviewWorkspaceProps) {
     }
   }
 
+  const lineupSkuId = assignedSkuId(fixture, selected);
+
   if (!datasetVersionId) {
     return (
       <section className="review-empty">
@@ -192,6 +195,14 @@ export function ReviewWorkspace({ datasetVersionId }: ReviewWorkspaceProps) {
             </button>
           </div>
         )}
+        {selected && lineupSkuId && (
+          <SkuLineupPanel
+            key={`${lineupSkuId}:${selected.annotationId}:${selected.annotationRevision}`}
+            datasetVersionId={datasetVersionId}
+            skuId={lineupSkuId}
+            item={selected}
+          />
+        )}
       </aside>
       <div className="review-canvas">
         {fixture ? (
@@ -208,6 +219,19 @@ export function ReviewWorkspace({ datasetVersionId }: ReviewWorkspaceProps) {
       </div>
     </section>
   );
+}
+
+// The review item does not carry its SKU, but the photo's saved annotations do. The
+// fixed id of the Unknown placeholder SKU fails isUuid, and it names no product to compare.
+function assignedSkuId(fixture: CanvasFixture | null, item: ReviewItem | null): string | null {
+  if (!fixture || !item) {
+    return null;
+  }
+  const box = fixture.annotations.find((annotation) => annotation.serverId === item.annotationId);
+  if (!box || box.classType !== "product" || !box.skuId || !isUuid(box.skuId)) {
+    return null;
+  }
+  return box.skuId;
 }
 
 function reviewErrorMessage(error: unknown): string {

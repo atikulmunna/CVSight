@@ -43,6 +43,28 @@ export type ReviewQueue = {
   signoff: ReviewSignoff | null;
 };
 
+export type SkuLineupReference = {
+  id: string;
+  fileName: string;
+  thumbnailUrl: string;
+};
+
+export type SkuLineupItem = {
+  annotationId: string;
+  revision: number;
+  imageId: string;
+  imageName: string;
+  cropUrl: string;
+};
+
+export type SkuLineup = {
+  skuId: string;
+  skuName: string;
+  references: SkuLineupReference[];
+  items: SkuLineupItem[];
+  truncated: boolean;
+};
+
 type Fetcher = typeof fetch;
 
 export class ReviewApiError extends Error {
@@ -119,6 +141,68 @@ export async function signOffReview(
     throw requestError(response.status, body);
   }
   return parseSignoff(body);
+}
+
+export async function loadSkuLineup(
+  datasetVersionId: string,
+  skuId: string,
+  fetcher: Fetcher = fetch,
+): Promise<SkuLineup> {
+  requireUuid(datasetVersionId);
+  requireUuid(skuId);
+  const response = await fetcher(
+    `/api/dataset-versions/${encodeURIComponent(datasetVersionId)}/sku-lineup` +
+      `?sku_id=${encodeURIComponent(skuId)}`,
+    { headers: { Accept: "application/json" } },
+  );
+  const body = await responseBody(response);
+  if (!response.ok) {
+    throw requestError(response.status, body);
+  }
+  return parseLineup(body);
+}
+
+// A crop of the exact revision under review, so it matches what the reviewer decides on.
+export function reviewItemCropUrl(item: ReviewItem): string {
+  return (
+    `/api/annotations/${encodeURIComponent(item.annotationId)}/crop` +
+    `?revision=${item.annotationRevision}`
+  );
+}
+
+function parseLineup(value: unknown): SkuLineup {
+  const data = record(value);
+  const sku = record(data.sku);
+  if (!Array.isArray(sku.reference_images) || !Array.isArray(data.items)) {
+    throw new ReviewApiError(502, "invalid_response");
+  }
+  return {
+    skuId: uuid(sku.id),
+    skuName: requiredString(sku.name),
+    references: sku.reference_images.map(parseLineupReference),
+    items: data.items.map(parseLineupItem),
+    truncated: requiredBoolean(data.truncated),
+  };
+}
+
+function parseLineupReference(value: unknown): SkuLineupReference {
+  const data = record(value);
+  return {
+    id: uuid(data.id),
+    fileName: requiredString(data.original_filename),
+    thumbnailUrl: safeApiPath(data.thumbnail_url),
+  };
+}
+
+function parseLineupItem(value: unknown): SkuLineupItem {
+  const data = record(value);
+  return {
+    annotationId: uuid(data.annotation_id),
+    revision: positiveInteger(data.revision),
+    imageId: uuid(data.image_id),
+    imageName: requiredString(data.image_name),
+    cropUrl: safeApiPath(data.crop_url),
+  };
 }
 
 function parseQueue(value: unknown): ReviewQueue {
