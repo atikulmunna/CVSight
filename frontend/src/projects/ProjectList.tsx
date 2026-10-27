@@ -78,7 +78,7 @@ function ProjectRow({
       <td data-label="Type">{PROJECT_TYPE_LABELS[project.projectType]}</td>
       <td data-label="Images" className="project-list-number">{project.imageCount}</td>
       <td data-label="Reviewed"><ReviewedProgress progress={progress} /></td>
-      <td data-label="Working version">{project.openVersionId ? "Open" : "None"}</td>
+      <td data-label="Working version">{project.openVersionId ? "Editable" : "None"}</td>
       <td data-label="Created" className="project-list-number">{formatProjectDate(project.createdAt)}</td>
       <td className="project-list-action">
         <button

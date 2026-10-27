@@ -45,7 +45,7 @@ describe("ProjectRouter", () => {
     expect(within(row).getByText("Dhaka stores")).toBeInTheDocument();
     expect(within(row).getByRole("cell", { name: "Object detection" })).toBeInTheDocument();
     expect(within(row).getByRole("cell", { name: "24" })).toBeInTheDocument();
-    expect(within(row).getByText("Open", { selector: "td" })).toBeInTheDocument();
+    expect(within(row).getByText("Editable", { selector: "td" })).toBeInTheDocument();
     expect(within(row).getByRole("button", { name: "Open Retail Q3 audit" })).toBeEnabled();
   });
 
