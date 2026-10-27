@@ -206,7 +206,14 @@ function asNewProposal(box: AnnotationBox, id: string): AnnotationBox {
   };
 }
 
-export type GeometryHandle = "nw" | "n" | "ne" | "e" | "se" | "s" | "sw" | "w" | "move";
+export type BoxHandle = "nw" | "n" | "ne" | "e" | "se" | "s" | "sw" | "w" | "move";
+// An outline point by its index, or the middle of the edge that starts at that point.
+export type OutlineHandle = `vertex-${number}` | `midpoint-${number}`;
+export type GeometryHandle = BoxHandle | OutlineHandle;
+
+export function isOutlineHandle(handle: GeometryHandle): handle is OutlineHandle {
+  return handle.startsWith("vertex-") || handle.startsWith("midpoint-");
+}
 
 export type BoxGeometry = Pick<AnnotationBox, "x" | "y" | "width" | "height">;
 
@@ -237,7 +244,7 @@ function fitPolygon(
 // A pointer drag on a selected box: "move" shifts it, a handle moves the edges it names.
 export function dragGeometry(
   original: BoxGeometry,
-  handle: GeometryHandle,
+  handle: BoxHandle,
   deltaX: number,
   deltaY: number,
   bounds: SceneBounds,
@@ -320,19 +327,83 @@ export function createOutlinedBox(
   bounds: SceneBounds,
   shelfRow: number,
 ): AnnotationBox | null {
-  const xs = outline.map(([x]) => x);
-  const ys = outline.map(([, y]) => y);
+  const { x, y, width, height } = outlineBounds(outline);
   const box = createDrawnBox(
     "product",
     id,
     imageId,
     imageIndex,
-    { x: Math.min(...xs), y: Math.min(...ys) },
-    { x: Math.max(...xs), y: Math.max(...ys) },
+    { x, y },
+    { x: x + width, y: y + height },
     bounds,
     shelfRow,
   );
   return box && { ...box, polygon: outline };
+}
+
+export function outlineBounds(outline: PolygonPoint[]): BoxGeometry {
+  const xs = outline.map(([x]) => x);
+  const ys = outline.map(([, y]) => y);
+  const x = Math.min(...xs);
+  const y = Math.min(...ys);
+  return { x, y, width: Math.max(...xs) - x, height: Math.max(...ys) - y };
+}
+
+// Gives a box a new outline; the box becomes the outline's bounds.
+export function withOutline(box: AnnotationBox, outline: PolygonPoint[]): AnnotationBox {
+  return { ...box, ...outlineBounds(outline), polygon: outline };
+}
+
+// A point placed on the canvas, kept on the photo it belongs to.
+export function pointOnImage(point: ScenePoint, image: FixtureImage): PolygonPoint {
+  return [
+    clamp(point.x, image.x, image.x + image.width),
+    clamp(point.y, image.y, image.y + image.height),
+  ];
+}
+
+// Drags one point of an outline, kept on its photo. A midpoint handle first adds a point
+// halfway along its edge, so the drag bends that edge. Null when the outline would
+// shrink below the smallest box the canvas keeps.
+export function dragOutlinePoint(
+  outline: PolygonPoint[],
+  handle: OutlineHandle,
+  deltaX: number,
+  deltaY: number,
+  image: FixtureImage,
+): PolygonPoint[] | null {
+  const [kind, indexText] = handle.split("-");
+  const index = Number(indexText);
+  const points = kind === "midpoint" ? withMidpoint(outline, index) : [...outline];
+  const moved = kind === "midpoint" ? index + 1 : index;
+  const [x, y] = points[moved]!;
+  points[moved] = pointOnImage({ x: x + deltaX, y: y + deltaY }, image);
+  return keepsSize(points) ? points : null;
+}
+
+// The outline without one point, or null when that would leave fewer than three points
+// or an outline below the smallest box.
+export function removeOutlinePoint(outline: PolygonPoint[], index: number): PolygonPoint[] | null {
+  if (outline.length <= 3) {
+    return null;
+  }
+  const points = outline.filter((_, at) => at !== index);
+  return keepsSize(points) ? points : null;
+}
+
+function withMidpoint(outline: PolygonPoint[], index: number): PolygonPoint[] {
+  const [startX, startY] = outline[index]!;
+  const [endX, endY] = outline[(index + 1) % outline.length]!;
+  return [
+    ...outline.slice(0, index + 1),
+    [(startX + endX) / 2, (startY + endY) / 2],
+    ...outline.slice(index + 1),
+  ];
+}
+
+function keepsSize(outline: PolygonPoint[]): boolean {
+  const { width, height } = outlineBounds(outline);
+  return width >= MIN_BOX_SIZE && height >= MIN_BOX_SIZE;
 }
 
 function clamp(value: number, minimum: number, maximum: number): number {

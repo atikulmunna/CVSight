@@ -11,6 +11,7 @@ const VERIFY: KeyContext = {
   hasSelection: true,
   hasCopy: true,
   hasOutlineDraft: false,
+  drawingPolygon: false,
 };
 
 const ASSIGN: KeyContext = {
@@ -100,6 +101,14 @@ describe("canvas key commands", () => {
       expect(canvasCommand(press("o"), context)).toEqual({ type: "toggleBoxes" });
       expect(canvasCommand(press("x"), context)).toBeNull();
     }
+  });
+
+  it("takes back the last outline point with Backspace only while drawing one", () => {
+    const drawing = { ...VERIFY, hasOutlineDraft: true, drawingPolygon: true };
+
+    expect(canvasCommand(press("Backspace"), drawing)).toEqual({ type: "removeLastPoint" });
+    expect(canvasCommand(press("Backspace"), VERIFY)).toEqual({ type: "reject" });
+    expect(canvasCommand(press("p"), VERIFY)).toEqual({ type: "chooseTool", tool: "polygon" });
   });
 
   it("finishes a smart polygon outline with Enter only while one is open", () => {

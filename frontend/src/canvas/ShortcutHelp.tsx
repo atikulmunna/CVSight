@@ -15,8 +15,8 @@ type Shortcut = {
 const verifying = ({ mode }: Context) => mode === "verify";
 const assigning = ({ mode }: Context) => mode === "assign";
 const drawingProducts = (context: Context) => verifying(context) && !context.isGapReview;
-const smartBoxing = (context: Context) => drawingProducts(context) && !context.outlinesProducts;
-const smartOutlining = (context: Context) => drawingProducts(context) && context.outlinesProducts;
+const boxing = (context: Context) => drawingProducts(context) && !context.outlinesProducts;
+const outlining = (context: Context) => drawingProducts(context) && context.outlinesProducts;
 
 const GROUPS: Array<{ title: string; shortcuts: Shortcut[] }> = [
   {
@@ -49,6 +49,8 @@ const GROUPS: Array<{ title: string; shortcuts: Shortcut[] }> = [
       { keys: "Drag a box or handle", action: "Move or resize it", when: verifying },
       { keys: "Alt + arrows", action: "Nudge by one pixel", when: verifying },
       { keys: "Alt + Shift + arrows", action: "Resize by one pixel", when: verifying },
+      { keys: "Drag a point or a midpoint", action: "Move an outline point, or add one", when: outlining },
+      { keys: "Alt + click a point", action: "Remove an outline point", when: outlining },
       { keys: "Ctrl + C", action: "Copy the selected boxes" },
       { keys: "Ctrl + V", action: "Paste, also on another photo", when: verifying },
       { keys: "Ctrl + Z", action: "Undo" },
@@ -63,24 +65,30 @@ const GROUPS: Array<{ title: string; shortcuts: Shortcut[] }> = [
       {
         keys: "B",
         action: "Draw a box, named with the previous SKU",
-        when: drawingProducts,
+        when: boxing,
       },
       {
         keys: "M",
         action: "Smart box: click a product and SAM boxes it",
-        when: smartBoxing,
+        when: boxing,
       },
+      {
+        keys: "P",
+        action: "Draw an outline: click each point, then the first point to close it",
+        when: outlining,
+      },
+      { keys: "Backspace", action: "Take back the last point while drawing", when: outlining },
       {
         keys: "M",
         action: "Smart polygon: click a product and SAM outlines it",
-        when: smartOutlining,
+        when: outlining,
       },
       {
         keys: "Click, Shift + click",
-        action: "Add an area to the outline, or remove one",
-        when: smartOutlining,
+        action: "Add an area to the smart polygon, or remove one",
+        when: outlining,
       },
-      { keys: "Enter, Esc", action: "Finish the outline, or cancel it", when: smartOutlining },
+      { keys: "Enter, Esc", action: "Finish the outline, or cancel it", when: outlining },
       { keys: "G", action: "Draw a gap", when: verifying },
     ],
   },

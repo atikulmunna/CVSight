@@ -27,13 +27,13 @@ const BOX: AnnotationBox = {
   imageIndex: 0,
 };
 
-function overlay(box: AnnotationBox) {
+function overlay(box: AnnotationBox, selectedId: string | null = null) {
   return render(
     <AnnotationOverlay
       annotations={[box]}
       width={100}
       height={80}
-      selectedId={null}
+      selectedId={selectedId}
       interactive
       onSelect={vi.fn()}
     />,
@@ -48,6 +48,23 @@ describe("AnnotationOverlay", () => {
     expect(container.querySelector(".overlay-core")?.getAttribute("points")).toBe(
       "10,10 30,25 20,40",
     );
+  });
+
+  it("gives a selected outline a handle on every point and edge instead of box handles", () => {
+    const container = overlay({ ...BOX, polygon: [[10, 10], [30, 25], [20, 40]] }, BOX.id);
+    const handles = [...container.querySelectorAll("[data-handle]")].map((handle) =>
+      handle.getAttribute("data-handle"),
+    );
+
+    expect(handles).toEqual([
+      "midpoint-0",
+      "midpoint-1",
+      "midpoint-2",
+      "vertex-0",
+      "vertex-1",
+      "vertex-2",
+    ]);
+    expect(container.querySelector(".selection-outline")?.tagName).toBe("polygon");
   });
 
   it("draws the box when there is no outline", () => {

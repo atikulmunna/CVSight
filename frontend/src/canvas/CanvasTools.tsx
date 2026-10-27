@@ -1,6 +1,6 @@
 import type { ReactNode } from "react";
 
-export type CanvasTool = "select" | "pan" | "product" | "smart" | "gap";
+export type CanvasTool = "select" | "pan" | "product" | "polygon" | "smart" | "gap";
 
 type ToolSpec = {
   tool: CanvasTool;
@@ -32,6 +32,17 @@ const TOOLS: ToolSpec[] = [
       <>
         <rect x="5" y="5" width="14" height="14" rx="1" />
         <path d="M3.5 3.5h3v3h-3zM17.5 3.5h3v3h-3zM3.5 17.5h3v3h-3zM17.5 17.5h3v3h-3z" />
+      </>
+    ),
+  },
+  {
+    tool: "polygon",
+    label: "Draw outline",
+    shortcut: "P",
+    icon: (
+      <>
+        <path d="M6 6 18 4.5 19.5 16 8 19.5z" />
+        <path d="M4.5 4.5h3v3h-3zM16.5 3h3v3h-3zM18 14.5h3v3h-3zM6.5 18h3v3h-3z" />
       </>
     ),
   },

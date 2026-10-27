@@ -6,6 +6,7 @@ import {
   changeBoxClass,
   createDrawnBox,
   createOutlinedBox,
+  dragOutlinePoint,
   dragGeometry,
   duplicateBox,
   flagBox,
@@ -14,8 +15,10 @@ import {
   pasteBox,
   rejectBox,
   reopenBox,
+  removeOutlinePoint,
   resizeBox,
   withGeometry,
+  withOutline,
 } from "./editing";
 import type { AnnotationBox, PolygonPoint } from "./model";
 
@@ -71,6 +74,47 @@ describe("annotation editing", () => {
       lifecycleState: "proposed",
       reviewState: "unreviewed",
     });
+  });
+
+  it("moves an outline point within its photo and keeps the box on the outline", () => {
+    const photo = { id: "image-1", url: "", x: 0, y: 0, width: 100, height: 80 };
+
+    expect(dragOutlinePoint(OUTLINE, "vertex-1", 5, -4, photo)).toEqual([
+      [10, 10],
+      [35, 21],
+      [20, 40],
+    ]);
+    expect(dragOutlinePoint(OUTLINE, "vertex-2", 0, 90, photo)).toEqual([
+      [10, 10],
+      [30, 25],
+      [20, 80],
+    ]);
+    expect(withOutline(BOX, [[12, 14], [40, 20], [18, 44]])).toMatchObject({
+      x: 12,
+      y: 14,
+      width: 28,
+      height: 30,
+      polygon: [[12, 14], [40, 20], [18, 44]],
+    });
+  });
+
+  it("adds a point where a midpoint is dragged and refuses an outline too small to keep", () => {
+    const photo = { id: "image-1", url: "", x: 0, y: 0, width: 100, height: 80 };
+
+    expect(dragOutlinePoint(OUTLINE, "midpoint-2", -6, 0, photo)).toEqual([
+      [10, 10],
+      [30, 25],
+      [20, 40],
+      [9, 25],
+    ]);
+    expect(dragOutlinePoint([[10, 10], [12, 10], [11, 30]], "vertex-2", 0, -19, photo)).toBeNull();
+  });
+
+  it("removes an outline point but keeps at least three", () => {
+    const square: PolygonPoint[] = [[10, 10], [30, 10], [30, 40], [10, 40]];
+
+    expect(removeOutlinePoint(square, 1)).toEqual([[10, 10], [30, 40], [10, 40]]);
+    expect(removeOutlinePoint(OUTLINE, 0)).toBeNull();
   });
 
   it("boxes an outlined product by its outline's bounds", () => {

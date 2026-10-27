@@ -12,8 +12,12 @@ import type { CanvasTool } from "./CanvasTools";
 import {
   createDrawnBox,
   dragGeometry,
+  dragOutlinePoint,
+  isOutlineHandle,
   localBoxId,
-  type BoxGeometry,
+  removeOutlinePoint,
+  withGeometry,
+  withOutline,
   type DrawnClass,
   type GeometryHandle,
   type ScenePoint,
@@ -33,10 +37,10 @@ type PanStart = {
 
 type GeometryDrag = {
   pointerId: number;
-  annotationId: string;
   handle: GeometryHandle;
   start: ScenePoint;
-  original: BoxGeometry;
+  // The box as the drag found it.
+  original: AnnotationBox;
   moved: boolean;
 };
 
@@ -68,8 +72,9 @@ type CanvasPointerOptions = {
   fixture: CanvasFixture;
   // The drawing tool in use, or null when drawing is not on offer.
   drawMode: DrawnClass | null;
-  // Whether a click asks SAM for the box around the object under it.
-  smartMode: boolean;
+  // Whether a click belongs to a click tool (the smart tool or the polygon tool) rather
+  // than starting a pan, a drawn box, or a marquee.
+  clickTool: boolean;
   tool: CanvasTool;
   spaceHeld: boolean;
   transform: SceneTransform;
@@ -79,10 +84,13 @@ type CanvasPointerOptions = {
   // The boxes a marquee may select.
   selectableAnnotations: AnnotationBox[];
   onBoxDrawn: (box: AnnotationBox) => void;
-  // A click with the smart tool, at a scene point on the photo with this index. Shift
-  // marks a click on something the smart polygon must leave out.
-  onSmartClick: (point: ScenePoint, imageIndex: number, include: boolean) => void;
-  onGeometryChanged: (annotationId: string, geometry: BoxGeometry) => void;
+  // A click with a click tool, at a scene point on the photo with this index, or -1 off
+  // every photo.
+  onToolClick: (point: ScenePoint, imageIndex: number, shiftKey: boolean) => void;
+  // The pointer moving over the canvas while a click tool is in use.
+  onToolMove: (point: ScenePoint) => void;
+  // A box's new shape, from a drag or from removing an outline point.
+  onShapeChanged: (annotationId: string, edited: AnnotationBox) => void;
   // A press on the editable box that ended without a drag.
   onBoxClicked: (annotationId: string) => void;
   onMarqueeSelect: (ids: string[], extend: boolean) => void;
@@ -94,7 +102,7 @@ type CanvasPointerOptions = {
 export function useCanvasPointer({
   fixture,
   drawMode,
-  smartMode,
+  clickTool,
   tool,
   spaceHeld,
   transform,
@@ -103,8 +111,9 @@ export function useCanvasPointer({
   activeAnnotations,
   selectableAnnotations,
   onBoxDrawn,
-  onSmartClick,
-  onGeometryChanged,
+  onToolClick,
+  onToolMove,
+  onShapeChanged,
   onBoxClicked,
   onMarqueeSelect,
   onBackgroundClick,
@@ -113,9 +122,8 @@ export function useCanvasPointer({
   const [drawStart, setDrawStart] = useState<DrawStart | null>(null);
   const [draftBox, setDraftBox] = useState<AnnotationBox | null>(null);
   const [geometryDrag, setGeometryDrag] = useState<GeometryDrag | null>(null);
-  const [draftGeometry, setDraftGeometry] = useState<(BoxGeometry & { id: string }) | null>(
-    null,
-  );
+  // The box being dragged, as it looks at the pointer's position.
+  const [draftEdit, setDraftEdit] = useState<AnnotationBox | null>(null);
   const [marquee, setMarquee] = useState<Marquee | null>(null);
   const crosshairRef = useRef<HTMLDivElement>(null);
 
@@ -135,13 +143,10 @@ export function useCanvasPointer({
       startDrawing(event, drawMode);
       return;
     }
-    if (smartMode && event.button === 0 && !spaceHeld) {
+    if (clickTool && event.button === 0 && !spaceHeld) {
       event.preventDefault();
       const point = scenePoint(event, transform);
-      const imageIndex = imageIndexAtPoint(fixture, point);
-      if (imageIndex >= 0) {
-        onSmartClick(point, imageIndex, !event.shiftKey);
-      }
+      onToolClick(point, imageIndexAtPoint(fixture, point), event.shiftKey);
       return;
     }
     if (!shouldPan) {
@@ -207,6 +212,8 @@ export function useCanvasPointer({
     );
   }
 
+  // A press on the editable box or one of its handles. Alt on an outline point removes
+  // the point instead of dragging it.
   function startGeometryDrag(
     annotationId: string,
     handle: GeometryHandle,
@@ -217,35 +224,43 @@ export function useCanvasPointer({
     if (!box || !viewport) {
       return;
     }
+    if (event.altKey && handle.startsWith("vertex-") && box.polygon) {
+      const outline = removeOutlinePoint(box.polygon, Number(handle.slice("vertex-".length)));
+      if (outline) {
+        onShapeChanged(box.id, withOutline(box, outline));
+      }
+      return;
+    }
     viewport.setPointerCapture?.(event.pointerId);
     const bounds = viewport.getBoundingClientRect();
     setGeometryDrag({
       pointerId: event.pointerId,
-      annotationId,
       handle,
       start: {
         x: (event.clientX - bounds.left - transform.x) / transform.scale,
         y: (event.clientY - bounds.top - transform.y) / transform.scale,
       },
-      original: { x: box.x, y: box.y, width: box.width, height: box.height },
+      original: box,
       moved: false,
     });
   }
 
-  // The geometry a drag reaches at this pointer position, or null while it is still
+  // The box a drag reaches at this pointer position, or null while the drag is still
   // within the click threshold.
-  function draggedGeometry(drag: GeometryDrag, event: PointerEvent<HTMLDivElement>) {
+  function draggedBox(drag: GeometryDrag, event: PointerEvent<HTMLDivElement>) {
     const point = scenePoint(event, transform);
     if (!drag.moved && !dragged(drag.start, point)) {
       return null;
     }
-    return dragGeometry(
-      drag.original,
-      drag.handle,
-      point.x - drag.start.x,
-      point.y - drag.start.y,
-      fixture,
-    );
+    const deltaX = point.x - drag.start.x;
+    const deltaY = point.y - drag.start.y;
+    const { original, handle } = drag;
+    if (!isOutlineHandle(handle)) {
+      return withGeometry(original, dragGeometry(original, handle, deltaX, deltaY, fixture));
+    }
+    const image = fixture.images[original.imageIndex]!;
+    const outline = original.polygon && dragOutlinePoint(original.polygon, handle, deltaX, deltaY, image);
+    return outline ? withOutline(original, outline) : original;
   }
 
   // Whether pointer travel between two scene points is a drag rather than a click.
@@ -268,13 +283,16 @@ export function useCanvasPointer({
 
   function handlePointerMove(event: PointerEvent<HTMLDivElement>) {
     moveCrosshair(event);
+    if (clickTool) {
+      onToolMove(scenePoint(event, transform));
+    }
     if (geometryDrag?.pointerId === event.pointerId) {
-      const geometry = draggedGeometry(geometryDrag, event);
-      if (geometry) {
+      const edited = draggedBox(geometryDrag, event);
+      if (edited) {
         if (!geometryDrag.moved) {
           setGeometryDrag({ ...geometryDrag, moved: true });
         }
-        setDraftGeometry({ id: geometryDrag.annotationId, ...geometry });
+        setDraftEdit(edited);
       }
       return;
     }
@@ -299,15 +317,15 @@ export function useCanvasPointer({
 
   function finishPointerAction(event: PointerEvent<HTMLDivElement>) {
     if (geometryDrag?.pointerId === event.pointerId) {
-      // Final geometry comes from the release point, so it never trails the last move.
-      const geometry = draggedGeometry(geometryDrag, event);
-      if (geometry) {
-        onGeometryChanged(geometryDrag.annotationId, geometry);
+      // The final shape comes from the release point, so it never trails the last move.
+      const edited = draggedBox(geometryDrag, event);
+      if (edited) {
+        onShapeChanged(edited.id, edited);
       } else if (geometryDrag.handle === "move") {
-        onBoxClicked(geometryDrag.annotationId);
+        onBoxClicked(geometryDrag.original.id);
       }
       setGeometryDrag(null);
-      setDraftGeometry(null);
+      setDraftEdit(null);
       return;
     }
     if (drawStart?.pointerId === event.pointerId) {
@@ -356,7 +374,7 @@ export function useCanvasPointer({
   return {
     panning: panStart !== null,
     draftBox,
-    draftGeometry,
+    draftEdit,
     marquee,
     crosshairRef,
     cancelDrawing,

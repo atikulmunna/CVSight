@@ -1,8 +1,8 @@
 import { memo, type PointerEvent } from "react";
 
-import type { GeometryHandle } from "./editing";
-import type { AnnotationBox } from "./model";
-import { overlayCue } from "./model";
+import type { BoxHandle, GeometryHandle, OutlineHandle } from "./editing";
+import type { AnnotationBox, PolygonPoint } from "./model";
+import { MAX_POLYGON_POINTS, overlayCue } from "./model";
 
 type GeometryStart = (
   annotationId: string,
@@ -190,7 +190,7 @@ function rectGeometry(box: AnnotationBox) {
   };
 }
 
-const HANDLES: Array<[GeometryHandle, number, number]> = [
+const HANDLES: Array<[BoxHandle, number, number]> = [
   ["nw", 0, 0],
   ["n", 0.5, 0],
   ["ne", 1, 0],
@@ -204,6 +204,9 @@ const HANDLES: Array<[GeometryHandle, number, number]> = [
 function handleAt(target: EventTarget | null): GeometryHandle | null {
   const handle =
     target instanceof Element ? target.closest("[data-handle]")?.getAttribute("data-handle") : null;
+  if (handle && /^(vertex|midpoint)-\d+$/.test(handle)) {
+    return handle as OutlineHandle;
+  }
   return (HANDLES.find(([name]) => name === handle)?.[0] ?? null);
 }
 
@@ -211,6 +214,9 @@ function handleAt(target: EventTarget | null): GeometryHandle | null {
 // on-screen size at any zoom; each has a wider invisible hit area. A size of 0 draws
 // the outline alone.
 function Selection({ box, handleSize }: { box: AnnotationBox; handleSize: number }) {
+  if (box.polygon) {
+    return <OutlineSelection box={box} outline={box.polygon} handleSize={handleSize} />;
+  }
   return (
     <>
       <rect
@@ -242,6 +248,58 @@ function Selection({ box, handleSize }: { box: AnnotationBox; handleSize: number
           </g>
         );
       })}
+    </>
+  );
+}
+
+// A selected outline shows its points as handles: drag a point to move it, or drag the
+// middle of an edge to add a point there.
+function OutlineSelection({
+  box,
+  outline,
+  handleSize,
+}: {
+  box: AnnotationBox;
+  outline: PolygonPoint[];
+  handleSize: number;
+}) {
+  const canAddPoints = outline.length < MAX_POLYGON_POINTS;
+  return (
+    <>
+      <Outline box={box} className="selection-outline" />
+      {handleSize > 0 &&
+        canAddPoints &&
+        outline.map(([x, y], index) => {
+          const [nextX, nextY] = outline[(index + 1) % outline.length]!;
+          return (
+            <PointHandle
+              name={`midpoint-${index}`}
+              x={(x + nextX) / 2}
+              y={(y + nextY) / 2}
+              size={handleSize * 0.7}
+              key={`midpoint-${index}`}
+            />
+          );
+        })}
+      {handleSize > 0 &&
+        outline.map(([x, y], index) => (
+          <PointHandle name={`vertex-${index}`} x={x} y={y} size={handleSize} key={`vertex-${index}`} />
+        ))}
+    </>
+  );
+}
+
+function PointHandle({ name, x, y, size }: { name: OutlineHandle; x: number; y: number; size: number }) {
+  return (
+    <>
+      <circle className="selection-handle-hit" data-handle={name} cx={x} cy={y} r={size} />
+      <circle
+        className={`selection-handle${name.startsWith("midpoint-") ? " is-midpoint" : ""}`}
+        cx={x}
+        cy={y}
+        r={size / 2}
+        vectorEffect="non-scaling-stroke"
+      />
     </>
   );
 }

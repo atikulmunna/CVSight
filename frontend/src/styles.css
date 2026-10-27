@@ -2634,7 +2634,8 @@ code {
 
 /* Pan cursors come last so holding Space while drawing still shows the hand. */
 .canvas-viewport.is-drawing,
-.canvas-viewport.tool-smart {
+.canvas-viewport.tool-smart,
+.canvas-viewport.tool-polygon {
   cursor: crosshair;
 }
 
@@ -2804,8 +2805,47 @@ code {
   cursor: ew-resize;
 }
 
+.selection-handle-hit[data-handle^="vertex-"] {
+  cursor: move;
+}
+
+.selection-handle-hit[data-handle^="midpoint-"] {
+  cursor: copy;
+}
+
+.selection-handle.is-midpoint {
+  fill-opacity: 0.45;
+}
+
 .canvas-viewport.tool-select .annotation.is-selected {
   cursor: move;
+}
+
+/* The outline being drawn with the polygon tool, over the annotations. */
+.polygon-draft {
+  position: absolute;
+  inset: 0;
+  display: block;
+  width: 100%;
+  height: 100%;
+  pointer-events: none;
+}
+
+.polygon-draft polyline {
+  fill: none;
+  stroke: var(--ov-unverified);
+  stroke-width: 2px;
+  stroke-dasharray: 6 4;
+}
+
+.polygon-draft circle {
+  fill: var(--ov-unverified);
+  stroke: var(--ov-halo);
+  stroke-width: 1px;
+}
+
+.polygon-draft circle.is-closing {
+  fill: var(--ov-selected);
 }
 
 .selection-marquee {

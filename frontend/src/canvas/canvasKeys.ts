@@ -24,7 +24,8 @@ export type CanvasCommand =
   | { type: "step"; delta: 1 | -1 }
   | { type: "clear" }
   | { type: "zoom"; factor: number }
-  | { type: "finishOutline" };
+  | { type: "finishOutline" }
+  | { type: "removeLastPoint" };
 
 export type KeyPress = {
   key: string;
@@ -43,8 +44,10 @@ export type KeyContext = {
   selectedIsProduct: boolean;
   hasSelection: boolean;
   hasCopy: boolean;
-  // A smart polygon outline is being refined and can be finished.
+  // An outline is being drawn or refined and can be finished.
   hasOutlineDraft: boolean;
+  // An outline is being drawn point by point.
+  drawingPolygon: boolean;
 };
 
 export const ZOOM_STEP = 1.2;
@@ -53,6 +56,7 @@ const TOOL_KEYS: Partial<Record<string, CanvasTool>> = {
   v: "select",
   h: "pan",
   b: "product",
+  p: "polygon",
   m: "smart",
   g: "gap",
 };
@@ -118,6 +122,9 @@ function assignKey(key: string, context: KeyContext): CanvasCommand | null {
 function verifyKey(key: string, press: KeyPress, context: KeyContext): CanvasCommand | null {
   if (key === "enter" && context.hasOutlineDraft) {
     return { type: "finishOutline" };
+  }
+  if (key === "backspace" && context.drawingPolygon) {
+    return { type: "removeLastPoint" };
   }
   const direction = ARROWS[key];
   if (press.altKey && direction) {

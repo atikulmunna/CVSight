@@ -1044,6 +1044,124 @@ describe("AnnotationWorkspace", () => {
     expect(container.querySelectorAll(".box-row")).toHaveLength(0);
   });
 
+  it("draws an outline point by point and closes it on the first point", () => {
+    vi.stubGlobal("fetch", vi.fn().mockRejectedValue(new TypeError("offline")));
+    const fixture = {
+      ...DEMO_FIXTURE,
+      projectType: "instance_segmentation" as const,
+      annotations: [],
+    };
+    const { container } = render(<AnnotationWorkspace fixture={fixture} />);
+    const viewport = screen.getByLabelText("Shelf annotation canvas");
+    const click = (clientX: number, clientY: number) =>
+      fireEvent.pointerDown(viewport, { button: 0, pointerId: 1, clientX, clientY });
+    const draftPoints = () =>
+      [...container.querySelectorAll(".polygon-draft circle")].map(
+        (point) => `${point.getAttribute("cx")},${point.getAttribute("cy")}`,
+      );
+
+    expect(screen.queryByRole("button", { name: "Draw box" })).not.toBeInTheDocument();
+    fireEvent.keyDown(viewport, { key: "p" });
+    expect(screen.getByRole("button", { name: "Draw outline" })).toHaveAttribute(
+      "aria-pressed",
+      "true",
+    );
+    click(200, 200);
+    click(300, 210);
+    click(260, 320);
+    click(150, 330);
+    expect(draftPoints()).toHaveLength(4);
+    fireEvent.keyDown(viewport, { key: "Backspace" });
+    const kept = draftPoints();
+    expect(kept).toHaveLength(3);
+
+    click(200, 200);
+
+    expect(container.querySelector(".polygon-draft")).toBeNull();
+    expect(container.querySelectorAll(".box-row")).toHaveLength(1);
+    const saved = container.querySelector(".annotation.is-selected .overlay-core")!;
+    expect(saved.tagName).toBe("polygon");
+    expect(saved.getAttribute("points")?.split(" ")).toEqual(kept);
+  });
+
+  it("finishes a drawn outline with Enter and cancels one with Escape", () => {
+    vi.stubGlobal("fetch", vi.fn().mockRejectedValue(new TypeError("offline")));
+    const fixture = {
+      ...DEMO_FIXTURE,
+      projectType: "instance_segmentation" as const,
+      annotations: [],
+    };
+    const { container } = render(<AnnotationWorkspace fixture={fixture} />);
+    const viewport = screen.getByLabelText("Shelf annotation canvas");
+    const draw = () => {
+      for (const [clientX, clientY] of [[200, 200], [300, 210], [260, 320]] as const) {
+        fireEvent.pointerDown(viewport, { button: 0, pointerId: 1, clientX, clientY });
+      }
+    };
+
+    fireEvent.keyDown(viewport, { key: "p" });
+    draw();
+    fireEvent.keyDown(viewport, { key: "Escape" });
+    expect(container.querySelector(".polygon-draft")).toBeNull();
+    expect(container.querySelectorAll(".box-row")).toHaveLength(0);
+
+    draw();
+    fireEvent.keyDown(viewport, { key: "Enter" });
+    expect(container.querySelectorAll(".box-row")).toHaveLength(1);
+  });
+
+  it("moves, adds, and removes outline points and undoes each edit", () => {
+    vi.stubGlobal("fetch", vi.fn().mockRejectedValue(new TypeError("offline")));
+    const box = DEMO_FIXTURE.annotations[1]!;
+    const outline: Array<[number, number]> = [
+      [box.x, box.y],
+      [box.x + box.width, box.y],
+      [box.x + box.width, box.y + box.height],
+      [box.x, box.y + box.height],
+    ];
+    const fixture = {
+      ...DEMO_FIXTURE,
+      projectType: "instance_segmentation" as const,
+      annotations: [{ ...box, polygon: outline }],
+    };
+    const { container } = render(<AnnotationWorkspace fixture={fixture} />);
+    const viewport = screen.getByLabelText("Shelf annotation canvas");
+    Object.defineProperty(viewport, "setPointerCapture", { value: () => undefined });
+    const points = () =>
+      container
+        .querySelector(".annotation.is-selected .overlay-core")!
+        .getAttribute("points")!
+        .split(" ")
+        .map((point) => point.split(",").map(Number));
+    const handle = (name: string) =>
+      container.querySelector(`.annotation.is-selected [data-handle="${name}"]`)!;
+    const original = points();
+
+    fireEvent.pointerDown(handle("vertex-0"), { button: 0, pointerId: 1, clientX: 300, clientY: 300 });
+    fireEvent.pointerMove(viewport, { pointerId: 1, clientX: 330, clientY: 320 });
+    fireEvent.pointerUp(viewport, { pointerId: 1, clientX: 330, clientY: 320 });
+    const moved = points();
+    expect(moved).toHaveLength(4);
+    expect(moved[0]![0]).toBeGreaterThan(original[0]![0]!);
+    expect(moved.slice(1)).toEqual(original.slice(1));
+    const minX = Math.min(...moved.map(([x]) => x!));
+    expect(minX).toBe(original[0]![0]);
+
+    fireEvent.pointerDown(handle("midpoint-1"), { button: 0, pointerId: 2, clientX: 300, clientY: 300 });
+    fireEvent.pointerMove(viewport, { pointerId: 2, clientX: 320, clientY: 300 });
+    fireEvent.pointerUp(viewport, { pointerId: 2, clientX: 320, clientY: 300 });
+    expect(points()).toHaveLength(5);
+
+    fireEvent.pointerDown(handle("vertex-2"), { button: 0, pointerId: 3, altKey: true });
+    expect(points()).toHaveLength(4);
+
+    fireEvent.keyDown(viewport, { key: "z", ctrlKey: true });
+    expect(points()).toHaveLength(5);
+    fireEvent.keyDown(viewport, { key: "z", ctrlKey: true });
+    fireEvent.keyDown(viewport, { key: "z", ctrlKey: true });
+    expect(points()).toEqual(original);
+  });
+
   it("cancels a smart polygon outline with Escape and keeps the tool", async () => {
     vi.stubGlobal(
       "fetch",

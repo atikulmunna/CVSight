@@ -50,7 +50,7 @@ export type CanvasFixture = {
 };
 
 const MAX_FIXTURE_BOXES = 1_000;
-const MAX_POLYGON_POINTS = 1_000;
+export const MAX_POLYGON_POINTS = 1_000;
 const OVERLAY_STATES = new Set<OverlayState>([
   "unverified",
   "verified",
