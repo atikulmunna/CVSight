@@ -11,12 +11,22 @@ import type { AuthSession } from "../auth/api";
 import {
   createProject,
   loadProjects,
+  PROJECT_TYPE_LABELS,
   ProjectApiError,
   type ProjectSummary,
+  type ProjectType,
 } from "./api";
 import { CatalogCsvError, parseCatalogCsv, type CatalogImportSku } from "./catalogCsv";
 import { loadProjectImages } from "./imagesApi";
 import { ProjectsHeader } from "./ProjectsHeader";
+
+const PROJECT_TYPE_CHOICES: Array<[ProjectType, string]> = [
+  ["object_detection", "Label each product with a box. Smart box draws one from a click."],
+  [
+    "instance_segmentation",
+    "Label each product with an outline. Needed to train segmentation models.",
+  ],
+];
 
 type ProjectsPageProps = {
   currentUser: AuthSession;
@@ -171,6 +181,7 @@ function CreateProjectForm({
 }) {
   const [name, setName] = useState("");
   const [description, setDescription] = useState("");
+  const [projectType, setProjectType] = useState<ProjectType>("object_detection");
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [catalog, setCatalog] = useState<CatalogImportSku[]>([]);
@@ -225,7 +236,7 @@ function CreateProjectForm({
     try {
       setSaving(true);
       setError(null);
-      const project = await createProject(name, description, catalog);
+      const project = await createProject({ name, description, projectType, catalog });
       onCreated(project.id);
     } catch (caught) {
       setError(projectCreateError(caught));
@@ -260,6 +271,22 @@ function CreateProjectForm({
               onChange={(event) => setDescription(event.target.value)}
             />
           </label>
+          <fieldset className="project-type-field">
+            <legend>Project type <span>Cannot be changed later</span></legend>
+            {PROJECT_TYPE_CHOICES.map(([type, detail]) => (
+              <label className={projectType === type ? "is-selected" : undefined} key={type}>
+                <input
+                  type="radio"
+                  name="project-type"
+                  value={type}
+                  checked={projectType === type}
+                  onChange={() => setProjectType(type)}
+                />
+                <strong>{PROJECT_TYPE_LABELS[type]}</strong>
+                <span>{detail}</span>
+              </label>
+            ))}
+          </fieldset>
           <div className="catalog-import-field">
             <div>
               <strong>SKU catalog CSV <span>Optional</span></strong>
@@ -326,6 +353,7 @@ function ProjectCard({
           <p>{project.description ?? "No description added."}</p>
         </div>
         <dl>
+          <div><dt>Type</dt><dd>{PROJECT_TYPE_LABELS[project.projectType]}</dd></div>
           <div><dt>Images</dt><dd>{project.imageCount}</dd></div>
           <div><dt>Created</dt><dd>{formatProjectDate(project.createdAt)}</dd></div>
         </dl>

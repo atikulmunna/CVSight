@@ -11,6 +11,7 @@ const PROJECT = {
   id: PROJECT_ID,
   name: "Retail Q3 audit",
   description: "Dhaka stores",
+  project_type: "object_detection",
   created_at: "2026-08-30T08:00:00Z",
   open_version_id: VERSION_ID,
   latest_version_id: VERSION_ID,

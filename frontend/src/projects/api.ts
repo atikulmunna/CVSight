@@ -1,9 +1,19 @@
 import type { CatalogImportSku } from "./catalogCsv";
 
+// Fixed when a project is created: detection projects label products with boxes,
+// instance segmentation projects with outlines.
+export type ProjectType = "object_detection" | "instance_segmentation";
+
+export const PROJECT_TYPE_LABELS: Record<ProjectType, string> = {
+  object_detection: "Object detection",
+  instance_segmentation: "Instance segmentation",
+};
+
 export type ProjectSummary = {
   id: string;
   name: string;
   description: string | null;
+  projectType: ProjectType;
   createdAt: string;
   openVersionId: string | null;
   latestVersionId: string;
@@ -60,10 +70,15 @@ export async function loadProject(
   return parseProject(body);
 }
 
+export type NewProject = {
+  name: string;
+  description: string;
+  projectType: ProjectType;
+  catalog?: CatalogImportSku[];
+};
+
 export async function createProject(
-  name: string,
-  description: string,
-  catalog: CatalogImportSku[] = [],
+  { name, description, projectType, catalog = [] }: NewProject,
   fetcher: typeof fetch = fetch,
 ): Promise<CreatedProject> {
   const response = await fetcher("/api/datasets", {
@@ -75,6 +90,7 @@ export async function createProject(
     body: JSON.stringify({
       name: name.trim(),
       description: description.trim() || null,
+      project_type: projectType,
       catalog,
     }),
   });
@@ -100,12 +116,20 @@ function parseProject(value: unknown): ProjectSummary {
     id: uuid(project.id),
     name: requiredString(project.name),
     description: nullableString(project.description),
+    projectType: projectType(project.project_type),
     createdAt,
     openVersionId:
       project.open_version_id === null ? null : uuid(project.open_version_id),
     latestVersionId: uuid(project.latest_version_id),
     imageCount: nonNegativeInteger(project.image_count),
   };
+}
+
+function projectType(value: unknown): ProjectType {
+  if (value !== "object_detection" && value !== "instance_segmentation") {
+    throw new ProjectApiError(502, "invalid_response");
+  }
+  return value;
 }
 
 function requestError(status: number, value: unknown): ProjectApiError {

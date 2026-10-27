@@ -10,7 +10,7 @@ import {
   transitionSteps,
   type BoxChange,
 } from "./history";
-import type { AnnotationBox } from "./model";
+import type { AnnotationBox, PolygonPoint } from "./model";
 
 const BOX: AnnotationBox = {
   id: "box-1",
@@ -21,6 +21,7 @@ const BOX: AnnotationBox = {
   y: 10,
   width: 20,
   height: 30,
+  polygon: null,
   classType: "product",
   state: "unverified",
   lifecycleState: "proposed",
@@ -151,5 +152,16 @@ describe("transition steps", () => {
       { intent: "update", box: { ...BOX, revision: 1 } },
     ]);
     expect(transitionSteps(BOX, { ...BOX, state: "propagated" })).toEqual([]);
+  });
+
+  it("compares outlines point by point", () => {
+    const outline: PolygonPoint[] = [[10, 10], [30, 25], [20, 40]];
+    const outlined = { ...BOX, polygon: outline };
+    const sameCopy = { ...BOX, polygon: outline.map(([x, y]): PolygonPoint => [x, y]) };
+    const reshaped = { ...BOX, polygon: [[10, 10], [30, 40], [20, 25]] as PolygonPoint[] };
+
+    expect(transitionSteps(outlined, sameCopy)).toEqual([]);
+    expect(transitionSteps(outlined, reshaped)).toEqual([{ intent: "update", box: reshaped }]);
+    expect(transitionSteps(outlined, BOX)).toEqual([{ intent: "update", box: BOX }]);
   });
 });

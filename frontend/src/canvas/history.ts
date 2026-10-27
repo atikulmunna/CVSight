@@ -1,5 +1,5 @@
 import { acceptBox, rejectBox, reopenBox, type EditIntent } from "./editing";
-import type { AnnotationBox } from "./model";
+import type { AnnotationBox, PolygonPoint } from "./model";
 
 // One box's part in a user action. `before` is null when the action created the box.
 export type BoxChange = {
@@ -22,7 +22,8 @@ export const EMPTY_HISTORY: EditHistory = { undo: [], redo: [] };
 
 const HISTORY_LIMIT = 200;
 
-// The fields a PUT replaces; identity and the derived overlay state are not compared.
+// The fields a PUT replaces besides the outline, which is compared point by point.
+// Identity and the derived overlay state are not compared.
 const EDITABLE_FIELDS = [
   "x",
   "y",
@@ -114,7 +115,20 @@ export function transitionSteps(
 }
 
 function sameEditableFields(left: AnnotationBox, right: AnnotationBox): boolean {
-  return EDITABLE_FIELDS.every((field) => left[field] === right[field]);
+  return (
+    EDITABLE_FIELDS.every((field) => left[field] === right[field]) &&
+    samePolygon(left.polygon, right.polygon)
+  );
+}
+
+function samePolygon(left: PolygonPoint[] | null, right: PolygonPoint[] | null): boolean {
+  if (left === null || right === null) {
+    return left === right;
+  }
+  return (
+    left.length === right.length &&
+    left.every(([x, y], index) => x === right[index]![0] && y === right[index]![1])
+  );
 }
 
 // A historical copy carries the revision it had then; the server expects the current one.

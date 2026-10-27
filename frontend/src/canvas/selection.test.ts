@@ -21,6 +21,7 @@ function box(id: string, x: number, y: number, width = 10, height = 10): Annotat
     y,
     width,
     height,
+    polygon: null,
     classType: "product",
     state: "unverified",
     lifecycleState: "proposed",

@@ -893,6 +893,49 @@ code {
   gap: 10px;
 }
 
+.project-type-field {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
+  gap: 10px;
+  margin: 0;
+  padding: 0;
+  border: 0;
+}
+
+.project-type-field legend {
+  display: flex;
+  gap: 8px;
+  margin-bottom: 6px;
+  padding: 0;
+  font-size: 13px;
+  font-weight: 600;
+}
+
+.project-type-field legend span {
+  color: var(--muted);
+  font-weight: 400;
+}
+
+.create-project-card .project-type-field label {
+  grid-template-columns: auto 1fr;
+  align-items: start;
+  column-gap: 10px;
+  padding: 12px 14px;
+  border: 1px solid var(--line-strong);
+  border-radius: 10px;
+  cursor: pointer;
+}
+
+.create-project-card .project-type-field label.is-selected {
+  border-color: var(--violet);
+  box-shadow: 0 0 0 1px var(--violet);
+}
+
+.project-type-field input {
+  grid-row: span 2;
+  margin: 3px 0 0;
+}
+
 .catalog-import-field {
   display: grid;
   gap: 12px;

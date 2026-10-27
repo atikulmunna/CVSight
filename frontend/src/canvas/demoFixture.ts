@@ -62,6 +62,7 @@ function createAnnotations(): AnnotationBox[] {
       y: TOP + row * (BOX_HEIGHT + VERTICAL_GAP),
       width: BOX_WIDTH,
       height: classType === "shelf_label" ? 28 : BOX_HEIGHT,
+      polygon: null,
       classType,
       state,
       lifecycleState: state === "verified" ? "verified" : "proposed",

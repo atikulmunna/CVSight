@@ -34,6 +34,7 @@ describe("loadLiveFixture", () => {
               y: 12,
               width: 30,
               height: 40,
+              polygon: [[10, 12], [40, 30], [25, 52]],
               class_type: "product",
               lifecycle_state: "verified",
               review_state: "accepted",
@@ -65,6 +66,7 @@ describe("loadLiveFixture", () => {
       sku: "Horlicks Standard",
       truncated: true,
       shelfRow: 1,
+      polygon: [[10, 12], [40, 30], [25, 52]],
     });
   });
 

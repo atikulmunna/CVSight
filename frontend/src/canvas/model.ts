@@ -2,6 +2,7 @@ export type AnnotationClass = "product" | "gap" | "shelf_label";
 export type OverlayState = "unverified" | "verified" | "propagated" | "flagged";
 export type AnnotationLifecycle = "proposed" | "verified" | "rejected";
 export type AnnotationReviewState = "unreviewed" | "accepted" | "flagged";
+export type PolygonPoint = [number, number];
 
 export type AnnotationBox = {
   id: string;
@@ -12,6 +13,8 @@ export type AnnotationBox = {
   y: number;
   width: number;
   height: number;
+  // A product's outline in instance segmentation projects; the box is its bounds.
+  polygon: PolygonPoint[] | null;
   classType: AnnotationClass;
   state: OverlayState;
   lifecycleState: AnnotationLifecycle;
@@ -43,6 +46,7 @@ export type CanvasFixture = {
 };
 
 const MAX_FIXTURE_BOXES = 1_000;
+const MAX_POLYGON_POINTS = 1_000;
 const OVERLAY_STATES = new Set<OverlayState>([
   "unverified",
   "verified",
@@ -211,6 +215,7 @@ function parseAnnotation(
     y,
     width,
     height,
+    polygon: optionalPolygon(source.polygon, `box ${index + 1} polygon`),
     classType: classType as AnnotationClass,
     state: state as OverlayState,
     lifecycleState: parseLifecycle(source.lifecycle_state, state as OverlayState),
@@ -282,6 +287,30 @@ function optionalPositiveInteger(value: unknown, label: string): number | null {
   }
   if (typeof value !== "number" || !Number.isInteger(value) || value < 1) {
     throw new Error(`${label} must be a positive integer`);
+  }
+  return value;
+}
+
+export function isPolygon(value: unknown): value is PolygonPoint[] {
+  return (
+    Array.isArray(value) &&
+    value.length >= 3 &&
+    value.length <= MAX_POLYGON_POINTS &&
+    value.every(
+      (point) =>
+        Array.isArray(point) &&
+        point.length === 2 &&
+        point.every((coordinate) => typeof coordinate === "number" && Number.isFinite(coordinate)),
+    )
+  );
+}
+
+function optionalPolygon(value: unknown, label: string): PolygonPoint[] | null {
+  if (value === null || value === undefined) {
+    return null;
+  }
+  if (!isPolygon(value)) {
+    throw new Error(`${label} must have 3 to ${MAX_POLYGON_POINTS} finite x, y points`);
   }
   return value;
 }

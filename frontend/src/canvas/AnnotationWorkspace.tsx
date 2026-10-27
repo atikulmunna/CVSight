@@ -21,6 +21,7 @@ import {
   pasteBox,
   rejectBox,
   resizeBox,
+  withGeometry,
   type DrawnClass,
   type EditIntent,
 } from "./editing";
@@ -186,8 +187,7 @@ export function AnnotationWorkspace({
     onSmartClick: (point, imageIndex) => void requestSmartBoxAt(point, imageIndex),
     onGeometryChanged: (annotationId, geometry) =>
       autosave.edit(annotationId, "update", (box) => ({
-        ...box,
-        ...geometry,
+        ...withGeometry(box, geometry),
         confidence: null,
       })),
     onBoxClicked: (annotationId) => selectAnnotation(annotationId),
@@ -201,7 +201,7 @@ export function AnnotationWorkspace({
   const displayedAnnotations = useMemo(() => {
     const boxes = draftGeometry
       ? activeAnnotations.map((box) =>
-          box.id === draftGeometry.id ? { ...box, ...draftGeometry, id: box.id } : box,
+          box.id === draftGeometry.id ? withGeometry(box, draftGeometry) : box,
         )
       : activeAnnotations;
     return draftBox ? [...boxes, draftBox] : boxes;

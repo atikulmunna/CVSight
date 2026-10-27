@@ -1,10 +1,12 @@
 import type { EditIntent } from "./editing";
-import type {
-  AnnotationBox,
-  AnnotationClass,
-  AnnotationLifecycle,
-  AnnotationReviewState,
-  OverlayState,
+import {
+  isPolygon,
+  type AnnotationBox,
+  type AnnotationClass,
+  type AnnotationLifecycle,
+  type AnnotationReviewState,
+  type OverlayState,
+  type PolygonPoint,
 } from "./model";
 
 type Fetcher = typeof fetch;
@@ -121,6 +123,7 @@ function annotationFields(box: AnnotationBox): Record<string, unknown> {
     y: box.y,
     width: box.width,
     height: box.height,
+    polygon: box.polygon,
     class_type: box.classType,
     sku_id: box.skuId,
     review_state: box.reviewState,
@@ -165,6 +168,7 @@ export function mapAnnotationResponse(
     y: nonNegativeNumber(body.y, "y"),
     width: positiveNumber(body.width, "width"),
     height: positiveNumber(body.height, "height"),
+    polygon: nullablePolygon(body.polygon),
     classType: classType as AnnotationClass,
     state: overlayState(
       lifecycleState as AnnotationLifecycle,
@@ -268,6 +272,16 @@ function positiveInteger(value: unknown, label: string): number {
     throw new AnnotationSaveError(502, `invalid_${label}`);
   }
   return number;
+}
+
+function nullablePolygon(value: unknown): PolygonPoint[] | null {
+  if (value === null) {
+    return null;
+  }
+  if (!isPolygon(value)) {
+    throw new AnnotationSaveError(502, "invalid_polygon");
+  }
+  return value;
 }
 
 function nullableProbability(value: unknown): number | null {

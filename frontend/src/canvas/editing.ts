@@ -1,4 +1,4 @@
-import type { AnnotationBox, AnnotationClass, FixtureImage } from "./model";
+import type { AnnotationBox, AnnotationClass, FixtureImage, PolygonPoint } from "./model";
 
 export type EditIntent =
   | "accept"
@@ -106,6 +106,8 @@ export function changeBoxClass(
   return {
     ...box,
     classType,
+    // Only products carry outlines.
+    polygon: classType === "product" ? box.polygon : null,
     sku,
     skuId: null,
     confidence: null,
@@ -124,7 +126,7 @@ export function nudgeBox(
   const y = clamp(box.y + deltaY, 0, bounds.height - box.height);
   return x === box.x && y === box.y
     ? box
-    : { ...box, x, y, confidence: null };
+    : { ...withGeometry(box, { ...box, x, y }), confidence: null };
 }
 
 export function resizeBox(
@@ -145,7 +147,7 @@ export function resizeBox(
   );
   return width === box.width && height === box.height
     ? box
-    : { ...box, width, height, confidence: null };
+    : { ...withGeometry(box, { ...box, width, height }), confidence: null };
 }
 
 export function duplicateBox(
@@ -155,7 +157,7 @@ export function duplicateBox(
 ): AnnotationBox {
   const x = clamp(box.x + DUPLICATE_OFFSET, 0, bounds.width - box.width);
   const y = clamp(box.y + DUPLICATE_OFFSET, 0, bounds.height - box.height);
-  return { ...asNewProposal(box, id), x, y };
+  return withGeometry(asNewProposal(box, id), { ...box, x, y });
 }
 
 // A copied box keeps its place within its photo. On the photo it came from it lands
@@ -171,23 +173,23 @@ export function pasteBox(
   const offset = sourceImage?.id === image.id ? DUPLICATE_OFFSET : 0;
   const width = Math.min(box.width, image.width);
   const height = Math.min(box.height, image.height);
-  return {
-    ...asNewProposal(box, id),
-    imageId: image.id,
-    imageIndex,
-    x: clamp(
-      image.x + box.x - (sourceImage?.x ?? 0) + offset,
-      image.x,
-      image.x + image.width - width,
-    ),
-    y: clamp(
-      image.y + box.y - (sourceImage?.y ?? 0) + offset,
-      image.y,
-      image.y + image.height - height,
-    ),
-    width,
-    height,
-  };
+  return withGeometry(
+    { ...asNewProposal(box, id), imageId: image.id, imageIndex },
+    {
+      x: clamp(
+        image.x + box.x - (sourceImage?.x ?? 0) + offset,
+        image.x,
+        image.x + image.width - width,
+      ),
+      y: clamp(
+        image.y + box.y - (sourceImage?.y ?? 0) + offset,
+        image.y,
+        image.y + image.height - height,
+      ),
+      width,
+      height,
+    },
+  );
 }
 
 // A copy is a new, unsaved proposal: a human verifies it again where it lands.
@@ -207,6 +209,30 @@ function asNewProposal(box: AnnotationBox, id: string): AnnotationBox {
 export type GeometryHandle = "nw" | "n" | "ne" | "e" | "se" | "s" | "sw" | "w" | "move";
 
 export type BoxGeometry = Pick<AnnotationBox, "x" | "y" | "width" | "height">;
+
+// Gives a box new geometry. An outline is mapped into the new box point by point, so
+// the box stays the bounds of its outline.
+export function withGeometry(box: AnnotationBox, geometry: BoxGeometry): AnnotationBox {
+  const { x, y, width, height } = geometry;
+  return {
+    ...box,
+    x,
+    y,
+    width,
+    height,
+    polygon: box.polygon && fitPolygon(box.polygon, box, geometry),
+  };
+}
+
+function fitPolygon(
+  polygon: PolygonPoint[],
+  from: BoxGeometry,
+  to: BoxGeometry,
+): PolygonPoint[] {
+  const scaleX = to.width / from.width;
+  const scaleY = to.height / from.height;
+  return polygon.map(([x, y]) => [to.x + (x - from.x) * scaleX, to.y + (y - from.y) * scaleY]);
+}
 
 // A pointer drag on a selected box: "move" shifts it, a handle moves the edges it names.
 export function dragGeometry(
@@ -270,6 +296,7 @@ export function createDrawnBox(
     y: top,
     width: right - left,
     height: bottom - top,
+    polygon: null,
     classType,
     state: "unverified",
     lifecycleState: "proposed",

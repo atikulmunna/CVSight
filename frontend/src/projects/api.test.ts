@@ -10,6 +10,7 @@ import {
 
 const PROJECT_ID = "11111111-1111-4111-8111-111111111111";
 const VERSION_ID = "22222222-2222-4222-8222-222222222222";
+const DETECTION = { description: "", projectType: "object_detection" } as const;
 
 describe("project API", () => {
   it("loads and parses project summaries", async () => {
@@ -20,6 +21,7 @@ describe("project API", () => {
           id: PROJECT_ID,
           name: "Retail Q3 audit",
           description: null,
+          project_type: "object_detection",
           created_at: "2026-08-30T08:00:00Z",
           open_version_id: VERSION_ID,
           latest_version_id: VERSION_ID,
@@ -33,6 +35,7 @@ describe("project API", () => {
         id: PROJECT_ID,
         name: "Retail Q3 audit",
         description: null,
+        projectType: "object_detection",
         createdAt: "2026-08-30T08:00:00Z",
         openVersionId: VERSION_ID,
         latestVersionId: VERSION_ID,
@@ -55,6 +58,27 @@ describe("project API", () => {
     );
   });
 
+  it("rejects a project without a known type", async () => {
+    const project = {
+      id: PROJECT_ID,
+      name: "Retail Q3 audit",
+      description: null,
+      created_at: "2026-08-30T08:00:00Z",
+      open_version_id: VERSION_ID,
+      latest_version_id: VERSION_ID,
+      image_count: 0,
+    };
+    for (const projectType of [undefined, "keypoints"]) {
+      const fetcher = vi.fn().mockResolvedValue({
+        ok: true,
+        json: async () => ({ ...project, project_type: projectType }),
+      });
+      await expect(loadProject(PROJECT_ID, fetcher)).rejects.toEqual(
+        new ProjectApiError(502, "invalid_response"),
+      );
+    }
+  });
+
   it("loads one project by identifier", async () => {
     const fetcher = vi.fn().mockResolvedValue({
       ok: true,
@@ -62,6 +86,7 @@ describe("project API", () => {
         id: PROJECT_ID,
         name: "Retail Q3 audit",
         description: "Dhaka stores",
+        project_type: "instance_segmentation",
         created_at: "2026-08-30T08:00:00Z",
         open_version_id: null,
         latest_version_id: VERSION_ID,
@@ -73,6 +98,7 @@ describe("project API", () => {
       id: PROJECT_ID,
       name: "Retail Q3 audit",
       description: "Dhaka stores",
+      projectType: "instance_segmentation",
       createdAt: "2026-08-30T08:00:00Z",
       openVersionId: null,
       latestVersionId: VERSION_ID,
@@ -125,7 +151,10 @@ describe("project API", () => {
     });
 
     await expect(
-      createProject("  Retail Q3 audit  ", "   ", [], fetcher),
+      createProject(
+        { name: "  Retail Q3 audit  ", description: "   ", projectType: "instance_segmentation" },
+        fetcher,
+      ),
     ).resolves.toEqual({
       id: PROJECT_ID,
       openVersionId: VERSION_ID,
@@ -138,7 +167,12 @@ describe("project API", () => {
         Accept: "application/json",
         "Content-Type": "application/json",
       },
-      body: JSON.stringify({ name: "Retail Q3 audit", description: null, catalog: [] }),
+      body: JSON.stringify({
+        name: "Retail Q3 audit",
+        description: null,
+        project_type: "instance_segmentation",
+        catalog: [],
+      }),
     });
   });
 
@@ -148,7 +182,7 @@ describe("project API", () => {
       json: async () => ({ id: PROJECT_ID }),
     });
 
-    await expect(createProject("Retail", "", [], fetcher)).rejects.toEqual(
+    await expect(createProject({ ...DETECTION, name: "Retail" }, fetcher)).rejects.toEqual(
       new ProjectApiError(502, "invalid_response"),
     );
   });
@@ -162,7 +196,7 @@ describe("project API", () => {
       }),
     });
 
-    const error = await createProject("Store", "", [], fetcher).catch((caught: unknown) => caught);
+    const error = await createProject({ ...DETECTION, name: "Store" }, fetcher).catch((caught: unknown) => caught);
     expect(error).toBeInstanceOf(ProjectApiError);
     expect((error as ProjectApiError).code).toBe("duplicate_upc");
     expect((error as ProjectApiError).details).toEqual({ upcs: ["012345678905"] });
@@ -175,7 +209,7 @@ describe("project API", () => {
       json: async () => ({ detail: { code: "dataset_name_conflict" } }),
     });
 
-    await expect(createProject("Existing", "", [], fetcher)).rejects.toEqual(
+    await expect(createProject({ ...DETECTION, name: "Existing" }, fetcher)).rejects.toEqual(
       new ProjectApiError(409, "dataset_name_conflict"),
     );
   });

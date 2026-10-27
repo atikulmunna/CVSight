@@ -33,6 +33,7 @@ describe("canvas transforms", () => {
         y: 170,
         width: 30,
         height: 40,
+        polygon: null,
         classType: "product",
         state: "verified",
         lifecycleState: "verified",

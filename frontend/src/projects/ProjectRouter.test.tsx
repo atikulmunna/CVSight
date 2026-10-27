@@ -9,6 +9,7 @@ const PROJECT = {
   id: PROJECT_ID,
   name: "Retail Q3 audit",
   description: "Dhaka stores",
+  project_type: "object_detection",
   created_at: "2026-08-30T08:00:00Z",
   open_version_id: VERSION_ID,
   latest_version_id: VERSION_ID,
@@ -40,6 +41,7 @@ describe("ProjectRouter", () => {
     expect(await screen.findByText("Retail Q3 audit")).toBeInTheDocument();
     expect(screen.getByText("Dhaka stores")).toBeInTheDocument();
     expect(screen.getByText("24 shelf images")).toBeInTheDocument();
+    expect(screen.getByText("Object detection")).toBeInTheDocument();
     expect(screen.getByRole("button", { name: "New project" })).toBeInTheDocument();
   });
 
@@ -88,6 +90,8 @@ describe("ProjectRouter", () => {
     fireEvent.change(screen.getByLabelText(/Description/), {
       target: { value: "Dhaka stores" },
     });
+    expect(screen.getByRole("radio", { name: /Object detection/ })).toBeChecked();
+    fireEvent.click(screen.getByRole("radio", { name: /Instance segmentation/ }));
     fireEvent.change(screen.getByLabelText(/SKU catalog CSV/), {
       target: {
         files: [new File([
@@ -104,6 +108,7 @@ describe("ProjectRouter", () => {
     expect(screen.getByRole("button", { name: "Upload first image" })).toBeInTheDocument();
     expect(createBody).toMatchObject({
       name: "Retail Q3 audit",
+      project_type: "instance_segmentation",
       catalog: [
         { name: "Aurora Cola", upc: "012345678905", brand: "Aurora" },
         { name: "Northstar Water", upc: null, brand: "Northstar" },

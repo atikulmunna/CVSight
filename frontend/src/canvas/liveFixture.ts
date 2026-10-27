@@ -124,6 +124,7 @@ function liveAnnotation(
     y: annotation.y,
     width: annotation.width,
     height: annotation.height,
+    polygon: annotation.polygon,
     kind: annotation.class_type,
     state: overlayState(
       annotation.lifecycle_state,

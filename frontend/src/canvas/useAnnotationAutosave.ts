@@ -509,6 +509,7 @@ function storedBox(box: AnnotationBox): Record<string, unknown> {
     y: box.y,
     width: box.width,
     height: box.height,
+    polygon: box.polygon,
     kind: box.classType,
     state: box.state,
     lifecycle_state: box.lifecycleState,

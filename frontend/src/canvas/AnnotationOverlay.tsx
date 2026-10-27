@@ -82,16 +82,8 @@ const AnnotationNode = memo(function AnnotationNode({
         }
       }}
     >
-      <rect
-        className="overlay-halo"
-        vectorEffect="non-scaling-stroke"
-        {...rectGeometry(box)}
-      />
-      <rect
-        className="overlay-core"
-        vectorEffect="non-scaling-stroke"
-        {...rectGeometry(box)}
-      />
+      <Outline box={box} className="overlay-halo" />
+      <Outline box={box} className="overlay-core" />
       {box.state === "propagated" && (
         <>
           <rect
@@ -174,6 +166,20 @@ export const AnnotationOverlay = memo(function AnnotationOverlay({
     </svg>
   );
 });
+
+// A product outline when the box has one; otherwise the box itself.
+function Outline({ box, className }: { box: AnnotationBox; className: string }) {
+  if (box.polygon) {
+    return (
+      <polygon
+        className={className}
+        vectorEffect="non-scaling-stroke"
+        points={box.polygon.map(([x, y]) => `${x},${y}`).join(" ")}
+      />
+    );
+  }
+  return <rect className={className} vectorEffect="non-scaling-stroke" {...rectGeometry(box)} />;
+}
 
 function rectGeometry(box: AnnotationBox) {
   return {

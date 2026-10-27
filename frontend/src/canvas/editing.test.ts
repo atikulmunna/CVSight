@@ -14,8 +14,9 @@ import {
   rejectBox,
   reopenBox,
   resizeBox,
+  withGeometry,
 } from "./editing";
-import type { AnnotationBox } from "./model";
+import type { AnnotationBox, PolygonPoint } from "./model";
 
 const BOX: AnnotationBox = {
   id: "box-1",
@@ -26,6 +27,7 @@ const BOX: AnnotationBox = {
   y: 10,
   width: 20,
   height: 30,
+  polygon: null,
   classType: "product",
   state: "unverified",
   lifecycleState: "proposed",
@@ -40,6 +42,8 @@ const BOX: AnnotationBox = {
 };
 
 const BOUNDS = { width: 100, height: 80 };
+// Its bounds are BOX's box.
+const OUTLINE: PolygonPoint[] = [[10, 10], [30, 25], [20, 40]];
 
 describe("annotation editing", () => {
   it("creates a bounded unreviewed gap from either drag direction", () => {
@@ -220,6 +224,39 @@ describe("annotation editing", () => {
     expect(changeBoxClass(rejectBox(accepted), "gap")).toMatchObject({
       classType: "product",
     });
+  });
+
+  it("drops the outline when a product becomes a gap or a shelf label", () => {
+    const outlined = { ...BOX, polygon: OUTLINE };
+
+    expect(changeBoxClass(outlined, "gap").polygon).toBeNull();
+    expect(changeBoxClass(outlined, "shelf_label").polygon).toBeNull();
+  });
+
+  it("carries an outline with its box through moves and resizes", () => {
+    const outlined = { ...BOX, polygon: OUTLINE };
+
+    expect(nudgeBox(outlined, 5, -2, BOUNDS).polygon).toEqual([[15, 8], [35, 23], [25, 38]]);
+    expect(resizeBox(outlined, 20, -15, BOUNDS).polygon).toEqual([
+      [10, 10],
+      [50, 17.5],
+      [30, 25],
+    ]);
+    expect(withGeometry(outlined, { x: 0, y: 0, width: 10, height: 60 }).polygon).toEqual([
+      [0, 0],
+      [10, 30],
+      [5, 60],
+    ]);
+    expect(nudgeBox(BOX, 5, 0, BOUNDS).polygon).toBeNull();
+  });
+
+  it("offsets a duplicated or pasted outline with its box", () => {
+    const outlined = { ...BOX, polygon: OUTLINE };
+    const photo = { id: "image-1", url: "", x: 0, y: 0, width: 100, height: 80 };
+    const offset = [[18, 18], [38, 33], [28, 48]];
+
+    expect(duplicateBox(outlined, "draft-3", BOUNDS).polygon).toEqual(offset);
+    expect(pasteBox(outlined, "paste-4", photo, [photo]).polygon).toEqual(offset);
   });
 
   it("clamps nudges and resizes to the image bounds and minimum size", () => {

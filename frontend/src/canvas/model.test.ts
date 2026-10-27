@@ -13,6 +13,7 @@ function box(id: string, x: number, y: number): AnnotationBox {
     y,
     width: 20,
     height: 40,
+    polygon: null,
     classType: "product",
     state: "verified",
     lifecycleState: "verified",
@@ -74,7 +75,29 @@ describe("canvas model", () => {
       id: "box-1",
       classType: "product",
       state: "unverified",
+      polygon: null,
     });
+  });
+
+  it("keeps a product outline from the fixture", () => {
+    const outline = [[10, 10], [30, 25], [20, 40]];
+    const parsed = parseCanvasFixture(
+      fixture([
+        {
+          id: "box-1",
+          x: 10,
+          y: 10,
+          width: 20,
+          height: 30,
+          polygon: outline,
+          kind: "product",
+          state: "unverified",
+          image_index: 0,
+        },
+      ]),
+    );
+
+    expect(parsed.annotations[0]!.polygon).toEqual(outline);
   });
 
   it.each([
@@ -121,6 +144,24 @@ describe("canvas model", () => {
       },
       "same-origin absolute path",
     ],
+    ...[[[1, 1], [5, 5]], [[1, 1], [5, "5"], [1, 5]], [[1, 1, 1], [5, 5], [1, 5]]].map(
+      (polygon) => [
+        fixture([
+          {
+            id: "box",
+            x: 1,
+            y: 1,
+            width: 4,
+            height: 4,
+            polygon,
+            kind: "product",
+            state: "verified",
+            image_index: 0,
+          },
+        ]),
+        "finite x, y points",
+      ],
+    ),
   ])("rejects invalid external fixture data", (value, message) => {
     expect(() => parseCanvasFixture(value)).toThrow(message);
   });

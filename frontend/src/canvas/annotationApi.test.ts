@@ -12,6 +12,7 @@ const BOX: AnnotationBox = {
   y: 12,
   width: 20,
   height: 30,
+  polygon: null,
   classType: "product",
   state: "flagged",
   lifecycleState: "proposed",
@@ -155,6 +156,37 @@ describe("annotation API client", () => {
       code: "invalid_x",
     });
   });
+
+  it("sends and maps a product outline", async () => {
+    const outline = [[10, 12], [30, 27], [20, 42]];
+    const fetcher = vi
+      .fn()
+      .mockResolvedValue(response(200, annotationResponse({ polygon: outline })));
+
+    const saved = await saveAnnotation(
+      { ...BOX, polygon: outline as AnnotationBox["polygon"] },
+      "update",
+      fetcher,
+    );
+
+    const options = fetcher.mock.calls[0]![1] as RequestInit;
+    expect(JSON.parse(options.body as string)).toMatchObject({ polygon: outline });
+    expect(saved.polygon).toEqual(outline);
+  });
+
+  it.each([undefined, [[1, 1], [2, 2]], [[1, 1], [2, null], [3, 1]]])(
+    "rejects a missing or malformed outline",
+    async (polygon) => {
+      const fetcher = vi
+        .fn()
+        .mockResolvedValue(response(200, annotationResponse({ polygon })));
+
+      await expect(saveAnnotation(BOX, "update", fetcher)).rejects.toMatchObject({
+        status: 502,
+        code: "invalid_polygon",
+      });
+    },
+  );
 });
 
 function annotationResponse(overrides: Record<string, unknown> = {}) {
@@ -166,6 +198,7 @@ function annotationResponse(overrides: Record<string, unknown> = {}) {
     y: 12,
     width: 20,
     height: 30,
+    polygon: null,
     class_type: "product",
     sku_id: null,
     lifecycle_state: "proposed",
