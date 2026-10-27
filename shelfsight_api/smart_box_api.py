@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 from collections.abc import Callable
-from typing import Annotated
+from typing import Annotated, Literal
 from uuid import UUID
 
 from fastapi import APIRouter, Response, status
@@ -99,8 +99,31 @@ class SmartFindResponse(BaseModel):
     objects: list[SmartPolygonResponse]
 
 
+class SegmenterStatusResponse(BaseModel):
+    # off: no service is configured; rejected: the service refused the token.
+    state: Literal["off", "ready", "unreachable", "rejected"]
+
+
 def segmenter_client(settings: SegmenterSettings) -> SegmenterClient:
     return SegmenterClient(settings)
+
+
+@router.get("/segmenter/status", response_model=SegmenterStatusResponse)
+def segmenter_status() -> SegmenterStatusResponse:
+    """Whether the SAM service answers, so the canvas can say so before a click fails."""
+    try:
+        settings = get_segmenter_settings()
+    except ConfigurationError:
+        return SegmenterStatusResponse(state="off")
+    if settings is None:
+        return SegmenterStatusResponse(state="off")
+    try:
+        segmenter_client(settings).check()
+    except SmartBoxError as error:
+        return SegmenterStatusResponse(
+            state="rejected" if error.code == "segmenter_rejected" else "unreachable"
+        )
+    return SegmenterStatusResponse(state="ready")
 
 
 @router.post("/images/{image_id}/smart-box", response_model=SmartBoxResponse)

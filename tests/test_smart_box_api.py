@@ -444,6 +444,29 @@ def test_prepares_a_photo_once_ahead_of_the_first_click(
     assert missing.json()["detail"]["code"] == "image_not_found"
 
 
+def test_reports_whether_the_sam_service_answers(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.delenv(SEGMENTER_URL_ENV, raising=False)
+    off = client.get("/api/segmenter/status").json()
+    monkeypatch.setenv(SEGMENTER_URL_ENV, "http://segmenter.test")
+    monkeypatch.setenv(SEGMENTER_TOKEN_ENV, TOKEN)
+    states = []
+    for answer in (
+        b'{"model_id": "sam", "model_version": "v"}',
+        http_error(401, {"detail": {"code": "unauthorized"}}),
+        urllib.error.URLError("refused"),
+    ):
+        opener, sent = scripted(answer)
+        monkeypatch.setattr(
+            "shelfsight_api.smart_box_api.segmenter_client",
+            lambda settings, opener=opener: SegmenterClient(settings, opener=opener),
+        )
+        states.append(client.get("/api/segmenter/status").json()["state"])
+
+    assert off == {"state": "off"}
+    assert states == ["ready", "rejected", "unreachable"]
+    assert sent[0].full_url == "http://segmenter.test/v1/health"
+
+
 def test_says_when_no_smart_box_service_is_configured(
     photo: UUID,
     monkeypatch: pytest.MonkeyPatch,

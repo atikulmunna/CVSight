@@ -18,6 +18,8 @@ from shelfsight_api.models import MAX_POLYGON_POINTS, images
 # A find answers with up to 300 outlines of up to 1,000 points, about 25 bytes a point.
 MAX_SEGMENTER_RESPONSE_BYTES = 8 * 1024 * 1024
 MAX_FOUND_OBJECTS = 300
+# A status check answers quickly or not at all; the smart routes keep the long timeout.
+STATUS_TIMEOUT_SECONDS = 5.0
 
 
 class SmartBoxError(RuntimeError):
@@ -116,6 +118,10 @@ class SegmenterClient:
         }
         return _validated_polygon(self._ask(content, "/v1/polygon", prompt), image)
 
+    def check(self) -> None:
+        """Raises a SmartBoxError unless the service answers with the configured token."""
+        self._send("GET", "/v1/health", None, "application/json", STATUS_TIMEOUT_SECONDS)
+
     def prepare(self, content: bytes) -> None:
         """Sends the photo unless the service already holds it, so the first click on the
         photo does not wait for the upload and SAM's encoding."""
@@ -167,7 +173,14 @@ class SegmenterClient:
     def _upload(self, sha256: str, content: bytes) -> None:
         self._send("PUT", f"/v1/images/{sha256}", content, "application/octet-stream")
 
-    def _send(self, method: str, path: str, body: bytes | None, content_type: str) -> Any:
+    def _send(
+        self,
+        method: str,
+        path: str,
+        body: bytes | None,
+        content_type: str,
+        timeout_seconds: float | None = None,
+    ) -> Any:
         request = urllib.request.Request(
             self._settings.url + path,
             data=body,
@@ -179,7 +192,7 @@ class SegmenterClient:
             },
         )
         try:
-            with self._open(request, timeout=self._timeout) as response:
+            with self._open(request, timeout=timeout_seconds or self._timeout) as response:
                 payload = response.read(MAX_SEGMENTER_RESPONSE_BYTES + 1)
         except urllib.error.HTTPError as error:
             raise _http_error(error) from error
