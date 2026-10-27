@@ -1525,6 +1525,14 @@ outline, thinned the way the smart polygon opens; in a detection project it is a
 SAM's score becomes the proposal's confidence. Examples find products of the same kind,
 not the same SKU, so finds start unassigned.
 
+Measured on two labeled shelf photos, a phrase such as `product` finds nearly every
+product on the shelf, labeled or not, so it suits projects that label everything. When a
+project labels only some brands, select a few of those brands' products as examples
+instead. On a very dense shelf (about 170 products) one find caught about a third of
+them, with 90% of the finds correct when three examples were selected; finding again
+with other examples adds only what is new. Long descriptive phrases did worse than
+short ones, and a threshold of 0.3 roughly doubled the finds at much lower precision.
+
 The canvas asks `POST /api/images/{image_id}/smart-find` with `text`, `exemplars` (boxes
 in canonical image pixels), and an optional `threshold` (0.05 to 0.95, 0.5 by default),
 and receives up to 300 outlines with their scores, best first. Nothing is saved by the
