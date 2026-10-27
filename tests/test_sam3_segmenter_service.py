@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import hashlib
 import io
+from collections.abc import Sequence
 from typing import Any
 
 import pytest
@@ -10,7 +11,12 @@ from PIL import Image
 
 from runtimes.sam3_segmenter import __main__ as runtime_main
 from runtimes.sam3_segmenter import service
-from runtimes.sam3_segmenter.service import SegmentedBox, create_app
+from runtimes.sam3_segmenter.service import (
+    PromptPoint,
+    SegmentedBox,
+    SegmentedPolygon,
+    create_app,
+)
 
 TOKEN = "t" * 40
 AUTH = {"Authorization": f"Bearer {TOKEN}"}
@@ -22,6 +28,7 @@ class FakeSegmenter:
 
     def __init__(self) -> None:
         self.encoded: list[tuple[int, int]] = []
+        self.prompts: list[list[PromptPoint]] = []
 
     def encode(self, image: Image.Image) -> Any:
         self.encoded.append(image.size)
@@ -31,6 +38,16 @@ class FakeSegmenter:
         if x < 5:
             return None
         return SegmentedBox(x=x - 4, y=y - 4, width=8, height=8, score=0.9)
+
+    def outline(self, encoded: Any, points: Sequence[PromptPoint]) -> SegmentedPolygon | None:
+        self.prompts.append(list(points))
+        first = points[0]
+        if first.x < 5:
+            return None
+        return SegmentedPolygon(
+            points=[(first.x - 4, first.y - 4), (first.x + 4, first.y - 4), (first.x, first.y + 4)],
+            score=0.8,
+        )
 
 
 def png(width: int = 40, height: int = 30) -> bytes:
@@ -48,6 +65,14 @@ def click(client: TestClient, sha: str, x: float, y: float, **extra: Any) -> Any
     return client.post(
         "/v1/segment",
         json={"image_sha256": sha, "x": x, "y": y, **extra},
+        headers=AUTH,
+    )
+
+
+def outline(client: TestClient, sha: str, points: list[dict[str, Any]]) -> Any:
+    return client.post(
+        "/v1/polygon",
+        json={"image_sha256": sha, "points": points},
         headers=AUTH,
     )
 
@@ -82,6 +107,48 @@ def test_encodes_a_photo_once_and_answers_each_click_with_a_box(
     }
 
 
+def test_answers_included_and_excluded_clicks_with_an_outline(
+    client: TestClient,
+    segmenter: FakeSegmenter,
+) -> None:
+    sha, _ = upload(client, png())
+
+    response = outline(
+        client,
+        sha,
+        [{"x": 20, "y": 15, "include": True}, {"x": 30, "y": 20, "include": False}],
+    )
+
+    assert response.status_code == 200
+    assert response.json() == {"polygon": [[16, 11], [24, 11], [20, 19]], "score": 0.8}
+    assert segmenter.prompts == [
+        [PromptPoint(20, 15, include=True), PromptPoint(30, 20, include=False)]
+    ]
+
+
+def test_refuses_outline_clicks_it_cannot_answer(
+    client: TestClient,
+    segmenter: FakeSegmenter,
+) -> None:
+    sha, _ = upload(client, png())
+    included = {"x": 20, "y": 15, "include": True}
+
+    assert outline(client, "0" * 64, [included]).json() == {"detail": {"code": "image_not_loaded"}}
+    assert outline(client, sha, [{**included, "include": False}]).json() == {
+        "detail": {"code": "no_included_point"}
+    }
+    assert outline(client, sha, [included, {"x": 20, "y": 30, "include": False}]).json() == {
+        "detail": {"code": "point_outside_image"}
+    }
+    assert outline(client, sha, [{"x": 2, "y": 15, "include": True}]).json() == {
+        "detail": {"code": "no_object"}
+    }
+    assert outline(client, sha, []).status_code == 422
+    assert outline(client, sha, [included] * 17).status_code == 422
+    assert outline(client, sha, [{"x": 20, "y": 15}]).status_code == 422
+    assert segmenter.prompts == [[PromptPoint(2, 15, include=True)]]
+
+
 def test_rejects_every_request_without_the_token(
     client: TestClient,
     segmenter: FakeSegmenter,
@@ -95,9 +162,13 @@ def test_rejects_every_request_without_the_token(
         client.get("/v1/health", headers=wrong),
         client.put(f"/v1/images/{sha}", content=body, headers=wrong),
         client.post("/v1/segment", json={"image_sha256": sha, "x": 1, "y": 1}),
+        client.post(
+            "/v1/polygon",
+            json={"image_sha256": sha, "points": [{"x": 1, "y": 1, "include": True}]},
+        ),
     ]
 
-    assert [response.status_code for response in responses] == [401, 401, 401, 401]
+    assert [response.status_code for response in responses] == [401, 401, 401, 401, 401]
     assert responses[0].json() == {"detail": {"code": "unauthorized"}}
     assert segmenter.encoded == []
 

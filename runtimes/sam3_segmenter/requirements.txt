@@ -1,3 +1,10 @@
 # Installed next to SAM 3 itself, which brings PyTorch, NumPy, and Pillow; see the README.
 fastapi>=0.116,<1
 uvicorn>=0.35,<1
+# Turns masks into outlines for the smart polygon. 4.12 and later need NumPy 2, which
+# SAM 3 does not allow.
+opencv-python-headless>=4.10,<4.12
+# SAM 3 imports these without declaring them as dependencies.
+einops
+pycocotools
+psutil

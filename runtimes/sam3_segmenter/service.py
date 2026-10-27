@@ -6,7 +6,7 @@ import io
 import re
 import threading
 from collections import OrderedDict
-from collections.abc import Callable
+from collections.abc import Callable, Sequence
 from dataclasses import dataclass
 from typing import Any, Protocol, TypeVar
 
@@ -17,6 +17,8 @@ from pydantic import BaseModel, ConfigDict, Field, FiniteFloat
 
 MAX_IMAGE_BYTES = 50 * 1024 * 1024
 MAX_IMAGE_PIXELS = 64_000_000
+MAX_PROMPT_POINTS = 16
+MAX_POLYGON_POINTS = 1_000
 SHA256_PATTERN = re.compile(r"^[0-9a-f]{64}$")
 
 T = TypeVar("T")
@@ -31,6 +33,21 @@ class SegmentedBox:
     score: float
 
 
+@dataclass(frozen=True)
+class PromptPoint:
+    x: float
+    y: float
+    # True for a click on the object, False for a click on something it must leave out.
+    include: bool
+
+
+@dataclass(frozen=True)
+class SegmentedPolygon:
+    # At most MAX_POLYGON_POINTS [x, y] corners, in pixels.
+    points: list[tuple[float, float]]
+    score: float
+
+
 class Segmenter(Protocol):
     model_id: str
     model_version: str
@@ -41,6 +58,9 @@ class Segmenter(Protocol):
     # The box around the object at one positive click, or None when nothing is there.
     def segment(self, encoded: Any, x: float, y: float) -> SegmentedBox | None: ...
 
+    # The outline of the object the clicks describe, or None when nothing is there.
+    def outline(self, encoded: Any, points: Sequence[PromptPoint]) -> SegmentedPolygon | None: ...
+
 
 class SegmentRequest(BaseModel):
     model_config = ConfigDict(extra="forbid")
@@ -48,6 +68,21 @@ class SegmentRequest(BaseModel):
     image_sha256: str = Field(pattern=SHA256_PATTERN.pattern)
     x: FiniteFloat = Field(ge=0)
     y: FiniteFloat = Field(ge=0)
+
+
+class PromptPointRequest(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    x: FiniteFloat = Field(ge=0)
+    y: FiniteFloat = Field(ge=0)
+    include: bool
+
+
+class PolygonRequest(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    image_sha256: str = Field(pattern=SHA256_PATTERN.pattern)
+    points: list[PromptPointRequest] = Field(min_length=1, max_length=MAX_PROMPT_POINTS)
 
 
 @dataclass(frozen=True)
@@ -109,15 +144,22 @@ def create_app(segmenter: Segmenter, token: str, cache_size: int = 8) -> FastAPI
             cache.popitem(last=False)
         return Response(status_code=status.HTTP_204_NO_CONTENT)
 
+    def cached(image_sha256: str) -> _Encoded:
+        encoded = cache.get(image_sha256)
+        if encoded is None:
+            raise _error(status.HTTP_404_NOT_FOUND, "image_not_loaded")
+        cache.move_to_end(image_sha256)
+        return encoded
+
+    def require_inside(encoded: _Encoded, x: float, y: float) -> None:
+        if x >= encoded.width or y >= encoded.height:
+            raise _error(status.HTTP_422_UNPROCESSABLE_CONTENT, "point_outside_image")
+
     @app.post("/v1/segment")
     def segment(body: SegmentRequest, request: Request) -> dict[str, float]:
         authorize(request)
-        encoded = cache.get(body.image_sha256)
-        if encoded is None:
-            raise _error(status.HTTP_404_NOT_FOUND, "image_not_loaded")
-        cache.move_to_end(body.image_sha256)
-        if body.x >= encoded.width or body.y >= encoded.height:
-            raise _error(status.HTTP_422_UNPROCESSABLE_CONTENT, "point_outside_image")
+        encoded = cached(body.image_sha256)
+        require_inside(encoded, body.x, body.y)
         box = locked(segmenter.segment, encoded.state, body.x, body.y)
         if box is None:
             raise _error(status.HTTP_422_UNPROCESSABLE_CONTENT, "no_object")
@@ -127,6 +169,23 @@ def create_app(segmenter: Segmenter, token: str, cache_size: int = 8) -> FastAPI
             "width": box.width,
             "height": box.height,
             "score": box.score,
+        }
+
+    @app.post("/v1/polygon")
+    def polygon(body: PolygonRequest, request: Request) -> dict[str, Any]:
+        authorize(request)
+        encoded = cached(body.image_sha256)
+        for point in body.points:
+            require_inside(encoded, point.x, point.y)
+        if not any(point.include for point in body.points):
+            raise _error(status.HTTP_422_UNPROCESSABLE_CONTENT, "no_included_point")
+        points = [PromptPoint(point.x, point.y, point.include) for point in body.points]
+        outline = locked(segmenter.outline, encoded.state, points)
+        if outline is None:
+            raise _error(status.HTTP_422_UNPROCESSABLE_CONTENT, "no_object")
+        return {
+            "polygon": [[x, y] for x, y in outline.points],
+            "score": outline.score,
         }
 
     return app

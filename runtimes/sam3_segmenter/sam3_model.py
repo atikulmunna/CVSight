@@ -1,12 +1,18 @@
 from __future__ import annotations
 
 import hashlib
+from collections.abc import Sequence
 from pathlib import Path
 from typing import Any
 
 from PIL import Image
 
-from runtimes.sam3_segmenter.service import SegmentedBox
+from runtimes.sam3_segmenter.service import (
+    MAX_POLYGON_POINTS,
+    PromptPoint,
+    SegmentedBox,
+    SegmentedPolygon,
+)
 
 
 class Sam3Segmenter:
@@ -21,7 +27,8 @@ class Sam3Segmenter:
     def __init__(self, checkpoint_path: Path) -> None:
         if not checkpoint_path.is_file():
             raise FileNotFoundError(f"SAM 3 checkpoint not found: {checkpoint_path}")
-        # Imported here so the service and its tests run without PyTorch or SAM 3.
+        # Imported here so the service and its tests run without PyTorch, OpenCV, or SAM 3.
+        import cv2
         import numpy
         import torch
         from sam3 import build_sam3_image_model
@@ -31,6 +38,7 @@ class Sam3Segmenter:
             raise RuntimeError("SAM 3 needs a CUDA GPU")
         torch.backends.cuda.matmul.allow_tf32 = True
         torch.backends.cudnn.allow_tf32 = True
+        self._cv2 = cv2
         self._numpy = numpy
         self._torch = torch
         self._model = build_sam3_image_model(
@@ -46,18 +54,50 @@ class Sam3Segmenter:
             return self._processor.set_image(image)
 
     def segment(self, encoded: Any, x: float, y: float) -> SegmentedBox | None:
+        mask, score = self._predict(encoded, [PromptPoint(x, y, include=True)])
+        return mask_box(mask, score)
+
+    def outline(self, encoded: Any, points: Sequence[PromptPoint]) -> SegmentedPolygon | None:
+        mask, score = self._predict(encoded, points)
+        corners = self._mask_polygon(mask)
+        if corners is None:
+            return None
+        return SegmentedPolygon(points=corners, score=min(max(score, 0.0), 1.0))
+
+    def _predict(self, encoded: Any, points: Sequence[PromptPoint]) -> tuple[Any, float]:
         numpy = self._numpy
+        # A single click is ambiguous (part, object, or group), so SAM offers three masks
+        # and the best scored one is kept. Further clicks settle what is meant, and SAM
+        # advises a single mask for them.
         with self._torch.inference_mode(), self._torch.autocast("cuda", dtype=self._torch.bfloat16):
-            # Three candidate masks (part, object, group) answer an ambiguous single click;
-            # the one SAM scores highest is kept.
             masks, scores, _ = self._model.predict_inst(
                 encoded,
-                point_coords=numpy.array([[x, y]]),
-                point_labels=numpy.array([1]),
-                multimask_output=True,
+                point_coords=numpy.array([[point.x, point.y] for point in points]),
+                point_labels=numpy.array([1 if point.include else 0 for point in points]),
+                multimask_output=len(points) == 1,
             )
         best = int(numpy.argmax(scores))
-        return mask_box(numpy.asarray(masks[best]) > 0, float(scores[best]))
+        return numpy.asarray(masks[best]) > 0, float(scores[best])
+
+    def _mask_polygon(self, mask: Any) -> list[tuple[float, float]] | None:
+        """The outline of the largest region of a boolean mask, in pixels."""
+        cv2 = self._cv2
+        contours, _ = cv2.findContours(
+            mask.astype(self._numpy.uint8), cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_NONE
+        )
+        if not contours:
+            return None
+        contour = max(contours, key=cv2.contourArea)
+        # Half a pixel keeps every visible bend; the canvas thins the outline further. A
+        # coarser tolerance is used only to stay within the point limit.
+        tolerance = 0.5
+        corners = cv2.approxPolyDP(contour, tolerance, True)
+        while len(corners) > MAX_POLYGON_POINTS:
+            tolerance *= 2
+            corners = cv2.approxPolyDP(contour, tolerance, True)
+        if len(corners) < 3:
+            return None
+        return [(float(x), float(y)) for [[x, y]] in corners]
 
 
 def mask_box(mask: Any, score: float) -> SegmentedBox | None:
