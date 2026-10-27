@@ -1282,11 +1282,24 @@ After saving a correction, refresh the queue before deciding. Approve and Flag a
 new annotation revision with reviewer provenance and an immutable review-decision row.
 A stale item returns a conflict instead of overwriting the corrected revision.
 
+When the selected item is a product box with an assigned SKU, the panel below the
+queue shows a lineup for that SKU: its reference photos, the crop of the box under
+review, and every other accepted product box with the same SKU in this version, ordered
+by photo and then left to right. A box that does not match its neighbours stands out at
+a glance. The lineup lists at most 200 boxes and says when there are more. Each crop is
+the box with 8% of shelf context around it, at most 256 pixels on its longest side. A
+crop of a named revision never changes, so the browser may keep it for a day; a crop of
+the current revision is never cached.
+
 Review routes:
 
 - `GET /api/dataset-versions/{version_id}/review-queue`
 - `POST /api/dataset-versions/{version_id}/review-items/{annotation_id}/decision`
 - `POST /api/dataset-versions/{version_id}/review-signoff`
+- `GET /api/dataset-versions/{version_id}/sku-lineup?sku_id={sku_id}`: the SKU, its
+  reference images, and its accepted product boxes in the version, each with a crop URL
+- `GET /api/annotations/{annotation_id}/crop?revision={revision}`: a JPEG crop of one
+  box; without `revision` it shows the current revision
 
 Sign-off is blocked while any current risk item lacks an approval or has an unresolved
 flag. A successful sign-off snapshots the version and records the reviewer in one
