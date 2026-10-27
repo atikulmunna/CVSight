@@ -13,12 +13,14 @@ from typing import Any, Protocol, TypeVar
 from fastapi import FastAPI, HTTPException, Request, Response, status
 from fastapi.concurrency import run_in_threadpool
 from PIL import Image, UnidentifiedImageError
-from pydantic import BaseModel, ConfigDict, Field, FiniteFloat
+from pydantic import BaseModel, ConfigDict, Field, FiniteFloat, model_validator
 
 MAX_IMAGE_BYTES = 50 * 1024 * 1024
 MAX_IMAGE_PIXELS = 64_000_000
 MAX_PROMPT_POINTS = 16
 MAX_POLYGON_POINTS = 1_000
+MAX_EXEMPLARS = 8
+MAX_FOUND_OBJECTS = 300
 SHA256_PATTERN = re.compile(r"^[0-9a-f]{64}$")
 
 T = TypeVar("T")
@@ -42,6 +44,16 @@ class PromptPoint:
 
 
 @dataclass(frozen=True)
+class Region:
+    """A box in pixels, such as an example of the objects to find."""
+
+    x: float
+    y: float
+    width: float
+    height: float
+
+
+@dataclass(frozen=True)
 class SegmentedPolygon:
     # At most MAX_POLYGON_POINTS [x, y] corners, in pixels.
     points: list[tuple[float, float]]
@@ -61,6 +73,16 @@ class Segmenter(Protocol):
     # The outline of the object the clicks describe, or None when nothing is there.
     def outline(self, encoded: Any, points: Sequence[PromptPoint]) -> SegmentedPolygon | None: ...
 
+    # The outlines of every object that matches a phrase, example boxes, or both, scored
+    # at least the threshold, best first.
+    def find(
+        self,
+        encoded: Any,
+        text: str | None,
+        exemplars: Sequence[Region],
+        threshold: float,
+    ) -> list[SegmentedPolygon]: ...
+
 
 class SegmentRequest(BaseModel):
     model_config = ConfigDict(extra="forbid")
@@ -76,6 +98,30 @@ class PromptPointRequest(BaseModel):
     x: FiniteFloat = Field(ge=0)
     y: FiniteFloat = Field(ge=0)
     include: bool
+
+
+class RegionRequest(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    x: FiniteFloat = Field(ge=0)
+    y: FiniteFloat = Field(ge=0)
+    width: FiniteFloat = Field(gt=0)
+    height: FiniteFloat = Field(gt=0)
+
+
+class FindRequest(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    image_sha256: str = Field(pattern=SHA256_PATTERN.pattern)
+    text: str | None = Field(default=None, min_length=1, max_length=200)
+    exemplars: list[RegionRequest] = Field(default_factory=list, max_length=MAX_EXEMPLARS)
+    threshold: FiniteFloat = Field(default=0.5, ge=0.05, le=0.95)
+
+    @model_validator(mode="after")
+    def _requires_a_prompt(self) -> FindRequest:
+        if not (self.text and self.text.strip()) and not self.exemplars:
+            raise ValueError("a phrase or at least one example box is required")
+        return self
 
 
 class PolygonRequest(BaseModel):
@@ -193,6 +239,28 @@ def create_app(segmenter: Segmenter, token: str, cache_size: int = 8) -> FastAPI
         return {
             "polygon": [[x, y] for x, y in outline.points],
             "score": outline.score,
+        }
+
+    @app.post("/v1/find")
+    def find(body: FindRequest, request: Request) -> dict[str, Any]:
+        authorize(request)
+        encoded = cached(body.image_sha256)
+        for exemplar in body.exemplars:
+            if exemplar.x + exemplar.width > encoded.width or (
+                exemplar.y + exemplar.height > encoded.height
+            ):
+                raise _error(status.HTTP_422_UNPROCESSABLE_CONTENT, "exemplar_outside_image")
+        exemplars = [
+            Region(exemplar.x, exemplar.y, exemplar.width, exemplar.height)
+            for exemplar in body.exemplars
+        ]
+        text = body.text.strip() if body.text and body.text.strip() else None
+        found = locked(segmenter.find, encoded.state, text, exemplars, body.threshold)
+        return {
+            "objects": [
+                {"polygon": [[x, y] for x, y in outline.points], "score": outline.score}
+                for outline in found[:MAX_FOUND_OBJECTS]
+            ]
         }
 
     return app

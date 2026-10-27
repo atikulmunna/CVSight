@@ -13,6 +13,7 @@ from runtimes.sam3_segmenter import __main__ as runtime_main
 from runtimes.sam3_segmenter import service
 from runtimes.sam3_segmenter.service import (
     PromptPoint,
+    Region,
     SegmentedBox,
     SegmentedPolygon,
     create_app,
@@ -29,6 +30,7 @@ class FakeSegmenter:
     def __init__(self) -> None:
         self.encoded: list[tuple[int, int]] = []
         self.prompts: list[list[PromptPoint]] = []
+        self.finds: list[tuple[str | None, list[Region], float]] = []
 
     def encode(self, image: Image.Image) -> Any:
         self.encoded.append(image.size)
@@ -38,6 +40,17 @@ class FakeSegmenter:
         if x < 5:
             return None
         return SegmentedBox(x=x - 4, y=y - 4, width=8, height=8, score=0.9)
+
+    def find(
+        self,
+        encoded: Any,
+        text: str | None,
+        exemplars: Sequence[Region],
+        threshold: float,
+    ) -> list[SegmentedPolygon]:
+        self.finds.append((text, list(exemplars), threshold))
+        found = SegmentedPolygon(points=[(1, 1), (5, 1), (3, 6)], score=0.9)
+        return [found, found] if text else [found]
 
     def outline(self, encoded: Any, points: Sequence[PromptPoint]) -> SegmentedPolygon | None:
         self.prompts.append(list(points))
@@ -147,6 +160,46 @@ def test_refuses_outline_clicks_it_cannot_answer(
     assert outline(client, sha, [included] * 17).status_code == 422
     assert outline(client, sha, [{"x": 20, "y": 15}]).status_code == 422
     assert segmenter.prompts == [[PromptPoint(2, 15, include=True)]]
+
+
+def test_finds_every_object_matching_a_phrase_or_example_boxes(
+    client: TestClient,
+    segmenter: FakeSegmenter,
+) -> None:
+    sha, _ = upload(client, png())
+    example = {"x": 2, "y": 2, "width": 10, "height": 8}
+
+    by_text = client.post("/v1/find", json={"image_sha256": sha, "text": " bottle "}, headers=AUTH)
+    by_example = client.post(
+        "/v1/find",
+        json={"image_sha256": sha, "exemplars": [example], "threshold": 0.3},
+        headers=AUTH,
+    )
+
+    found = {"polygon": [[1, 1], [5, 1], [3, 6]], "score": 0.9}
+    assert by_text.json() == {"objects": [found, found]}
+    assert by_example.json() == {"objects": [found]}
+    assert segmenter.finds == [("bottle", [], 0.5), (None, [Region(2, 2, 10, 8)], 0.3)]
+
+
+def test_refuses_a_find_without_a_prompt_or_with_an_example_off_the_photo(
+    client: TestClient,
+    segmenter: FakeSegmenter,
+) -> None:
+    sha, _ = upload(client, png())
+
+    def find(**body: Any) -> Any:
+        return client.post("/v1/find", json={"image_sha256": sha, **body}, headers=AUTH)
+
+    small = {"x": 1, "y": 1, "width": 2, "height": 2}
+    assert find().status_code == 422
+    assert find(text="   ").status_code == 422
+    assert find(exemplars=[{"x": 35, "y": 2, "width": 10, "height": 8}]).json() == {
+        "detail": {"code": "exemplar_outside_image"}
+    }
+    assert find(text="bottle", threshold=1.5).status_code == 422
+    assert find(exemplars=[small] * 9).status_code == 422
+    assert segmenter.finds == []
 
 
 def test_says_whether_it_holds_a_photo(client: TestClient) -> None:

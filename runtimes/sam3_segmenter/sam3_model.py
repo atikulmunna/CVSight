@@ -8,11 +8,17 @@ from typing import Any
 from PIL import Image
 
 from runtimes.sam3_segmenter.service import (
+    MAX_FOUND_OBJECTS,
     MAX_POLYGON_POINTS,
     PromptPoint,
+    Region,
     SegmentedBox,
     SegmentedPolygon,
 )
+
+# Found objects come many at a time, so their outlines are traced a little coarser than
+# a clicked outline to keep the answer small.
+FOUND_OUTLINE_TOLERANCE = 1.0
 
 
 class Sam3Segmenter:
@@ -64,6 +70,53 @@ class Sam3Segmenter:
             return None
         return SegmentedPolygon(points=corners, score=min(max(score, 0.0), 1.0))
 
+    def find(
+        self,
+        encoded: Any,
+        text: str | None,
+        exemplars: Sequence[Region],
+        threshold: float,
+    ) -> list[SegmentedPolygon]:
+        """SAM 3's concept prompt: every object matching a phrase, example boxes, or both.
+
+        The prompts are added to the photo's cached encoding and always removed again, so
+        later clicks on the photo see the encoding as it was.
+        """
+        processor = self._processor
+        width, height = encoded["original_width"], encoded["original_height"]
+        processor.set_confidence_threshold(threshold)
+        try:
+            with (
+                self._torch.inference_mode(),
+                self._torch.autocast("cuda", dtype=self._torch.bfloat16),
+            ):
+                if text:
+                    processor.set_text_prompt(text, encoded)
+                for box in exemplars:
+                    # SAM 3 takes example boxes as normalized centre, width, and height.
+                    processor.add_geometric_prompt(
+                        [
+                            (box.x + box.width / 2) / width,
+                            (box.y + box.height / 2) / height,
+                            box.width / width,
+                            box.height / height,
+                        ],
+                        True,
+                        encoded,
+                    )
+            masks, scores = encoded.get("masks"), encoded.get("scores")
+            if masks is None or len(masks) == 0:
+                return []
+            found = []
+            for index in scores.argsort(descending=True)[:MAX_FOUND_OBJECTS].tolist():
+                corners = self._mask_polygon(masks[index, 0].cpu().numpy(), FOUND_OUTLINE_TOLERANCE)
+                if corners is not None:
+                    score = min(max(float(scores[index]), 0.0), 1.0)
+                    found.append(SegmentedPolygon(points=corners, score=score))
+            return found
+        finally:
+            processor.reset_all_prompts(encoded)
+
     def _predict(self, encoded: Any, points: Sequence[PromptPoint]) -> tuple[Any, float]:
         numpy = self._numpy
         # A single click is ambiguous (part, object, or group), so SAM offers three masks
@@ -79,8 +132,9 @@ class Sam3Segmenter:
         best = int(numpy.argmax(scores))
         return numpy.asarray(masks[best]) > 0, float(scores[best])
 
-    def _mask_polygon(self, mask: Any) -> list[tuple[float, float]] | None:
-        """The outline of the largest region of a boolean mask, in pixels."""
+    def _mask_polygon(self, mask: Any, tolerance: float = 0.5) -> list[tuple[float, float]] | None:
+        """The outline of the largest region of a boolean mask, in pixels. The tolerance
+        grows only to stay within the point limit."""
         cv2 = self._cv2
         contours, _ = cv2.findContours(
             mask.astype(self._numpy.uint8), cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_NONE
@@ -88,9 +142,8 @@ class Sam3Segmenter:
         if not contours:
             return None
         contour = max(contours, key=cv2.contourArea)
-        # Half a pixel keeps every visible bend; the canvas thins the outline further. A
-        # coarser tolerance is used only to stay within the point limit.
-        tolerance = 0.5
+        # The default half pixel keeps every visible bend; the canvas thins the outline
+        # further.
         corners = cv2.approxPolyDP(contour, tolerance, True)
         while len(corners) > MAX_POLYGON_POINTS:
             tolerance *= 2
