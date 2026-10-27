@@ -942,12 +942,15 @@ describe("AnnotationWorkspace", () => {
 
   it("explains a failed smart box and ignores clicks while one is pending", async () => {
     let answer: (value: unknown) => void = () => undefined;
-    const fetchMock = vi.fn().mockImplementation(
-      () =>
-        new Promise((resolve) => {
-          answer = resolve;
-        }),
+    const fetchMock = vi.fn().mockImplementation((input: RequestInfo | URL) =>
+      String(input).endsWith("/smart-prepare")
+        ? Promise.resolve(response(204, null))
+        : new Promise((resolve) => {
+            answer = resolve;
+          }),
     );
+    const smartBoxCalls = () =>
+      fetchMock.mock.calls.filter(([input]) => String(input).endsWith("/smart-box"));
     vi.stubGlobal("fetch", fetchMock);
     const { container } = render(
       <AnnotationWorkspace fixture={{ ...DEMO_FIXTURE, annotations: [] }} />,
@@ -956,9 +959,13 @@ describe("AnnotationWorkspace", () => {
     const click = { button: 0, pointerId: 1, clientX: 250, clientY: 250 };
 
     fireEvent.keyDown(viewport, { key: "m" });
+    expect(fetchMock).toHaveBeenCalledWith(
+      `/api/images/${DEMO_FIXTURE.images[0]!.id}/smart-prepare`,
+      expect.objectContaining({ method: "POST" }),
+    );
     fireEvent.pointerDown(viewport, click);
     fireEvent.pointerDown(viewport, click);
-    expect(fetchMock).toHaveBeenCalledTimes(1);
+    await waitFor(() => expect(smartBoxCalls()).toHaveLength(1));
     expect(container.querySelector(".smart-box-pending")).not.toBeNull();
 
     await act(async () => {

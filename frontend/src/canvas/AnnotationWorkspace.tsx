@@ -66,6 +66,7 @@ import { useAnnotationAutosave, type SaveStatus } from "./useAnnotationAutosave"
 import { useCanvasBenchmark } from "./useCanvasBenchmark";
 import { useCanvasPointer } from "./useCanvasPointer";
 import { usePolygonDrawing } from "./usePolygonDrawing";
+import { prepareSmartTool } from "./smartBoxApi";
 import { useSmartBox } from "./useSmartBox";
 import { useSmartPolygon } from "./useSmartPolygon";
 import { useSkuAssignmentCatalog } from "./useSkuAssignmentCatalog";
@@ -250,6 +251,13 @@ export function AnnotationWorkspace({
   useEffect(() => {
     onAnnotationsChange?.(autosave.annotations);
   }, [autosave.annotations, onAnnotationsChange]);
+
+  // Picking the smart tool sends the photo to SAM ahead of the first click.
+  useEffect(() => {
+    if (mode === "verify" && tool === "smart") {
+      fixture.images.forEach((image) => prepareSmartTool(image.id));
+    }
+  }, [fixture.images, mode, tool]);
 
   useEffect(() => {
     onSaveStateChange?.(autosave.status, autosave.flush);

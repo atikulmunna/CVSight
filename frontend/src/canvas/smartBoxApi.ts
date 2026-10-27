@@ -18,6 +18,29 @@ export class SmartBoxError extends Error {
   }
 }
 
+// Photos on their way to SAM ahead of the first click. A smart request waits for its
+// photo's preload, so the photo crosses the tunnel once.
+const preparing = new Map<string, Promise<void>>();
+
+// Sends a photo to SAM in the background when a smart tool is picked, so the first click
+// does not wait for the upload and SAM's encoding. A failed preload only means that the
+// first click sends the photo itself, so it is not reported.
+export function prepareSmartTool(imageId: string, fetcher: Fetcher = fetch): void {
+  if (preparing.has(imageId)) {
+    return;
+  }
+  const prepared = fetcher(`/api/images/${encodeURIComponent(imageId)}/smart-prepare`, {
+    method: "POST",
+    headers: { Accept: "application/json" },
+  })
+    .then(
+      () => undefined,
+      () => undefined,
+    )
+    .finally(() => preparing.delete(imageId));
+  preparing.set(imageId, prepared);
+}
+
 // The box SAM finds around the object at a point, in the photo's own pixels.
 export async function requestSmartBox(
   imageId: string,
@@ -53,6 +76,7 @@ async function askSam(
   prompt: Record<string, unknown>,
   fetcher: Fetcher,
 ): Promise<unknown> {
+  await preparing.get(imageId);
   const response = await fetcher(`/api/images/${encodeURIComponent(imageId)}/${route}`, {
     method: "POST",
     headers: { Accept: "application/json", "Content-Type": "application/json" },

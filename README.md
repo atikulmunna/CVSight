@@ -1415,6 +1415,12 @@ network once: the service keeps the encodings of the most recent photos, keyed b
 checksum, and the API uploads a photo only when the service does not hold it. Each
 click after that runs only SAM's light mask step.
 
+Picking the smart tool sends the open photo ahead of the first click, through
+`POST /api/images/{image_id}/smart-prepare`. The API asks the service whether it holds
+the photo (`GET /v1/images/{checksum}`) and uploads it only when it does not, so the
+first click no longer waits for the upload and SAM's encoding. A click made while that
+is still under way waits for it instead of sending the photo again.
+
 Start the service on a machine with a CUDA GPU, such as a cluster node, from a checkout
 of this repository. SAM 3 and its checkpoint stay outside the checkout:
 

@@ -1,6 +1,7 @@
 import { describe, expect, it, vi } from "vitest";
 
 import {
+  prepareSmartTool,
   requestSmartBox,
   requestSmartPolygon,
   SmartBoxError,
@@ -63,6 +64,45 @@ describe("smart box API client", () => {
     expect(smartBoxMessage(new TypeError("offline"))).toBe(
       "Smart box failed. Try again or draw the box.",
     );
+  });
+
+  it("preloads a photo once and holds a click until the preload is done", async () => {
+    let finishPreload: (value: unknown) => void = () => undefined;
+    const fetcher = vi.fn().mockImplementation((input: RequestInfo | URL) =>
+      String(input).endsWith("/smart-prepare")
+        ? new Promise((resolve) => {
+            finishPreload = resolve;
+          })
+        : Promise.resolve(response(200, { x: 10, y: 12, width: 30, height: 40, score: 0.9 })),
+    );
+
+    prepareSmartTool("image-9", fetcher);
+    prepareSmartTool("image-9", fetcher);
+    const box = requestSmartBox("image-9", { x: 25, y: 30 }, fetcher);
+    await Promise.resolve();
+    expect(fetcher).toHaveBeenCalledTimes(1);
+
+    finishPreload(response(204, null));
+    await expect(box).resolves.toMatchObject({ x: 10 });
+    expect(fetcher).toHaveBeenNthCalledWith(
+      1,
+      "/api/images/image-9/smart-prepare",
+      expect.objectContaining({ method: "POST" }),
+    );
+    expect(fetcher).toHaveBeenCalledTimes(2);
+  });
+
+  it("lets a click go ahead after a failed preload", async () => {
+    const fetcher = vi
+      .fn()
+      .mockRejectedValueOnce(new TypeError("offline"))
+      .mockResolvedValue(response(200, { x: 10, y: 12, width: 30, height: 40, score: 0.9 }));
+
+    prepareSmartTool("image-8", fetcher);
+
+    await expect(requestSmartBox("image-8", { x: 25, y: 30 }, fetcher)).resolves.toMatchObject({
+      x: 10,
+    });
   });
 
   it("posts every smart polygon click and returns the outline in photo pixels", async () => {
