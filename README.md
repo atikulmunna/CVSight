@@ -53,6 +53,7 @@ detector, it pre-labels new photos for people to verify.
   - [Live annotation workspace](#live-annotation-workspace)
   - [Annotation canvas](#annotation-canvas)
   - [Smart box](#smart-box)
+  - [Smart polygon](#smart-polygon)
 - [Contributing](#contributing)
 - [License](#license)
 
@@ -1430,6 +1431,17 @@ login host, and keep this running while you label:
 ssh -N -L 127.0.0.1:8093:NODE:8093 USER@LOGIN_HOST
 ```
 
+Some clusters block the login host from reaching ports on the nodes. Then open the
+tunnel from the node instead, to a loopback port on the login host, and forward the PC to
+that port. With this route the service can listen on `127.0.0.1` alone:
+
+```bash
+# on the node
+ssh -f -N -R 127.0.0.1:47193:127.0.0.1:8093 USER@LOGIN_HOST
+# on the PC
+ssh -N -L 127.0.0.1:8093:127.0.0.1:47193 USER@LOGIN_HOST
+```
+
 Then point CVSight at the forwarded port in `.env`:
 
 ```text
@@ -1442,6 +1454,37 @@ Inside Docker Compose the API container reaches the forward on the host as
 the service is unreachable, the token is wrong, or SAM finds nothing at a point, the
 canvas says so and drawing by hand still works. Each click costs one round trip to the
 service, so a distant cluster adds its network latency to every box.
+
+## Smart polygon
+
+In an instance segmentation project the M tool is the smart polygon. A click on a
+product asks `POST /api/images/{image_id}/smart-polygon` for its outline, and the canvas
+shows the outline as a draft with a small panel:
+
+- Click again to add an area SAM missed, or Shift+click something the outline must leave
+  out. Each request sends every click so far, up to 16.
+- The **Points** slider thins the outline. It opens at the count that keeps every point
+  carrying visible shape. Moving it needs no new request, because each point's rank is
+  worked out once (Visvalingam's algorithm).
+- Enter or **Finish** saves the draft as a product, with the outline and its bounds as
+  the box, through the same path as a drawn box: it autosaves, takes the previous SKU,
+  and undoes in one step. Esc cancels the draft; switching tools finishes it.
+
+The request takes `points`, each `{"x", "y", "include"}` in canonical image pixels with
+at least one included point, and returns `{"polygon", "score"}`. Nothing is saved. The
+service answers at `POST /v1/polygon`: SAM predicts a mask from all the clicks (a single
+click takes the best of SAM's three masks; more clicks take one mask, as SAM advises),
+and OpenCV traces the outer edge of the largest region to within half a pixel, at most
+1,000 points.
+
+The polygon route needs OpenCV, which `runtimes/sam3_segmenter/requirements.txt` lists
+along with three packages SAM 3 imports without declaring. To update a running service,
+pull the checkout, install the requirements again, and restart it. An older service
+still answers smart boxes, and the canvas says when it is too old for smart polygons.
+
+Image responses (`GET /api/images/{image_id}` and uploads) carry the project's
+`project_type`, which is how the canvas chooses between the smart box and the smart
+polygon.
 
 ## Contributing
 
