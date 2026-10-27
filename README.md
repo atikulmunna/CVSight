@@ -54,6 +54,7 @@ detector, it pre-labels new photos for people to verify.
   - [Annotation canvas](#annotation-canvas)
   - [Smart box](#smart-box)
   - [Smart polygon](#smart-polygon)
+  - [Find with SAM](#find-with-sam)
 - [Contributing](#contributing)
 - [License](#license)
 
@@ -1510,6 +1511,26 @@ still answers smart boxes, and the canvas says when it is too old for smart poly
 Image responses (`GET /api/images/{image_id}` and uploads) carry the project's
 `project_type`, which is how the canvas chooses between the smart box and the smart
 polygon.
+
+## Find with SAM
+
+**Find with SAM**, in the side panel while verifying, labels a whole shelf at once. It
+uses SAM 3's concept prompt: select one or more products as examples (up to 8), type
+what to find (such as `bottle`), or both, and choose **Find**. Every match on the photo
+that is not labeled yet is added as an unreviewed product proposal, all in one undo
+step, and the new proposals are selected: look them over, press `A` to accept them all,
+or step through and reject the wrong ones. A find that overlaps a labeled box by half
+or more is left out. In an instance segmentation project each proposal keeps SAM's
+outline, thinned the way the smart polygon opens; in a detection project it is a box.
+SAM's score becomes the proposal's confidence. Examples find products of the same kind,
+not the same SKU, so finds start unassigned.
+
+The canvas asks `POST /api/images/{image_id}/smart-find` with `text`, `exemplars` (boxes
+in canonical image pixels), and an optional `threshold` (0.05 to 0.95, 0.5 by default),
+and receives up to 300 outlines with their scores, best first. Nothing is saved by the
+request. The service answers at `POST /v1/find`, adding the prompts to the photo's
+cached encoding and removing them again afterwards, so clicks on the same photo are not
+affected.
 
 ## Contributing
 

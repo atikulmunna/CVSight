@@ -1,10 +1,11 @@
 import { errorCode } from "./annotationApi";
 import type { BoxGeometry, ScenePoint } from "./editing";
 import { isPolygon, type PolygonPoint } from "./model";
+import type { FoundObject } from "./smartFind";
 
 type Fetcher = typeof fetch;
 
-export type SmartTool = "Smart box" | "Smart polygon";
+export type SmartTool = "Smart box" | "Smart polygon" | "Find";
 
 // A smart polygon click: on the object, or on something its outline must leave out.
 export type SmartClick = ScenePoint & { include: boolean };
@@ -70,9 +71,34 @@ export async function requestSmartPolygon(
   return polygon;
 }
 
+// Every object SAM finds on a photo that matches a phrase, example boxes, or both, in the
+// photo's own pixels, best first.
+export async function requestSmartFind(
+  imageId: string,
+  prompt: {
+    text: string | null;
+    exemplars: Array<{ x: number; y: number; width: number; height: number }>;
+  },
+  fetcher: Fetcher = fetch,
+): Promise<FoundObject[]> {
+  const body = await askSam(imageId, "smart-find", prompt, fetcher);
+  const objects = body && typeof body === "object" ? (body as Record<string, unknown>).objects : null;
+  if (!Array.isArray(objects)) {
+    throw new SmartBoxError(502, "invalid_response");
+  }
+  return objects.map((value: unknown) => {
+    const item = value && typeof value === "object" ? (value as Record<string, unknown>) : {};
+    const { polygon, score } = item;
+    if (!isPolygon(polygon) || typeof score !== "number" || !(score >= 0 && score <= 1)) {
+      throw new SmartBoxError(502, "invalid_response");
+    }
+    return { polygon, score };
+  });
+}
+
 async function askSam(
   imageId: string,
-  route: "smart-box" | "smart-polygon",
+  route: "smart-box" | "smart-polygon" | "smart-find",
   prompt: Record<string, unknown>,
   fetcher: Fetcher,
 ): Promise<unknown> {

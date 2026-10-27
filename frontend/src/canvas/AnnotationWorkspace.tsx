@@ -44,6 +44,7 @@ import { PolygonDraftOverlay } from "./PolygonDraftOverlay";
 import { GroupSelectionDetails, SelectionDetails } from "./SelectionDetails";
 import { ShortcutHelp } from "./ShortcutHelp";
 import { SkuAssignmentPanel } from "./SkuAssignmentPanel";
+import { SmartFindPanel } from "./SmartFindPanel";
 import { SmartPolygonPanel } from "./SmartPolygonPanel";
 import type { AnnotationBox, AnnotationClass, CanvasFixture } from "./model";
 import { spatialReadingOrder } from "./model";
@@ -68,6 +69,7 @@ import { useCanvasPointer } from "./useCanvasPointer";
 import { usePolygonDrawing } from "./usePolygonDrawing";
 import { prepareSmartTool } from "./smartBoxApi";
 import { useSmartBox } from "./useSmartBox";
+import { MAX_FIND_EXAMPLES, useSmartFind } from "./useSmartFind";
 import { useSmartPolygon } from "./useSmartPolygon";
 import { useSkuAssignmentCatalog } from "./useSkuAssignmentCatalog";
 import type { Sku } from "../catalog/model";
@@ -174,6 +176,17 @@ export function AnnotationWorkspace({
   const smartPoint = smartBoxPoint ?? smartPolygon.pendingPoint;
   const smartMessage = outlinesProducts ? smartPolygon.message : smartBoxMessage;
   const polygonDrawing = usePolygonDrawing({ fixture, activeAnnotations, onBox: completeDrawnBox });
+  const smartFind = useSmartFind({
+    fixture,
+    activeAnnotations,
+    outlinesProducts,
+    onFound: (boxes) => {
+      if (boxes.length > 0) {
+        addBoxes(boxes);
+        closeSkuPicker();
+      }
+    },
+  });
   const {
     panning,
     draftBox,
@@ -239,6 +252,10 @@ export function AnnotationWorkspace({
     [orderedAnnotations, selection.ids],
   );
   const isGroup = selectedBoxes.length > 1;
+  // Selected products are the examples for Find with SAM.
+  const findExamples = selectedBoxes
+    .filter((box) => box.classType === "product")
+    .slice(0, MAX_FIND_EXAMPLES);
   const groupIds = useMemo(
     () => (isGroup ? new Set(selectedBoxes.map((box) => box.id)) : undefined),
     [isGroup, selectedBoxes],
@@ -935,6 +952,14 @@ export function AnnotationWorkspace({
               ? "No gap selected. Empty shelf-space boxes are the review target."
               : "Choose a box on the canvas or in the list."}
           </p>
+        )}
+        {mode === "verify" && !isGapReview && (
+          <SmartFindPanel
+            exampleCount={findExamples.length}
+            pending={smartFind.pending}
+            message={smartFind.message}
+            onFind={(text) => void smartFind.find(text, findExamples)}
+          />
         )}
         <AutosavePanel
           mode={autosave.mode}

@@ -1208,6 +1208,58 @@ describe("AnnotationWorkspace", () => {
     );
   });
 
+  it("finds more products like the selected one and adds them as one undo step", async () => {
+    const example = DEMO_FIXTURE.annotations[1]!;
+    const findBodies: unknown[] = [];
+    const fetchMock = vi.fn().mockImplementation((input: RequestInfo | URL, init?: RequestInit) => {
+      if (!String(input).endsWith("/smart-find")) {
+        return Promise.reject(new TypeError("offline"));
+      }
+      findBodies.push(JSON.parse(String(init?.body)));
+      // The example itself, found again, and two new products to its right.
+      const objects = [0, 1, 2].map((step) => {
+        const x = example.x + step * (example.width + 10);
+        return {
+          polygon: [
+            [x, example.y],
+            [x + example.width, example.y],
+            [x + example.width, example.y + example.height],
+            [x, example.y + example.height],
+          ],
+          score: 0.9 - step / 10,
+        };
+      });
+      return Promise.resolve(response(200, { objects }));
+    });
+    vi.stubGlobal("fetch", fetchMock);
+    const fixture = {
+      ...DEMO_FIXTURE,
+      projectType: "instance_segmentation" as const,
+      annotations: [example],
+    };
+    const { container } = render(<AnnotationWorkspace fixture={fixture} />);
+    const viewport = screen.getByLabelText("Shelf annotation canvas");
+
+    expect(screen.getByText("Finds products like the 1 selected.")).toBeInTheDocument();
+    fireEvent.change(screen.getByLabelText("Find products named"), {
+      target: { value: "bottle" },
+    });
+    fireEvent.click(screen.getByRole("button", { name: "Find" }));
+
+    expect(await screen.findByText("SAM found 3; 2 are new proposals.")).toBeInTheDocument();
+    expect(findBodies[0]).toEqual({
+      text: "bottle",
+      exemplars: [{ x: example.x, y: example.y, width: example.width, height: example.height }],
+    });
+    expect(container.querySelectorAll(".box-row")).toHaveLength(3);
+    const found = container.querySelectorAll('.annotation.is-selected[data-state="unverified"]');
+    expect(found).toHaveLength(2);
+    expect(found[0]!.querySelector(".overlay-core")!.tagName).toBe("polygon");
+
+    fireEvent.keyDown(viewport, { key: "z", ctrlKey: true });
+    expect(container.querySelectorAll(".box-row")).toHaveLength(1);
+  });
+
   it("keeps the smart box out of gap review", () => {
     render(<AnnotationWorkspace fixture={DEMO_FIXTURE} purpose="gap-review" />);
 

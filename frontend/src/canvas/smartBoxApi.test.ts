@@ -3,6 +3,7 @@ import { describe, expect, it, vi } from "vitest";
 import {
   prepareSmartTool,
   requestSmartBox,
+  requestSmartFind,
   requestSmartPolygon,
   SmartBoxError,
   smartBoxMessage,
@@ -102,6 +103,26 @@ describe("smart box API client", () => {
 
     await expect(requestSmartBox("image-8", { x: 25, y: 30 }, fetcher)).resolves.toMatchObject({
       x: 10,
+    });
+  });
+
+  it("finds objects by phrase and example boxes and rejects a malformed answer", async () => {
+    const outline = [[10, 12], [40, 12], [25, 52]];
+    const fetcher = vi
+      .fn()
+      .mockResolvedValueOnce(response(200, { objects: [{ polygon: outline, score: 0.7 }] }))
+      .mockResolvedValueOnce(response(200, { objects: [{ polygon: outline, score: 2 }] }));
+    const prompt = { text: "bottle", exemplars: [{ x: 1, y: 2, width: 3, height: 4 }] };
+
+    await expect(requestSmartFind("image 1", prompt, fetcher)).resolves.toEqual([
+      { polygon: outline, score: 0.7 },
+    ]);
+    expect(fetcher).toHaveBeenCalledWith(
+      "/api/images/image%201/smart-find",
+      expect.objectContaining({ method: "POST", body: JSON.stringify(prompt) }),
+    );
+    await expect(requestSmartFind("image 1", prompt, fetcher)).rejects.toMatchObject({
+      code: "invalid_response",
     });
   });
 
