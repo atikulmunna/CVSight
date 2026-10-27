@@ -32,7 +32,7 @@ inference runtime.
 
 ## Installation and configuration
 
-Follow the numbered setup in `README.md`. A usable base installation needs no GPU. Its
+Follow the quick start in `README.md` and the setup in `docs/deployment.md`. A usable base installation needs no GPU. Its
 required services are the React frontend, FastAPI API, one durable-job worker, PostgreSQL
 17 with pgvector, and an application-owned media directory.
 
@@ -98,8 +98,8 @@ model contract before enabling work.
    analytics tied to the immutable snapshot and formula version.
 
 The complete API routes, keyboard controls, autosave behavior, conflict handling,
-catalog workflow, propagation contract, and review process are documented in
-`README.md`.
+catalog workflow, propagation contract, and review process are documented in `docs/`,
+indexed from `README.md`.
 
 ## Backup, recovery, and security
 

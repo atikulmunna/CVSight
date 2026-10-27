@@ -57,7 +57,7 @@ function Show-Address {
 if ($Action -in @("share", "unshare")) {
     $tailscale = Get-Tailscale
     if (-not $tailscale) {
-        throw "Tailscale is not installed. See the README section on using CVSight from your own devices."
+        throw "Tailscale is not installed. See docs/deployment.md, the section on using CVSight from your own devices."
     }
     if ($Action -eq "share") {
         & $tailscale serve --bg $tunnelTarget | Out-Null
