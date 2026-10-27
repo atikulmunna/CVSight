@@ -5,7 +5,7 @@ import json
 import math
 import urllib.error
 import urllib.request
-from collections.abc import Callable
+from collections.abc import Callable, Sequence
 from dataclasses import dataclass
 from typing import Any
 from uuid import UUID
@@ -13,9 +13,10 @@ from uuid import UUID
 from sqlalchemy import Connection, select
 
 from shelfsight_api.config import SegmenterSettings
-from shelfsight_api.models import images
+from shelfsight_api.models import MAX_POLYGON_POINTS, images
 
-MAX_SEGMENTER_RESPONSE_BYTES = 4096
+# A full outline is about 25 bytes a point.
+MAX_SEGMENTER_RESPONSE_BYTES = 64 * 1024
 
 
 class SmartBoxError(RuntimeError):
@@ -40,6 +41,20 @@ class SmartBox:
     y: float
     width: float
     height: float
+    score: float
+
+
+@dataclass(frozen=True)
+class PromptPoint:
+    x: float
+    y: float
+    # True for a click on the object, False for a click on something it must leave out.
+    include: bool
+
+
+@dataclass(frozen=True)
+class SmartPolygon:
+    points: list[tuple[float, float]]
     score: float
 
 
@@ -76,19 +91,28 @@ class SegmenterClient:
 
     def box_at(self, image: SmartBoxImage, content: bytes, x: float, y: float) -> SmartBox:
         """The box around the object at a point, given the photo's canonical bytes."""
-        if not (0 <= x < image.width and 0 <= y < image.height):
-            raise SmartBoxError("point_outside_image", 422, "the point is outside the image")
+        _require_inside(image, x, y)
+        return _validated_box(self._ask(content, "/v1/segment", {"x": x, "y": y}), image)
+
+    def polygon_at(
+        self, image: SmartBoxImage, content: bytes, points: Sequence[PromptPoint]
+    ) -> SmartPolygon:
+        """The outline of the object that included points lie on and excluded ones do not."""
+        for point in points:
+            _require_inside(image, point.x, point.y)
+        prompt = {
+            "points": [{"x": point.x, "y": point.y, "include": point.include} for point in points]
+        }
+        return _validated_polygon(self._ask(content, "/v1/polygon", prompt), image)
+
+    def _ask(self, content: bytes, path: str, prompt: dict[str, Any]) -> Any:
         sha256 = hashlib.sha256(content).hexdigest()
+        body = json.dumps({"image_sha256": sha256, **prompt}).encode("utf-8")
         try:
-            answer = self._segment(sha256, x, y)
+            return self._send("POST", path, body, "application/json")
         except _ImageNotLoaded:
             self._upload(sha256, content)
-            answer = self._segment(sha256, x, y)
-        return _validated_box(answer, image)
-
-    def _segment(self, sha256: str, x: float, y: float) -> Any:
-        body = json.dumps({"image_sha256": sha256, "x": x, "y": y}).encode("utf-8")
-        return self._send("POST", "/v1/segment", body, "application/json")
+            return self._send("POST", path, body, "application/json")
 
     def _upload(self, sha256: str, content: bytes) -> None:
         self._send("PUT", f"/v1/images/{sha256}", content, "application/octet-stream")
@@ -133,6 +157,12 @@ def _http_error(error: urllib.error.HTTPError) -> Exception:
     code = _error_code(error)
     if error.code == 404 and code == "image_not_loaded":
         return _ImageNotLoaded()
+    if error.code == 404 and code is None:
+        return SmartBoxError(
+            "segmenter_outdated",
+            502,
+            "the smart box service does not offer this tool; update it",
+        )
     if error.code == 422 and code == "no_object":
         return SmartBoxError("no_object", 422, "no object was found at that point")
     if error.code == 401:
@@ -154,20 +184,17 @@ def _error_code(error: urllib.error.HTTPError) -> str | None:
     return code if isinstance(code, str) else None
 
 
+def _require_inside(image: SmartBoxImage, x: float, y: float) -> None:
+    if not (0 <= x < image.width and 0 <= y < image.height):
+        raise SmartBoxError("point_outside_image", 422, "the point is outside the image")
+
+
 def _validated_box(answer: Any, image: SmartBoxImage) -> SmartBox:
     if not isinstance(answer, dict):
         raise _failed("the smart box service answer is malformed")
-    values: list[float] = []
-    for key in ("x", "y", "width", "height", "score"):
-        value = answer.get(key)
-        if (
-            not isinstance(value, int | float)
-            or isinstance(value, bool)
-            or not math.isfinite(value)
-        ):
-            raise _failed("the smart box service answer is malformed")
-        values.append(float(value))
-    x, y, width, height, score = values
+    x, y, width, height, score = (
+        _finite(answer.get(key)) for key in ("x", "y", "width", "height", "score")
+    )
     if (
         x < 0
         or y < 0
@@ -179,6 +206,33 @@ def _validated_box(answer: Any, image: SmartBoxImage) -> SmartBox:
     ):
         raise _failed("the smart box lies outside the image")
     return SmartBox(x=x, y=y, width=width, height=height, score=score)
+
+
+def _validated_polygon(answer: Any, image: SmartBoxImage) -> SmartPolygon:
+    if not isinstance(answer, dict):
+        raise _failed("the smart box service answer is malformed")
+    polygon = answer.get("polygon")
+    score = _finite(answer.get("score"))
+    if not isinstance(polygon, list) or not 3 <= len(polygon) <= MAX_POLYGON_POINTS:
+        raise _failed("the smart polygon has too few or too many points")
+    points = [_polygon_point(point) for point in polygon]
+    if not all(0 <= x <= image.width and 0 <= y <= image.height for x, y in points):
+        raise _failed("the smart polygon lies outside the image")
+    if not 0 <= score <= 1:
+        raise _failed("the smart box service answer is malformed")
+    return SmartPolygon(points=points, score=score)
+
+
+def _polygon_point(value: Any) -> tuple[float, float]:
+    if not isinstance(value, list) or len(value) != 2:
+        raise _failed("the smart polygon has a malformed point")
+    return _finite(value[0]), _finite(value[1])
+
+
+def _finite(value: Any) -> float:
+    if not isinstance(value, int | float) or isinstance(value, bool) or not math.isfinite(value):
+        raise _failed("the smart box service answer is malformed")
+    return float(value)
 
 
 def _failed(message: str) -> SmartBoxError:

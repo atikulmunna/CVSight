@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+from typing import Literal
+
 from pgvector.sqlalchemy import VECTOR
 from sqlalchemy import (
     JSON,
@@ -37,6 +39,7 @@ MAX_POLYGON_POINTS = 1000
 
 # project_type is chosen when a project is created: object_detection projects label
 # products with boxes, instance_segmentation projects with outlines.
+ProjectType = Literal["object_detection", "instance_segmentation"]
 datasets = Table(
     "datasets",
     metadata,

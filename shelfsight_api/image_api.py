@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 from datetime import datetime
-from typing import Annotated, Any, Literal, cast
+from typing import Annotated, Any, Literal, TypedDict, cast
 from uuid import UUID
 
 from fastapi import APIRouter, File, Form, HTTPException, Query, UploadFile, status
@@ -41,6 +41,7 @@ from shelfsight_api.media import (
     resolve_media_path,
     validate_capture_metadata,
 )
+from shelfsight_api.models import ProjectType
 
 router = APIRouter(prefix="/api")
 
@@ -48,6 +49,8 @@ router = APIRouter(prefix="/api")
 class ImageResponse(BaseModel):
     id: UUID
     dataset_id: UUID
+    # The canvas offers outline tools only in instance segmentation projects.
+    project_type: ProjectType
     original_filename: str
     media_type: str
     content_sha256: str
@@ -325,6 +328,7 @@ def _ingested_response(ingested: IngestedImage) -> ImageResponse:
     return ImageResponse(
         id=ingested.id,
         dataset_id=ingested.dataset_id,
+        project_type=ingested.project_type,
         original_filename=prepared.original_filename,
         media_type=prepared.media_type,
         content_sha256=prepared.content_sha256,
@@ -341,6 +345,7 @@ def _record_response(record: dict[str, Any]) -> ImageResponse:
     return ImageResponse(
         id=image_id,
         dataset_id=UUID(str(record["dataset_id"])),
+        project_type=cast(ProjectType, record["project_type"]),
         original_filename=str(record["original_filename"]),
         media_type=str(record["media_type"]),
         content_sha256=str(record["content_sha256"]),
@@ -366,7 +371,13 @@ def _summary_response(record: dict[str, Any]) -> ImageSummaryResponse:
     )
 
 
-def _media_urls(image_id: UUID) -> dict[str, str]:
+class _MediaUrls(TypedDict):
+    original_url: str
+    canonical_url: str
+    thumbnail_url: str
+
+
+def _media_urls(image_id: UUID) -> _MediaUrls:
     prefix = f"/api/images/{image_id}/media"
     return {
         "original_url": f"{prefix}/original",

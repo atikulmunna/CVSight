@@ -11,10 +11,12 @@ from sqlalchemy.exc import IntegrityError, SQLAlchemyError
 
 from shelfsight_api.media import PreparedImage, remove_media_keys, write_media_bundle
 from shelfsight_api.models import (
+    ProjectType,
     annotation_records,
     annotation_revisions,
     dataset_version_images,
     dataset_versions,
+    datasets,
     images,
 )
 
@@ -50,6 +52,7 @@ class IngestedImage:
     id: UUID
     dataset_id: UUID
     dataset_version_id: UUID
+    project_type: ProjectType
     prepared: PreparedImage
 
 
@@ -160,7 +163,9 @@ def ingest_prepared_image(
     try:
         with engine.begin() as connection:
             version = connection.execute(
-                select(dataset_versions.c.snapshot_at).where(
+                select(dataset_versions.c.snapshot_at, datasets.c.project_type)
+                .join(datasets, datasets.c.id == dataset_versions.c.dataset_id)
+                .where(
                     dataset_versions.c.id == dataset_version_id,
                     dataset_versions.c.dataset_id == dataset_id,
                 )
@@ -231,6 +236,7 @@ def ingest_prepared_image(
         id=image_id,
         dataset_id=dataset_id,
         dataset_version_id=dataset_version_id,
+        project_type=version.project_type,
         prepared=prepared,
     )
 
@@ -251,7 +257,10 @@ def get_image_record(engine: Engine, image_id: UUID) -> dict[str, Any]:
                 images.c.canonical_height,
                 images.c.capture_metadata,
                 images.c.status,
-            ).where(images.c.id == image_id)
+                datasets.c.project_type,
+            )
+            .join(datasets, datasets.c.id == images.c.dataset_id)
+            .where(images.c.id == image_id)
         ).mappings().one_or_none()
     if row is None:
         raise ImageNotFoundError("image does not exist")

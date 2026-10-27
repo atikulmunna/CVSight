@@ -34,6 +34,7 @@ from shelfsight_api.dataset_service import (
     list_datasets,
 )
 from shelfsight_api.export_service import ExportType
+from shelfsight_api.models import ProjectType
 
 router = APIRouter(prefix="/api")
 
@@ -61,9 +62,6 @@ class CatalogImportSku(BaseModel):
             return None
         stripped = value.strip()
         return stripped or None
-
-
-ProjectType = Literal["object_detection", "instance_segmentation"]
 
 
 class CreateDatasetRequest(BaseModel):

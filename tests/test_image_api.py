@@ -62,6 +62,12 @@ def test_valid_image_survives_upload_and_retrieval_round_trip(
     media_root = tmp_path / "media"
     configure_image_api(monkeypatch, database_engine, media_root, tmp_path / "imports")
     original = make_image_bytes()
+    with database_engine.begin() as connection:
+        connection.execute(
+            update(datasets)
+            .where(datasets.c.id == dataset_id)
+            .values(project_type="instance_segmentation")
+        )
 
     response = client.post(
         upload_url(dataset_id, version_id),
@@ -74,6 +80,7 @@ def test_valid_image_survives_upload_and_retrieval_round_trip(
     image_id = body["id"]
     assert (body["width"], body["height"]) == (40, 20)
     assert body["capture_metadata"]["provided"] == {"store_id": "store-1"}
+    assert body["project_type"] == "instance_segmentation"
 
     metadata = client.get(f"/api/images/{image_id}")
     assert metadata.status_code == 200

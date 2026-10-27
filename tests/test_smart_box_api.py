@@ -6,7 +6,7 @@ import json
 import urllib.error
 import urllib.parse
 import urllib.request
-from collections.abc import Callable, Iterator
+from collections.abc import Callable, Iterator, Sequence
 from pathlib import Path
 from typing import Any
 from uuid import UUID, uuid4
@@ -16,7 +16,12 @@ from fastapi.testclient import TestClient
 from PIL import Image
 from sqlalchemy import Engine, delete, insert
 
-from runtimes.sam3_segmenter.service import SegmentedBox, create_app
+from runtimes.sam3_segmenter.service import (
+    PromptPoint,
+    SegmentedBox,
+    SegmentedPolygon,
+    create_app,
+)
 from shelfsight_api.app import app
 from shelfsight_api.config import (
     SEGMENTER_TOKEN_ENV,
@@ -26,6 +31,7 @@ from shelfsight_api.config import (
     get_segmenter_settings,
 )
 from shelfsight_api.models import datasets, images
+from shelfsight_api.smart_box_service import PromptPoint as ClickPoint
 from shelfsight_api.smart_box_service import SegmenterClient, SmartBoxError, SmartBoxImage
 
 client = TestClient(app)
@@ -76,6 +82,11 @@ def box_json(**fields: Any) -> bytes:
 
 
 BOX = box_json()
+TRIANGLE = [[10, 12], [30, 12], [20, 42]]
+
+
+def polygon_json(**fields: Any) -> bytes:
+    return json.dumps({"polygon": TRIANGLE, "score": 0.7, **fields}).encode()
 
 
 def test_settings_are_optional_but_must_be_complete_when_given() -> None:
@@ -136,13 +147,59 @@ def test_maps_service_failures_to_stable_errors(answer: Any, code: str, status_c
     assert (raised.value.code, raised.value.status_code) == (code, status_code)
 
 
+def test_asks_for_an_outline_with_every_click() -> None:
+    opener, sent = scripted(polygon_json())
+    clicks = [ClickPoint(15, 20, include=True), ClickPoint(40, 50, include=False)]
+
+    outline = SegmenterClient(SETTINGS, opener=opener).polygon_at(IMAGE, b"photo", clicks)
+
+    assert outline.points == [(10, 12), (30, 12), (20, 42)]
+    assert outline.score == 0.7
+    assert sent[0].full_url == "http://segmenter.test/v1/polygon"
+    assert json.loads(sent[0].data or b"") == {
+        "image_sha256": hashlib.sha256(b"photo").hexdigest(),
+        "points": [
+            {"x": 15, "y": 20, "include": True},
+            {"x": 40, "y": 50, "include": False},
+        ],
+    }
+
+
+@pytest.mark.parametrize(
+    ("answer", "code"),
+    [
+        (http_error(404), "segmenter_outdated"),
+        (polygon_json(polygon=TRIANGLE[:2]), "segmenter_failed"),
+        (polygon_json(polygon=[*TRIANGLE[:2], [101, 12]]), "segmenter_failed"),
+        (polygon_json(polygon=[*TRIANGLE[:2], [20]]), "segmenter_failed"),
+        (polygon_json(polygon=[*TRIANGLE[:2], [20, None]]), "segmenter_failed"),
+        (polygon_json(score=1.5), "segmenter_failed"),
+        (polygon_json(polygon={"x": 1}), "segmenter_failed"),
+    ],
+)
+def test_refuses_an_outline_it_cannot_trust(answer: Any, code: str) -> None:
+    opener, _ = scripted(answer)
+
+    with pytest.raises(SmartBoxError) as raised:
+        SegmenterClient(SETTINGS, opener=opener).polygon_at(
+            IMAGE, b"photo", [ClickPoint(15, 20, include=True)]
+        )
+
+    assert (raised.value.code, raised.value.status_code) == (code, 502)
+
+
 def test_refuses_a_point_outside_the_image_without_calling_the_service() -> None:
     opener, sent = scripted()
 
     with pytest.raises(SmartBoxError) as raised:
         SegmenterClient(SETTINGS, opener=opener).box_at(IMAGE, b"photo", 100, 20)
+    with pytest.raises(SmartBoxError) as outline_raised:
+        SegmenterClient(SETTINGS, opener=opener).polygon_at(
+            IMAGE, b"photo", [ClickPoint(15, 20, include=True), ClickPoint(15, 80, include=False)]
+        )
 
     assert raised.value.code == "point_outside_image"
+    assert outline_raised.value.code == "point_outside_image"
     assert sent == []
 
 
@@ -159,6 +216,15 @@ class FakeSegmenter:
 
     def segment(self, encoded: Any, x: float, y: float) -> SegmentedBox | None:
         return SegmentedBox(x=x - 5, y=y - 5, width=10, height=10, score=0.75)
+
+    def outline(self, encoded: Any, points: Sequence[PromptPoint]) -> SegmentedPolygon | None:
+        # Each excluded click trims the right edge, so the test sees every click arrive.
+        first = points[0]
+        right = first.x + 10 - 2 * sum(not point.include for point in points)
+        return SegmentedPolygon(
+            points=[(first.x - 10, first.y - 10), (right, first.y - 10), (first.x, first.y + 10)],
+            score=0.6,
+        )
 
 
 def runtime_opener(runtime: TestClient) -> Callable[..., Any]:
@@ -249,6 +315,35 @@ def test_finds_the_box_under_a_click_through_the_service(
     assert missing.json()["detail"]["code"] == "image_not_found"
 
 
+def test_outlines_the_object_under_clicks_through_the_service(
+    photo: UUID,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    runtime = TestClient(create_app(FakeSegmenter(), TOKEN))
+    monkeypatch.setenv(SEGMENTER_URL_ENV, "http://segmenter.test")
+    monkeypatch.setenv(SEGMENTER_TOKEN_ENV, TOKEN)
+    monkeypatch.setattr(
+        "shelfsight_api.smart_box_api.segmenter_client",
+        lambda settings: SegmenterClient(settings, opener=runtime_opener(runtime)),
+    )
+    url = f"/api/images/{photo}/smart-polygon"
+    included = {"x": 40, "y": 30, "include": True}
+    excluded = {"x": 48, "y": 30, "include": False}
+
+    single = client.post(url, json={"points": [included]})
+    refined = client.post(url, json={"points": [included, excluded]})
+    only_excluded = client.post(url, json={"points": [excluded]})
+    too_many = client.post(url, json={"points": [included] * 17})
+    outside = client.post(url, json={"points": [included, {**excluded, "y": 80}]})
+
+    assert single.status_code == 200
+    assert single.json() == {"polygon": [[30, 20], [50, 20], [40, 40]], "score": 0.6}
+    assert refined.json()["polygon"][1] == [48, 20]
+    assert only_excluded.status_code == 422
+    assert too_many.status_code == 422
+    assert outside.json()["detail"]["code"] == "point_outside_image"
+
+
 def test_says_when_no_smart_box_service_is_configured(
     photo: UUID,
     monkeypatch: pytest.MonkeyPatch,
@@ -256,6 +351,11 @@ def test_says_when_no_smart_box_service_is_configured(
     monkeypatch.delenv(SEGMENTER_URL_ENV, raising=False)
 
     response = client.post(f"/api/images/{photo}/smart-box", json={"x": 1, "y": 1})
+    outline = client.post(
+        f"/api/images/{photo}/smart-polygon",
+        json={"points": [{"x": 1, "y": 1, "include": True}]},
+    )
 
     assert response.status_code == 503
     assert response.json()["detail"]["code"] == "smart_box_unavailable"
+    assert outline.json()["detail"]["code"] == "smart_box_unavailable"
