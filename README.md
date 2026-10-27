@@ -1326,8 +1326,18 @@ remain present in the SVG for direct hit testing.
 
 Canvas controls:
 
-- `Left Arrow` or `K` selects the previous box in spatial reading order.
+- `Left Arrow` or `K` selects the previous box in the box list's order.
 - `Right Arrow` or `J` selects the next box.
+- The box list's **Order** is shelf order, left to right, or **Least confident first**:
+  proposals still to decide come first, lowest score first, so the doubtful ones are
+  met before the sure ones, and `J` and `K` follow the same order. When proposals are
+  scored 90% or more, **Accept N at 90% or more** accepts them all as one undo step.
+- Under the canvas, the selected box's shelf row shows as a strip of crops with their
+  names, so a facing named differently from its neighbours stands out before it is
+  accepted. Clicking a crop selects that box.
+- The header shows whether the SAM service answers (`GET /api/segmenter/status`: `ready`,
+  `unreachable`, `rejected` when it refuses the token, or `off` when none is configured),
+  checked again every minute, so a dropped tunnel shows before a smart click fails.
 - `A` accepts, `R` rejects, `F` flags, and `D` duplicates the selected box.
 - `Ctrl` plus `Z` undoes the last action and `Ctrl` plus `Shift` plus `Z` (or `Ctrl`
   plus `Y`) redoes it; `Cmd` works the same on macOS, and the tool rail has Undo and
@@ -1400,7 +1410,8 @@ using the most CPU, then leaves the build served at
 `http://127.0.0.1:4173/?fixture=local` and prints the command that stops it. Pass
 `-Wait` to hold the terminal until you stop the server with Ctrl+C.
 Close other applications, then use the Measure button to collect p50, p95, and maximum
-frame, selection, and input timings.
+frame, selection, and input timings. The performance panel with that button appears only
+with `?fixture=local`, so reviewers working on real photos do not see it.
 
 Every run measures an idle animation loop first and reports it as the browser frame
 baseline. That baseline is the control: when the host cannot hold a steady cadence with

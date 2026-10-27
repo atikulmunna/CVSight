@@ -1,5 +1,6 @@
 import type { AnnotationBox, AnnotationClass, CanvasFixture } from "./model";
 import { overlayCue, skuLabel } from "./model";
+import { cropStyle } from "./crop";
 
 export function SelectionDetails({
   fixture,
@@ -24,24 +25,18 @@ export function SelectionDetails({
   showVerificationActions: boolean;
   lockGapClass: boolean;
 }) {
-  const sourceImage = fixture.images[box.imageIndex]!;
   const backgroundScale = Math.max(2, Math.min(5, 150 / Math.max(box.width, 30)));
-  const centerX = box.x - sourceImage.x + box.width / 2;
-  const centerY = box.y - sourceImage.y + box.height / 2;
   return (
     <div className="selection-details">
       <div
         className="selected-crop"
         aria-label="Selected product crop"
-        style={{
-          backgroundImage: `url("${sourceImage.url}")`,
-          backgroundSize: `${sourceImage.width * backgroundScale}px ${
-            sourceImage.height * backgroundScale
-          }px`,
-          backgroundPosition: `${-centerX * backgroundScale + 140}px ${
-            -centerY * backgroundScale + 80
-          }px`,
-        }}
+        style={cropStyle(
+          box,
+          fixture.images[box.imageIndex]!,
+          { width: 280, height: 160 },
+          backgroundScale,
+        )}
       />
       {showVerificationActions && (
         <div className="verification-actions" aria-label="Box verification actions">

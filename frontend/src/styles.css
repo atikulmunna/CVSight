@@ -2397,6 +2397,30 @@ code {
   color: var(--danger);
 }
 
+.sam-status {
+  padding: 3px 9px;
+  border: 1px solid var(--ws-line-strong);
+  border-radius: 999px;
+  font-weight: 600;
+}
+
+.sam-status.ready {
+  color: var(--mint-text);
+  border-color: var(--mint);
+  background: var(--mint-soft);
+}
+
+.sam-status.unreachable,
+.sam-status.rejected {
+  color: var(--magenta-text);
+  border-color: var(--magenta);
+  background: var(--magenta-soft);
+}
+
+.sam-status.off {
+  color: var(--ws-muted);
+}
+
 .fixture-error {
   color: var(--warning);
 }
@@ -2630,6 +2654,77 @@ code {
   background: var(--void);
   cursor: default;
   touch-action: none;
+}
+
+/* The selected box's shelf row sits under the canvas, which gives up that band. */
+.canvas-column.has-row-strip .canvas-viewport {
+  bottom: 92px;
+}
+
+.row-strip {
+  position: absolute;
+  right: 0;
+  bottom: 0;
+  left: 0;
+  display: flex;
+  align-items: flex-end;
+  gap: 6px;
+  height: 92px;
+  padding: 8px 12px;
+  overflow-x: auto;
+  background: var(--ws-panel);
+  border-top: 1px solid var(--ws-line);
+}
+
+.row-strip.is-empty {
+  align-items: center;
+  color: var(--ws-muted);
+  font-size: 11px;
+}
+
+.row-strip-item {
+  display: grid;
+  flex: none;
+  gap: 3px;
+  min-height: 0;
+  padding: 3px;
+  background: transparent;
+  border: 1px solid transparent;
+  border-radius: 6px;
+}
+
+.row-strip-item.is-selected {
+  background: var(--ws-elevated);
+  border-color: var(--brand);
+}
+
+.row-strip-crop {
+  display: block;
+  background-color: var(--void);
+  background-repeat: no-repeat;
+  border-bottom: 3px solid var(--ov-unverified);
+  border-radius: 4px;
+}
+
+.row-strip-item[data-state="verified"] .row-strip-crop {
+  border-bottom-color: var(--ov-verified);
+}
+
+.row-strip-item[data-state="flagged"] .row-strip-crop {
+  border-bottom-color: var(--ov-flagged);
+}
+
+.row-strip-item[data-state="propagated"] .row-strip-crop {
+  border-bottom-color: var(--ov-propagated);
+}
+
+.row-strip-name {
+  overflow: hidden;
+  color: var(--ws-text-2);
+  font-size: 9px;
+  text-align: left;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 
 /* Pan cursors come last so holding Space while drawing still shows the hand. */
@@ -3709,6 +3804,27 @@ kbd {
 
 .smart-find-panel [role="status"] {
   color: var(--ws-text);
+}
+
+.box-list-tools {
+  display: grid;
+  gap: 6px;
+  padding: 0 12px 10px;
+  color: var(--ws-text-2);
+  font-size: 10px;
+}
+
+.box-list-tools label {
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr);
+  align-items: center;
+  gap: 8px;
+}
+
+.box-list-tools select,
+.box-list-tools button {
+  min-height: 28px;
+  font-size: 10px;
 }
 
 .display-panel {

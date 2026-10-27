@@ -1,13 +1,13 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 
-import type { AnnotationBox } from "./model";
+import type { AnnotationBox, ReviewOrder } from "./model";
 import { skuLabel } from "./model";
 
 const ROW_HEIGHT = 50;
 const OVERSCAN = 5;
 
-// The boxes in spatial reading order. Only the rows in view are rendered, so a dense
-// shelf keeps the list cheap.
+// The boxes in review order. Only the rows in view are rendered, so a dense shelf keeps
+// the list cheap.
 export function BoxList({
   title,
   boxes,
@@ -15,6 +15,9 @@ export function BoxList({
   selectedIds,
   focusedId,
   onSelect,
+  order = "shelf",
+  onOrderChange,
+  acceptConfident,
 }: {
   title: string;
   boxes: AnnotationBox[];
@@ -23,6 +26,11 @@ export function BoxList({
   // The box the list keeps scrolled into view.
   focusedId: string | null;
   onSelect: (id: string, extend: boolean) => void;
+  order?: ReviewOrder;
+  // Offered while verifying, where the order decides what J and K step through.
+  onOrderChange?: (order: ReviewOrder) => void;
+  // Accepts every waiting proposal scored at least the threshold, in one undo step.
+  acceptConfident?: { count: number; threshold: number; onAccept: () => void };
 }) {
   const [search, setSearch] = useState("");
   const [scrollTop, setScrollTop] = useState(0);
@@ -84,11 +92,33 @@ export function BoxList({
           onChange={(event) => setSearch(event.target.value)}
         />
       </label>
+      {onOrderChange && (
+        <div className="box-list-tools">
+          <label>
+            Order
+            <select
+              value={order}
+              onChange={(event) => onOrderChange(event.target.value as ReviewOrder)}
+            >
+              <option value="shelf">Shelf, left to right</option>
+              <option value="confidence">Least confident first</option>
+            </select>
+          </label>
+          {acceptConfident && acceptConfident.count > 0 && (
+            <button type="button" onClick={acceptConfident.onAccept}>
+              Accept {acceptConfident.count} at {Math.round(acceptConfident.threshold * 100)}% or
+              more
+            </button>
+          )}
+        </div>
+      )}
       <div
         className="box-list"
         ref={listRef}
         role="listbox"
-        aria-label="Boxes in spatial reading order"
+        aria-label={
+          order === "confidence" ? "Boxes, least confident first" : "Boxes in spatial reading order"
+        }
         aria-multiselectable="true"
         onScroll={(event) => setScrollTop(event.currentTarget.scrollTop)}
       >

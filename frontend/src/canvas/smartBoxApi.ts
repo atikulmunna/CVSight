@@ -7,6 +7,25 @@ type Fetcher = typeof fetch;
 
 export type SmartTool = "Smart box" | "Smart polygon" | "Find";
 
+// off: no SAM service is configured; rejected: the service refused the token.
+export type SamStatus = "off" | "ready" | "unreachable" | "rejected";
+const SAM_STATUSES: readonly SamStatus[] = ["off", "ready", "unreachable", "rejected"];
+
+// Whether the SAM service answers, or null when the API cannot say.
+export async function loadSamStatus(fetcher: Fetcher = fetch): Promise<SamStatus | null> {
+  try {
+    const response = await fetcher("/api/segmenter/status", {
+      headers: { Accept: "application/json" },
+    });
+    const body: unknown = await response.json().catch(() => null);
+    const state = body && typeof body === "object" ? (body as Record<string, unknown>).state : null;
+    return response.ok && SAM_STATUSES.includes(state as SamStatus) ? (state as SamStatus) : null;
+  } catch {
+    // An unreachable API already shows as such in the header; SAM's state is unknown.
+    return null;
+  }
+}
+
 // A smart polygon click: on the object, or on something its outline must leave out.
 export type SmartClick = ScenePoint & { include: boolean };
 

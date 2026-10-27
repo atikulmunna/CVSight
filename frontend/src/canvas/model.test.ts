@@ -1,7 +1,12 @@
 import { describe, expect, it } from "vitest";
 
 import type { AnnotationBox } from "./model";
-import { parseCanvasFixture, spatialReadingOrder } from "./model";
+import {
+  confidenceOrder,
+  parseCanvasFixture,
+  readingRows,
+  spatialReadingOrder,
+} from "./model";
 
 function box(id: string, x: number, y: number): AnnotationBox {
   return {
@@ -51,6 +56,42 @@ describe("canvas model", () => {
       "bottom-left",
       "bottom-right",
     ]);
+  });
+
+  it("groups boxes into shelf rows, by recorded row or by height", () => {
+    const top = [box("b", 60, 10), box("a", 10, 12)];
+    const bottom = [box("c", 30, 80)];
+
+    expect(readingRows([...bottom, ...top]).map((row) => row.map(({ id }) => id))).toEqual([
+      ["a", "b"],
+      ["c"],
+    ]);
+    const recorded = [
+      { ...box("x", 10, 80), shelfRow: 0 },
+      { ...box("y", 50, 10), shelfRow: 1 },
+    ];
+    expect(readingRows(recorded).map((row) => row.map(({ id }) => id))).toEqual([["x"], ["y"]]);
+  });
+
+  it("puts the least confident waiting proposals first, then the rest in reading order", () => {
+    const proposal = (id: string, x: number, confidence: number | null) => ({
+      ...box(id, x, 10),
+      state: "unverified" as const,
+      lifecycleState: "proposed" as const,
+      reviewState: "unreviewed" as const,
+      confidence,
+    });
+    const flagged = { ...proposal("f", 5, 0.1), state: "flagged" as const, reviewState: "flagged" as const };
+
+    const ordered = confidenceOrder([
+      box("verified", 0, 10),
+      proposal("sure", 20, 0.95),
+      proposal("doubtful", 40, 0.3),
+      proposal("drawn", 60, null),
+      flagged,
+    ]);
+
+    expect(ordered.map(({ id }) => id)).toEqual(["doubtful", "sure", "drawn", "verified", "f"]);
   });
 
   it("validates and maps the local real-fixture contract", () => {

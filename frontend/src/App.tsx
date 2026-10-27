@@ -3,6 +3,8 @@ import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { AnalyticsWorkspace } from "./analytics/AnalyticsWorkspace";
 import type { AuthSession } from "./auth/api";
 import { AnnotationWorkspace } from "./canvas/AnnotationWorkspace";
+import type { SamStatus } from "./canvas/smartBoxApi";
+import { useSamStatus } from "./canvas/useSamStatus";
 import { DEMO_FIXTURE } from "./canvas/demoFixture";
 import { loadLiveFixture } from "./canvas/liveFixture";
 import { PropagationWorkspace } from "./canvas/PropagationWorkspace";
@@ -22,6 +24,13 @@ import type { SaveStatus } from "./canvas/useAnnotationAutosave";
 import { workspacesForRole, type Workspace } from "./workspace";
 
 type ApiStatus = "checking" | "online" | "unavailable";
+
+const SAM_STATUS_LABELS: Record<SamStatus, string> = {
+  ready: "SAM ready",
+  unreachable: "SAM unreachable",
+  rejected: "SAM token refused",
+  off: "SAM off",
+};
 
 type HealthResponse = {
   status: "ok";
@@ -62,6 +71,9 @@ export default function App({
   onOpenImage,
 }: AppProps) {
   const [apiStatus, setApiStatus] = useState<ApiStatus>("checking");
+  const samStatus = useSamStatus();
+  // The canvas performance check is for measuring the canvas on the local fixture.
+  const measuring = new URLSearchParams(window.location.search).get("fixture") === "local";
   const [fixture, setFixture] = useState<CanvasFixture>(DEMO_FIXTURE);
   const [liveAnnotations, setLiveAnnotations] = useState<AnnotationBox[]>(
     DEMO_FIXTURE.annotations,
@@ -427,6 +439,9 @@ export default function App({
             <span className="fixture-error">Image workspace unavailable</span>
           )}
           <span className={`api-status ${apiStatus}`}>API {apiStatus}</span>
+          {samStatus && (
+            <span className={`sam-status ${samStatus}`}>{SAM_STATUS_LABELS[samStatus]}</span>
+          )}
           {gapReview ? (
             <span>
               {liveAnnotations.filter(
@@ -504,6 +519,7 @@ export default function App({
           purpose={gapReview ? "gap-review" : "annotation"}
           onAnnotationsChange={handleAnnotationsChange}
           onSaveStateChange={reviewImageId ? handleSaveStateChange : undefined}
+          measuring={measuring}
           key={`${fixture.images.map((image) => image.id).join(",")}:${workspace}`}
         />
       ) : workspace === "propagate" ? (

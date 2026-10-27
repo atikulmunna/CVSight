@@ -41,13 +41,14 @@ import {
 } from "./display";
 import { DisplayPanel } from "./DisplayPanel";
 import { PolygonDraftOverlay } from "./PolygonDraftOverlay";
+import { RowStrip } from "./RowStrip";
 import { GroupSelectionDetails, SelectionDetails } from "./SelectionDetails";
 import { ShortcutHelp } from "./ShortcutHelp";
 import { SkuAssignmentPanel } from "./SkuAssignmentPanel";
 import { SmartFindPanel } from "./SmartFindPanel";
 import { SmartPolygonPanel } from "./SmartPolygonPanel";
-import type { AnnotationBox, AnnotationClass, CanvasFixture } from "./model";
-import { spatialReadingOrder } from "./model";
+import type { AnnotationBox, AnnotationClass, CanvasFixture, ReviewOrder } from "./model";
+import { confidenceOrder, isWaitingProposal, readingRows, spatialReadingOrder } from "./model";
 import {
   addToSelection,
   rectBetween,
@@ -83,9 +84,13 @@ type AnnotationWorkspaceProps = {
     status: SaveStatus,
     flush: () => Promise<void>,
   ) => void;
+  // Shows the canvas performance check, a tool for measuring the canvas itself.
+  measuring?: boolean;
 };
 
 const HANDLE_SCREEN_SIZE = 9;
+// Proposals scored at least this much can be accepted together.
+const CONFIDENT_PROPOSAL = 0.9;
 const DEFAULT_VIEWPORT = { width: 900, height: 700 };
 
 export function AnnotationWorkspace({
@@ -94,6 +99,7 @@ export function AnnotationWorkspace({
   purpose = "annotation",
   onAnnotationsChange,
   onSaveStateChange,
+  measuring = false,
 }: AnnotationWorkspaceProps) {
   const isGapReview = purpose === "gap-review";
   const outlinesProducts = fixture.projectType === "instance_segmentation";
@@ -122,8 +128,20 @@ export function AnnotationWorkspace({
         : activeAnnotations,
     [activeAnnotations, mode],
   );
+  const [reviewOrder, setReviewOrder] = useState<ReviewOrder>("shelf");
   const orderedAnnotations = useMemo(
-    () => spatialReadingOrder(workspaceAnnotations),
+    () =>
+      reviewOrder === "confidence"
+        ? confidenceOrder(workspaceAnnotations)
+        : spatialReadingOrder(workspaceAnnotations),
+    [reviewOrder, workspaceAnnotations],
+  );
+  const shelfRows = useMemo(() => readingRows(workspaceAnnotations), [workspaceAnnotations]);
+  const confidentProposals = useMemo(
+    () =>
+      workspaceAnnotations.filter(
+        (box) => isWaitingProposal(box) && (box.confidence ?? 0) >= CONFIDENT_PROPOSAL,
+      ),
     [workspaceAnnotations],
   );
   const [selection, setSelection] = useState<Selection>(() =>
@@ -380,8 +398,17 @@ export function AnnotationWorkspace({
     intent: EditIntent,
     update: (box: AnnotationBox) => AnnotationBox,
   ) {
+    editBoxes(selectedBoxes, intent, update);
+  }
+
+  // One action over several boxes, so a group decision undoes in one step.
+  function editBoxes(
+    boxes: readonly AnnotationBox[],
+    intent: EditIntent,
+    update: (box: AnnotationBox) => AnnotationBox,
+  ) {
     autosave.action(() => {
-      for (const box of selectedBoxes) {
+      for (const box of boxes) {
         autosave.edit(box.id, intent, update);
       }
     });
@@ -697,9 +724,20 @@ export function AnnotationWorkspace({
         selectedIds={selection.ids}
         focusedId={selectedBox?.id ?? null}
         onSelect={selectAnnotation}
+        order={reviewOrder}
+        onOrderChange={mode === "verify" ? setReviewOrder : undefined}
+        acceptConfident={
+          mode === "verify"
+            ? {
+                count: confidentProposals.length,
+                threshold: CONFIDENT_PROPOSAL,
+                onAccept: () => editBoxes(confidentProposals, "accept", acceptBox),
+              }
+            : undefined
+        }
       />
 
-      <section className="canvas-column">
+      <section className={`canvas-column${isGapReview ? "" : " has-row-strip"}`}>
         <div className="canvas-context">
           <span>
             {isGapReview ? "Gap review" : "Shelf photo"}
@@ -903,6 +941,16 @@ export function AnnotationWorkspace({
             </button>
           </div>
         </div>
+        {!isGapReview && (
+          <RowStrip
+            row={
+              (selectedBox && shelfRows.find((row) => row.includes(selectedBox))) || null
+            }
+            images={fixture.images}
+            selectedIds={selection.ids}
+            onSelect={(id) => selectAnnotation(id)}
+          />
+        )}
       </section>
 
       <aside className="detail-panel" aria-label="Selection details">
@@ -977,7 +1025,7 @@ export function AnnotationWorkspace({
           onChange={changeDisplay}
           onHideAllChange={setHideAll}
         />
-        {mode === "verify" && (
+        {mode === "verify" && measuring && (
           <BenchmarkPanel
             benchmark={benchmark.benchmark}
             error={benchmark.error}

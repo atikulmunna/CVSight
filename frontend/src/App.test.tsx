@@ -54,6 +54,27 @@ describe("App health", () => {
     await waitFor(() => expect(screen.getByText("API unavailable")).toBeInTheDocument());
   });
 
+  it("shows whether the SAM service answers", async () => {
+    vi.stubGlobal(
+      "fetch",
+      vi.fn().mockImplementation((input: RequestInfo | URL) => {
+        if (String(input) === "/api/health") {
+          return Promise.resolve({
+            ok: true,
+            json: async () => ({ status: "ok", service: "shelfsight-api" }),
+          });
+        }
+        if (String(input) === "/api/segmenter/status") {
+          return Promise.resolve({ ok: true, json: async () => ({ state: "unreachable" }) });
+        }
+        return Promise.reject(new TypeError("offline"));
+      }),
+    );
+    render(<App />);
+
+    expect(await screen.findByText("SAM unreachable")).toHaveClass("sam-status", "unreachable");
+  });
+
   it("switches between verification and the SKU catalog", async () => {
     vi.stubGlobal(
       "fetch",

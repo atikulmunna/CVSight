@@ -1,6 +1,7 @@
 import { describe, expect, it, vi } from "vitest";
 
 import {
+  loadSamStatus,
   prepareSmartTool,
   requestSmartBox,
   requestSmartFind,
@@ -65,6 +66,17 @@ describe("smart box API client", () => {
     expect(smartBoxMessage(new TypeError("offline"))).toBe(
       "Smart box failed. Try again or draw the box.",
     );
+  });
+
+  it("reads the SAM status and treats anything unexpected as unknown", async () => {
+    const ready = vi.fn().mockResolvedValue(response(200, { state: "ready" }));
+    const odd = vi.fn().mockResolvedValue(response(200, { state: "sleepy" }));
+    const offline = vi.fn().mockRejectedValue(new TypeError("offline"));
+
+    await expect(loadSamStatus(ready)).resolves.toBe("ready");
+    expect(ready).toHaveBeenCalledWith("/api/segmenter/status", expect.anything());
+    await expect(loadSamStatus(odd)).resolves.toBeNull();
+    await expect(loadSamStatus(offline)).resolves.toBeNull();
   });
 
   it("preloads a photo once and holds a click until the preload is done", async () => {

@@ -4,6 +4,8 @@ export type AnnotationClass = "product" | "gap" | "shelf_label";
 export type OverlayState = "unverified" | "verified" | "propagated" | "flagged";
 export type AnnotationLifecycle = "proposed" | "verified" | "rejected";
 export type AnnotationReviewState = "unreviewed" | "accepted" | "flagged";
+// How the box list orders boxes, and so the order J and K step through.
+export type ReviewOrder = "shelf" | "confidence";
 export type PolygonPoint = [number, number];
 
 export type AnnotationBox = {
@@ -64,13 +66,27 @@ const ANNOTATION_CLASSES = new Set<AnnotationClass>([
 ]);
 
 export function spatialReadingOrder(annotations: AnnotationBox[]): AnnotationBox[] {
+  return readingRows(annotations).flat();
+}
+
+// The boxes grouped into shelf rows, top to bottom, each row left to right. Recorded
+// shelf rows win; without them, boxes whose centres sit at about the same height share a
+// row.
+export function readingRows(annotations: AnnotationBox[]): AnnotationBox[][] {
   if (annotations.some((box) => box.shelfRow !== null)) {
-    return [...annotations].sort((left, right) => {
-      const rowDifference =
-        (left.shelfRow ?? Number.MAX_SAFE_INTEGER) -
-        (right.shelfRow ?? Number.MAX_SAFE_INTEGER);
-      return rowDifference || horizontalOrder(left, right);
-    });
+    const byRow = new Map<number, AnnotationBox[]>();
+    for (const box of annotations) {
+      const key = box.shelfRow ?? Number.MAX_SAFE_INTEGER;
+      const row = byRow.get(key);
+      if (row) {
+        row.push(box);
+      } else {
+        byRow.set(key, [box]);
+      }
+    }
+    return [...byRow.entries()]
+      .sort(([left], [right]) => left - right)
+      .map(([, row]) => row.sort(horizontalOrder));
   }
 
   const rows: Array<{
@@ -101,7 +117,22 @@ export function spatialReadingOrder(annotations: AnnotationBox[]): AnnotationBox
 
   return rows
     .sort((left, right) => left.center - right.center)
-    .flatMap((row) => row.boxes.sort(horizontalOrder));
+    .map((row) => row.boxes.sort(horizontalOrder));
+}
+
+// Proposals still to decide come first, least confident first, so a reviewer meets the
+// doubtful ones before the sure ones. A proposal without a score, such as one drawn by
+// hand, counts as sure. Everything else follows in reading order.
+export function confidenceOrder(annotations: AnnotationBox[]): AnnotationBox[] {
+  const reading = spatialReadingOrder(annotations);
+  const waiting = reading
+    .filter(isWaitingProposal)
+    .sort((left, right) => (left.confidence ?? 1) - (right.confidence ?? 1));
+  return [...waiting, ...reading.filter((box) => !isWaitingProposal(box))];
+}
+
+export function isWaitingProposal(box: AnnotationBox): boolean {
+  return box.lifecycleState === "proposed" && box.reviewState !== "flagged";
 }
 
 export function overlayCue(box: AnnotationBox): string {

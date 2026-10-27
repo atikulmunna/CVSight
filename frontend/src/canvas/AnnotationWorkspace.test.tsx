@@ -1,4 +1,4 @@
-import { act, fireEvent, render, screen, waitFor } from "@testing-library/react";
+import { act, fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 import { afterEach, describe, expect, it, vi } from "vitest";
 
 import { AnnotationWorkspace } from "./AnnotationWorkspace";
@@ -22,7 +22,8 @@ describe("AnnotationWorkspace", () => {
       DEMO_FIXTURE.annotations.filter((box) => box.state === "propagated").length,
     );
     expect(container.querySelectorAll(".selection-handle")).toHaveLength(8);
-    expect(screen.getAllByRole("option").length).toBeLessThan(40);
+    const list = screen.getByRole("listbox", { name: "Boxes in spatial reading order" });
+    expect(within(list).getAllByRole("option").length).toBeLessThan(40);
   });
 
   it("synchronizes canvas, list, details, and spatial keyboard navigation", () => {
@@ -375,6 +376,7 @@ describe("AnnotationWorkspace", () => {
           name: "Benchmark test fixture",
           annotations: DEMO_FIXTURE.annotations.slice(0, 12),
         }}
+        measuring
       />,
     );
 
@@ -1258,6 +1260,54 @@ describe("AnnotationWorkspace", () => {
 
     fireEvent.keyDown(viewport, { key: "z", ctrlKey: true });
     expect(container.querySelectorAll(".box-row")).toHaveLength(1);
+  });
+
+  it("keeps the canvas performance check out of the way unless measuring", () => {
+    render(<AnnotationWorkspace fixture={DEMO_FIXTURE} />);
+
+    expect(screen.queryByRole("button", { name: "Measure" })).not.toBeInTheDocument();
+  });
+
+  it("shows the selected box's shelf row under the canvas and selects from it", () => {
+    const { container } = render(<AnnotationWorkspace fixture={DEMO_FIXTURE} />);
+    const strip = () => screen.getByRole("listbox", { name: "Facings in this shelf row" });
+    const firstRow = DEMO_FIXTURE.annotations.filter((box) => box.shelfRow === 0);
+
+    expect(within(strip()).getAllByRole("option")).toHaveLength(firstRow.length);
+    fireEvent.click(within(strip()).getAllByRole("option")[2]!);
+
+    expect(
+      container.querySelector(`.annotation[data-annotation-id="${firstRow[2]!.id}"]`),
+    ).toHaveClass("is-selected");
+    expect(within(strip()).getAllByRole("option")[2]).toHaveAttribute("aria-selected", "true");
+  });
+
+  it("orders proposals least confident first and accepts the confident ones together", () => {
+    const proposal = (index: number, confidence: number) => ({
+      ...DEMO_FIXTURE.annotations[index]!,
+      state: "unverified" as const,
+      lifecycleState: "proposed" as const,
+      reviewState: "unreviewed" as const,
+      confidence,
+    });
+    const fixture = {
+      ...DEMO_FIXTURE,
+      annotations: [proposal(1, 0.95), proposal(2, 0.4), proposal(3, 0.92), proposal(4, 0.7)],
+    };
+    const { container } = render(<AnnotationWorkspace fixture={fixture} />);
+    const viewport = screen.getByLabelText("Shelf annotation canvas");
+
+    fireEvent.change(screen.getByLabelText("Order"), { target: { value: "confidence" } });
+    expect(rowIds(container)).toEqual(["B003", "B005", "B004", "B002"]);
+
+    fireEvent.click(screen.getByRole("button", { name: "Accept 2 at 90% or more" }));
+    const state = (id: string) =>
+      container.querySelector(`.annotation[data-annotation-id="${id}"]`)!.getAttribute("data-state");
+    expect([state("B002"), state("B004"), state("B003")]).toEqual(["verified", "verified", "unverified"]);
+    expect(screen.queryByRole("button", { name: /at 90% or more/ })).not.toBeInTheDocument();
+
+    fireEvent.keyDown(viewport, { key: "z", ctrlKey: true });
+    expect([state("B002"), state("B004")]).toEqual(["unverified", "unverified"]);
   });
 
   it("keeps the smart box out of gap review", () => {
