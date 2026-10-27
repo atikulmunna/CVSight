@@ -59,29 +59,40 @@ type HistoryControls = {
 type CanvasToolsProps = {
   tool: CanvasTool;
   available: readonly CanvasTool[];
+  // Smart box in detection projects, Smart polygon where products are outlined.
+  smartLabel: string;
   onChange: (tool: CanvasTool) => void;
   history: HistoryControls;
 };
 
-export function CanvasTools({ tool, available, onChange, history }: CanvasToolsProps) {
+export function CanvasTools({
+  tool,
+  available,
+  smartLabel,
+  onChange,
+  history,
+}: CanvasToolsProps) {
   return (
     <div className="canvas-tools" role="toolbar" aria-label="Canvas tools" aria-orientation="vertical">
-      {TOOLS.filter((spec) => available.includes(spec.tool)).map((spec) => (
-        <button
-          type="button"
-          className={`canvas-tool${tool === spec.tool ? " is-active" : ""}`}
-          aria-label={spec.label}
-          aria-pressed={tool === spec.tool}
-          title={`${spec.label} (${spec.shortcut})`}
-          onClick={() => onChange(spec.tool)}
-          key={spec.tool}
-        >
-          <svg viewBox="0 0 24 24" aria-hidden="true">
-            {spec.icon}
-          </svg>
-          <kbd>{spec.shortcut}</kbd>
-        </button>
-      ))}
+      {TOOLS.filter((spec) => available.includes(spec.tool)).map((spec) => {
+        const label = spec.tool === "smart" ? smartLabel : spec.label;
+        return (
+          <button
+            type="button"
+            className={`canvas-tool${tool === spec.tool ? " is-active" : ""}`}
+            aria-label={label}
+            aria-pressed={tool === spec.tool}
+            title={`${label} (${spec.shortcut})`}
+            onClick={() => onChange(spec.tool)}
+            key={spec.tool}
+          >
+            <svg viewBox="0 0 24 24" aria-hidden="true">
+              {spec.icon}
+            </svg>
+            <kbd>{spec.shortcut}</kbd>
+          </button>
+        );
+      })}
       <span className="canvas-tools-divider" aria-hidden="true" />
       <button
         type="button"

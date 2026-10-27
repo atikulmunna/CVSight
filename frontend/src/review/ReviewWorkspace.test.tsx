@@ -152,6 +152,7 @@ function signoff(): ReviewSignoff {
 function fixture(): CanvasFixture {
   return {
     name: "review-shelf.jpg",
+    projectType: "object_detection",
     width: 100,
     height: 80,
     images: [

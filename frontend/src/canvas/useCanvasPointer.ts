@@ -79,8 +79,9 @@ type CanvasPointerOptions = {
   // The boxes a marquee may select.
   selectableAnnotations: AnnotationBox[];
   onBoxDrawn: (box: AnnotationBox) => void;
-  // A click with the smart box tool, at a scene point on the photo with this index.
-  onSmartClick: (point: ScenePoint, imageIndex: number) => void;
+  // A click with the smart tool, at a scene point on the photo with this index. Shift
+  // marks a click on something the smart polygon must leave out.
+  onSmartClick: (point: ScenePoint, imageIndex: number, include: boolean) => void;
   onGeometryChanged: (annotationId: string, geometry: BoxGeometry) => void;
   // A press on the editable box that ended without a drag.
   onBoxClicked: (annotationId: string) => void;
@@ -139,7 +140,7 @@ export function useCanvasPointer({
       const point = scenePoint(event, transform);
       const imageIndex = imageIndexAtPoint(fixture, point);
       if (imageIndex >= 0) {
-        onSmartClick(point, imageIndex);
+        onSmartClick(point, imageIndex, !event.shiftKey);
       }
       return;
     }

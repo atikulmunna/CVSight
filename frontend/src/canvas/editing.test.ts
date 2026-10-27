@@ -5,6 +5,7 @@ import {
   assignSku,
   changeBoxClass,
   createDrawnBox,
+  createOutlinedBox,
   dragGeometry,
   duplicateBox,
   flagBox,
@@ -70,6 +71,25 @@ describe("annotation editing", () => {
       lifecycleState: "proposed",
       reviewState: "unreviewed",
     });
+  });
+
+  it("boxes an outlined product by its outline's bounds", () => {
+    const outline = createOutlinedBox("smart-1", "image-1", 0, OUTLINE, BOUNDS, 2);
+
+    expect(outline).toMatchObject({
+      id: "smart-1",
+      classType: "product",
+      x: 10,
+      y: 10,
+      width: 20,
+      height: 30,
+      polygon: OUTLINE,
+      shelfRow: 2,
+      lifecycleState: "proposed",
+    });
+    expect(
+      createOutlinedBox("smart-2", "image-1", 0, [[1, 1], [3, 1], [2, 3]], BOUNDS, 0),
+    ).toBeNull();
   });
 
   it("creates a drawn product without an SKU so assignment still has to happen", () => {

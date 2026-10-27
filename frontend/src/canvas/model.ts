@@ -1,3 +1,5 @@
+import type { ProjectType } from "../projects/api";
+
 export type AnnotationClass = "product" | "gap" | "shelf_label";
 export type OverlayState = "unverified" | "verified" | "propagated" | "flagged";
 export type AnnotationLifecycle = "proposed" | "verified" | "rejected";
@@ -39,6 +41,8 @@ export type FixtureImage = {
 
 export type CanvasFixture = {
   name: string;
+  // Instance segmentation projects outline products; detection projects box them.
+  projectType: ProjectType;
   width: number;
   height: number;
   images: FixtureImage[];
@@ -145,11 +149,23 @@ export function parseCanvasFixture(value: unknown): CanvasFixture {
 
   return {
     name: typeof fixture.name === "string" ? fixture.name : "Local dense fixture",
+    projectType: parseProjectType(fixture.project_type),
     width,
     height,
     images,
     annotations,
   };
+}
+
+// Local fixtures predate project types and are detection projects.
+function parseProjectType(value: unknown): ProjectType {
+  if (value === undefined) {
+    return "object_detection";
+  }
+  if (value !== "object_detection" && value !== "instance_segmentation") {
+    throw new Error("fixture project type is invalid");
+  }
+  return value;
 }
 
 function parseFixtureImage(

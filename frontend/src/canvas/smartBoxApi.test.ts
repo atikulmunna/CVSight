@@ -1,6 +1,11 @@
 import { describe, expect, it, vi } from "vitest";
 
-import { requestSmartBox, SmartBoxError, smartBoxMessage } from "./smartBoxApi";
+import {
+  requestSmartBox,
+  requestSmartPolygon,
+  SmartBoxError,
+  smartBoxMessage,
+} from "./smartBoxApi";
 
 function response(status: number, body: unknown) {
   return {
@@ -57,6 +62,41 @@ describe("smart box API client", () => {
     expect(smartBoxMessage(new SmartBoxError(422, "no_object"))).toMatch(/No object found/);
     expect(smartBoxMessage(new TypeError("offline"))).toBe(
       "Smart box failed. Try again or draw the box.",
+    );
+  });
+
+  it("posts every smart polygon click and returns the outline in photo pixels", async () => {
+    const outline = [[10, 12], [40, 12], [25, 52]];
+    const fetcher = vi.fn().mockResolvedValue(response(200, { polygon: outline, score: 0.8 }));
+    const clicks = [
+      { x: 25, y: 30, include: true },
+      { x: 30, y: 45, include: false },
+    ];
+
+    await expect(requestSmartPolygon("image 1", clicks, fetcher)).resolves.toEqual(outline);
+    expect(fetcher).toHaveBeenCalledWith(
+      "/api/images/image%201/smart-polygon",
+      expect.objectContaining({ method: "POST", body: JSON.stringify({ points: clicks }) }),
+    );
+  });
+
+  it("rejects a malformed outline and names the smart polygon in its messages", async () => {
+    const malformed = vi
+      .fn()
+      .mockResolvedValue(response(200, { polygon: [[1, 1], [2, 2]], score: 0.8 }));
+    const click = [{ x: 1, y: 1, include: true }];
+
+    await expect(requestSmartPolygon("image-1", click, malformed)).rejects.toMatchObject({
+      code: "invalid_response",
+    });
+    expect(smartBoxMessage(new SmartBoxError(502, "segmenter_outdated"), "Smart polygon")).toBe(
+      "The SAM service is out of date. Update it to use Smart polygon.",
+    );
+    expect(smartBoxMessage(new SmartBoxError(422, "no_object"), "Smart polygon")).toBe(
+      "No object found at that point.",
+    );
+    expect(smartBoxMessage(new TypeError("offline"), "Smart polygon")).toBe(
+      "Smart polygon failed. Try again.",
     );
   });
 });

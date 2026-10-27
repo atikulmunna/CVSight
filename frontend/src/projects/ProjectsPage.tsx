@@ -24,7 +24,7 @@ const PROJECT_TYPE_CHOICES: Array<[ProjectType, string]> = [
   ["object_detection", "Label each product with a box. Smart box draws one from a click."],
   [
     "instance_segmentation",
-    "Label each product with an outline. Needed to train segmentation models.",
+    "Label each product with an outline for segmentation models. Smart polygon draws one from a click.",
   ],
 ];
 

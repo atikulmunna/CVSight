@@ -98,6 +98,7 @@ const CANDIDATE: AnnotationBox = {
 };
 
 const FIXTURE: CanvasFixture = {
+  projectType: "object_detection",
   name: "Propagation fixture",
   width: 100,
   height: 80,

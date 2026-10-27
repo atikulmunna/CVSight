@@ -23,7 +23,8 @@ export type CanvasCommand =
   | { type: "chooseTool"; tool: CanvasTool }
   | { type: "step"; delta: 1 | -1 }
   | { type: "clear" }
-  | { type: "zoom"; factor: number };
+  | { type: "zoom"; factor: number }
+  | { type: "finishOutline" };
 
 export type KeyPress = {
   key: string;
@@ -42,6 +43,8 @@ export type KeyContext = {
   selectedIsProduct: boolean;
   hasSelection: boolean;
   hasCopy: boolean;
+  // A smart polygon outline is being refined and can be finished.
+  hasOutlineDraft: boolean;
 };
 
 export const ZOOM_STEP = 1.2;
@@ -113,6 +116,9 @@ function assignKey(key: string, context: KeyContext): CanvasCommand | null {
 }
 
 function verifyKey(key: string, press: KeyPress, context: KeyContext): CanvasCommand | null {
+  if (key === "enter" && context.hasOutlineDraft) {
+    return { type: "finishOutline" };
+  }
   const direction = ARROWS[key];
   if (press.altKey && direction) {
     return { type: "editGeometry", direction, resize: press.shiftKey };

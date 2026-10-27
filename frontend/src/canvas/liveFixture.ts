@@ -52,6 +52,7 @@ export async function loadLiveFixture(
   try {
     return parseCanvasFixture({
       name: requiredString(image.original_filename),
+      project_type: image.project_type,
       image: {
         width: image.width,
         height: image.height,

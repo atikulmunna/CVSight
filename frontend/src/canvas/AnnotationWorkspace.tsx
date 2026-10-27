@@ -44,6 +44,7 @@ import { DisplayPanel } from "./DisplayPanel";
 import { GroupSelectionDetails, SelectionDetails } from "./SelectionDetails";
 import { ShortcutHelp } from "./ShortcutHelp";
 import { SkuAssignmentPanel } from "./SkuAssignmentPanel";
+import { SmartPolygonPanel } from "./SmartPolygonPanel";
 import type { AnnotationBox, AnnotationClass, CanvasFixture } from "./model";
 import { spatialReadingOrder } from "./model";
 import {
@@ -65,6 +66,7 @@ import { useAnnotationAutosave, type SaveStatus } from "./useAnnotationAutosave"
 import { useCanvasBenchmark } from "./useCanvasBenchmark";
 import { useCanvasPointer } from "./useCanvasPointer";
 import { useSmartBox } from "./useSmartBox";
+import { useSmartPolygon } from "./useSmartPolygon";
 import { useSkuAssignmentCatalog } from "./useSkuAssignmentCatalog";
 import type { Sku } from "../catalog/model";
 
@@ -90,6 +92,7 @@ export function AnnotationWorkspace({
   onSaveStateChange,
 }: AnnotationWorkspaceProps) {
   const isGapReview = purpose === "gap-review";
+  const outlinesProducts = fixture.projectType === "instance_segmentation";
   const autosave = useAnnotationAutosave(fixture);
   const [skuPickerOpen, setSkuPickerOpen] = useState(mode === "assign");
   const assignmentCatalog = useSkuAssignmentCatalog(
@@ -163,6 +166,9 @@ export function AnnotationWorkspace({
     message: smartBoxMessage,
     request: requestSmartBoxAt,
   } = useSmartBox({ fixture, activeAnnotations, onBox: completeDrawnBox });
+  const smartPolygon = useSmartPolygon({ fixture, activeAnnotations, onBox: completeDrawnBox });
+  const smartPoint = smartBoxPoint ?? smartPolygon.pendingPoint;
+  const smartMessage = outlinesProducts ? smartPolygon.message : smartBoxMessage;
   const {
     panning,
     draftBox,
@@ -184,7 +190,10 @@ export function AnnotationWorkspace({
     activeAnnotations,
     selectableAnnotations: orderedAnnotations,
     onBoxDrawn: completeDrawnBox,
-    onSmartClick: (point, imageIndex) => void requestSmartBoxAt(point, imageIndex),
+    onSmartClick: (point, imageIndex, include) =>
+      outlinesProducts
+        ? void smartPolygon.click(point, imageIndex, include)
+        : void requestSmartBoxAt(point, imageIndex),
     onGeometryChanged: (annotationId, geometry) =>
       autosave.edit(annotationId, "update", (box) => ({
         ...withGeometry(box, geometry),
@@ -204,8 +213,11 @@ export function AnnotationWorkspace({
           box.id === draftGeometry.id ? withGeometry(box, draftGeometry) : box,
         )
       : activeAnnotations;
-    return draftBox ? [...boxes, draftBox] : boxes;
-  }, [activeAnnotations, draftBox, draftGeometry]);
+    const drafts = [draftBox, smartPolygon.preview].filter(
+      (box): box is AnnotationBox => box !== null,
+    );
+    return drafts.length > 0 ? [...boxes, ...drafts] : boxes;
+  }, [activeAnnotations, draftBox, draftGeometry, smartPolygon.preview]);
   const selectedBox =
     orderedAnnotations.find((annotation) => annotation.id === selectedId) ?? null;
   const selectedBoxes = useMemo(
@@ -528,6 +540,8 @@ export function AnnotationWorkspace({
     }
     setTool((current) => (current === next && next !== "select" ? "select" : next));
     cancelDrawing();
+    // Leaving the smart polygon keeps the outline the reviewer built.
+    smartPolygon.finish();
   }
 
   function editGeometry(
@@ -563,6 +577,7 @@ export function AnnotationWorkspace({
       selectedIsProduct: selectedBox?.classType === "product",
       hasSelection: selectedBoxes.length > 0,
       hasCopy: copiedBoxes() !== null,
+      hasOutlineDraft: smartPolygon.draft !== null,
     });
     if (command) {
       event.preventDefault();
@@ -612,7 +627,12 @@ export function AnnotationWorkspace({
         return chooseTool(command.tool);
       case "step":
         return selectRelative(command.delta);
+      case "finishOutline":
+        return smartPolygon.finish();
       case "clear":
+        if (smartPolygon.draft) {
+          return smartPolygon.cancel();
+        }
         setTool("select");
         cancelDrawing();
         setSelectedId(null);
@@ -639,9 +659,9 @@ export function AnnotationWorkspace({
             {isGapReview ? "Gap review" : "Shelf photo"}
           </span>
           <span>{fixture.name}</span>
-          {smartBoxMessage && (
+          {smartMessage && (
             <span className="smart-box-message" role="status">
-              {smartBoxMessage}
+              {smartMessage}
             </span>
           )}
           {(hideAll || display.hiddenClasses.length > 0) && <span>Some boxes hidden</span>}
@@ -650,7 +670,7 @@ export function AnnotationWorkspace({
           className={`canvas-viewport tool-${tool}${panning ? " is-panning" : ""}${
             spaceHeld || tool === "pan" ? " is-pan-ready" : ""
           }${drawMode ? ` is-drawing is-drawing-${drawMode}` : ""}${
-            smartBoxPoint ? " is-smart-pending" : ""
+            smartPoint ? " is-smart-pending" : ""
           }`}
           ref={viewportRef}
           tabIndex={0}
@@ -708,13 +728,39 @@ export function AnnotationWorkspace({
               onGeometryStart={startGeometryDrag}
             />
           </div>
-          {smartBoxPoint && (
+          {smartPolygon.draft?.clicks.map((click, index) => (
+            <div
+              className={`smart-click${click.include ? " is-included" : " is-excluded"}`}
+              aria-hidden="true"
+              style={{
+                left: transform.x + click.x * transform.scale,
+                top: transform.y + click.y * transform.scale,
+              }}
+              key={index}
+            />
+          ))}
+          {smartPoint && (
             <div
               className="smart-box-pending"
               aria-hidden="true"
               style={{
-                left: transform.x + smartBoxPoint.x * transform.scale,
-                top: transform.y + smartBoxPoint.y * transform.scale,
+                left: transform.x + smartPoint.x * transform.scale,
+                top: transform.y + smartPoint.y * transform.scale,
+              }}
+            />
+          )}
+          {smartPolygon.draft && (
+            <SmartPolygonPanel
+              pointCount={smartPolygon.draft.pointCount}
+              maxPointCount={smartPolygon.draft.outline.points.length}
+              onPointCountChange={smartPolygon.setPointCount}
+              onFinish={() => {
+                smartPolygon.finish();
+                viewportRef.current?.focus();
+              }}
+              onCancel={() => {
+                smartPolygon.cancel();
+                viewportRef.current?.focus();
               }}
             />
           )}
@@ -776,6 +822,7 @@ export function AnnotationWorkspace({
           <CanvasTools
             tool={tool}
             available={availableTools}
+            smartLabel={outlinesProducts ? "Smart polygon" : "Smart box"}
             onChange={chooseTool}
             history={{
               canUndo: autosave.canUndo,
@@ -788,7 +835,11 @@ export function AnnotationWorkspace({
             <span>
               {mode === "assign"
                 ? "1-9 assign · S same as previous · U unknown"
-                : `A accept · R reject · F flag${isGapReview ? "" : " · B box · M smart box"} · G gap`}
+                : `A accept · R reject · F flag${
+                    isGapReview
+                      ? ""
+                      : ` · B box · M ${outlinesProducts ? "smart polygon" : "smart box"}`
+                  } · G gap`}
             </span>
             <span>Ctrl+Z undo</span>
             <button type="button" onClick={() => setHelpOpen(true)}>
@@ -871,7 +922,9 @@ export function AnnotationWorkspace({
           />
         )}
       </aside>
-      {helpOpen && <ShortcutHelp context={{ mode, isGapReview }} onClose={closeHelp} />}
+      {helpOpen && (
+        <ShortcutHelp context={{ mode, isGapReview, outlinesProducts }} onClose={closeHelp} />
+      )}
     </main>
   );
 }

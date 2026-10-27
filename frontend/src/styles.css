@@ -2848,6 +2848,83 @@ code {
   white-space: normal;
 }
 
+/* Clicks that shaped the smart polygon: included areas in the verified green, excluded
+   ones in the gap pink. */
+.smart-click {
+  position: absolute;
+  z-index: 3;
+  width: 12px;
+  height: 12px;
+  margin: -6px 0 0 -6px;
+  border: 2px solid var(--ov-halo);
+  border-radius: 50%;
+  pointer-events: none;
+}
+
+.smart-click.is-included {
+  background: var(--ov-verified);
+}
+
+.smart-click.is-excluded {
+  background: var(--ov-gap);
+}
+
+/* Refines the smart polygon on the canvas before it is saved. */
+.smart-polygon-panel {
+  position: absolute;
+  z-index: 5;
+  bottom: 14px;
+  left: 50%;
+  display: grid;
+  gap: 8px;
+  width: min(320px, calc(100% - 24px));
+  padding: 10px 12px;
+  color: var(--text-primary);
+  background: var(--ws-panel);
+  border: 1px solid var(--ws-line);
+  border-radius: 12px;
+  box-shadow: 0 12px 34px rgb(0 0 0 / 25%);
+  transform: translateX(-50%);
+  cursor: default;
+}
+
+.smart-polygon-panel label {
+  display: grid;
+  gap: 4px;
+  font-size: 12px;
+}
+
+.smart-polygon-panel label span {
+  display: flex;
+  justify-content: space-between;
+}
+
+.smart-polygon-panel output {
+  font-family: var(--font-mono);
+}
+
+.smart-polygon-panel input[type="range"] {
+  width: 100%;
+  accent-color: var(--brand);
+}
+
+.smart-polygon-panel p {
+  color: var(--text-secondary);
+  font-size: 11px;
+}
+
+.smart-polygon-actions {
+  display: flex;
+  justify-content: flex-end;
+  gap: 8px;
+}
+
+.smart-polygon-actions kbd {
+  margin-left: 4px;
+  font-size: 10px;
+  opacity: 0.7;
+}
+
 .draw-crosshair {
   position: absolute;
   z-index: 2;

@@ -85,6 +85,7 @@ function createAnnotations(): AnnotationBox[] {
 
 export const DEMO_FIXTURE: CanvasFixture = {
   name: "Dense shelf demonstration",
+  projectType: "object_detection",
   width: SCENE_WIDTH,
   height: SCENE_HEIGHT,
   images: [

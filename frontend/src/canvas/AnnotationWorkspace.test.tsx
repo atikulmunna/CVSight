@@ -972,6 +972,117 @@ describe("AnnotationWorkspace", () => {
     expect(container.querySelectorAll(".box-row")).toHaveLength(0);
   });
 
+  it("outlines a product, refines it, and saves it with its box in one undo step", async () => {
+    // A rectangle traced with a point halfway along each side: four corners carry its
+    // shape, so the outline opens at four points of eight.
+    const traced = [
+      [100, 120], [130, 120], [160, 120], [160, 165],
+      [160, 210], [130, 210], [100, 210], [100, 165],
+    ];
+    const trimmed = [[100, 120], [150, 120], [150, 210], [100, 210]];
+    const outlineRequests: unknown[] = [];
+    const fetchMock = vi.fn().mockImplementation((input: RequestInfo | URL, init?: RequestInit) => {
+      if (!String(input).endsWith("/smart-polygon")) {
+        return Promise.reject(new TypeError("offline"));
+      }
+      const body = JSON.parse(String(init?.body)) as { points: unknown[] };
+      outlineRequests.push(body);
+      const polygon = body.points.length === 1 ? traced : trimmed;
+      return Promise.resolve(response(200, { polygon, score: 0.9 }));
+    });
+    vi.stubGlobal("fetch", fetchMock);
+    const fixture = {
+      ...DEMO_FIXTURE,
+      projectType: "instance_segmentation" as const,
+      annotations: [],
+    };
+    const { container } = render(<AnnotationWorkspace fixture={fixture} />);
+    const viewport = screen.getByLabelText("Shelf annotation canvas");
+    const draftOutline = () =>
+      container.querySelector('[data-annotation-id="smart-polygon-draft"] .overlay-core');
+
+    fireEvent.keyDown(viewport, { key: "m" });
+    expect(screen.getByRole("button", { name: "Smart polygon" })).toHaveAttribute(
+      "aria-pressed",
+      "true",
+    );
+    fireEvent.pointerDown(viewport, { button: 0, pointerId: 1, clientX: 250, clientY: 250 });
+
+    const slider = await screen.findByRole("slider", { name: "Points" });
+    expect(slider).toHaveValue("4");
+    expect(slider).toHaveAttribute("max", "8");
+    expect(draftOutline()?.getAttribute("points")).toBe("100,120 160,120 160,210 100,210");
+    expect(container.querySelectorAll(".box-row")).toHaveLength(0);
+
+    fireEvent.change(slider, { target: { value: "8" } });
+    expect(draftOutline()?.getAttribute("points")?.split(" ")).toHaveLength(8);
+
+    fireEvent.pointerDown(viewport, {
+      button: 0,
+      pointerId: 1,
+      clientX: 300,
+      clientY: 250,
+      shiftKey: true,
+    });
+    await waitFor(() =>
+      expect(draftOutline()?.getAttribute("points")).toBe("100,120 150,120 150,210 100,210"),
+    );
+    expect(outlineRequests[1]).toMatchObject({
+      points: [{ include: true }, { include: false }],
+    });
+    expect(container.querySelectorAll(".smart-click.is-excluded")).toHaveLength(1);
+
+    fireEvent.keyDown(viewport, { key: "Enter" });
+
+    expect(container.querySelectorAll(".box-row")).toHaveLength(1);
+    expect(screen.queryByRole("slider", { name: "Points" })).not.toBeInTheDocument();
+    const saved = container.querySelector(".annotation.is-selected .overlay-core")!;
+    expect(saved.tagName).toBe("polygon");
+    expect(saved.getAttribute("points")).toBe("100,120 150,120 150,210 100,210");
+
+    fireEvent.keyDown(viewport, { key: "z", ctrlKey: true });
+    expect(container.querySelectorAll(".box-row")).toHaveLength(0);
+  });
+
+  it("cancels a smart polygon outline with Escape and keeps the tool", async () => {
+    vi.stubGlobal(
+      "fetch",
+      vi.fn().mockResolvedValue(
+        response(200, { polygon: [[100, 120], [160, 120], [130, 210]], score: 0.9 }),
+      ),
+    );
+    const fixture = {
+      ...DEMO_FIXTURE,
+      projectType: "instance_segmentation" as const,
+      annotations: [],
+    };
+    const { container } = render(<AnnotationWorkspace fixture={fixture} />);
+    const viewport = screen.getByLabelText("Shelf annotation canvas");
+
+    fireEvent.keyDown(viewport, { key: "m" });
+    fireEvent.pointerDown(viewport, {
+      button: 0,
+      pointerId: 1,
+      clientX: 250,
+      clientY: 250,
+      shiftKey: true,
+    });
+    expect(
+      screen.getByText("Click the product first; Shift+click then removes areas from its outline."),
+    ).toBeInTheDocument();
+
+    fireEvent.pointerDown(viewport, { button: 0, pointerId: 1, clientX: 250, clientY: 250 });
+    await screen.findByRole("slider", { name: "Points" });
+    fireEvent.keyDown(viewport, { key: "Escape" });
+
+    expect(screen.queryByRole("slider", { name: "Points" })).not.toBeInTheDocument();
+    expect(container.querySelectorAll(".box-row")).toHaveLength(0);
+    expect(screen.getByRole("button", { name: "Smart polygon" })).toHaveAttribute(
+      "aria-pressed",
+      "true",
+    );
+  });
+
   it("keeps the smart box out of gap review", () => {
     render(<AnnotationWorkspace fixture={DEMO_FIXTURE} purpose="gap-review" />);
 

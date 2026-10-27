@@ -17,6 +17,7 @@ describe("loadLiveFixture", () => {
           response({
             id: IMAGE_ID,
             original_filename: "live-shelf.jpg",
+            project_type: "instance_segmentation",
             width: 120,
             height: 80,
             canonical_url: `/api/images/${IMAGE_ID}/media/canonical`,
@@ -54,6 +55,7 @@ describe("loadLiveFixture", () => {
 
     expect(fixture).toMatchObject({
       name: "live-shelf.jpg",
+      projectType: "instance_segmentation",
       width: 120,
       height: 80,
     });

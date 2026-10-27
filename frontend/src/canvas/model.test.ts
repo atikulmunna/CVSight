@@ -79,6 +79,16 @@ describe("canvas model", () => {
     });
   });
 
+  it("reads the project type and treats fixtures without one as detection", () => {
+    expect(parseCanvasFixture(fixture([])).projectType).toBe("object_detection");
+    expect(
+      parseCanvasFixture({ ...fixture([]), project_type: "instance_segmentation" }).projectType,
+    ).toBe("instance_segmentation");
+    expect(() => parseCanvasFixture({ ...fixture([]), project_type: "keypoints" })).toThrow(
+      "project type",
+    );
+  });
+
   it("keeps a product outline from the fixture", () => {
     const outline = [[10, 10], [30, 25], [20, 40]];
     const parsed = parseCanvasFixture(

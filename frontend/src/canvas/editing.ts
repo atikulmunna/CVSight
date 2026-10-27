@@ -311,6 +311,30 @@ export function createDrawnBox(
   };
 }
 
+// A product drawn as an outline. Its box is the outline's bounds, as the API requires.
+export function createOutlinedBox(
+  id: string,
+  imageId: string,
+  imageIndex: number,
+  outline: PolygonPoint[],
+  bounds: SceneBounds,
+  shelfRow: number,
+): AnnotationBox | null {
+  const xs = outline.map(([x]) => x);
+  const ys = outline.map(([, y]) => y);
+  const box = createDrawnBox(
+    "product",
+    id,
+    imageId,
+    imageIndex,
+    { x: Math.min(...xs), y: Math.min(...ys) },
+    { x: Math.max(...xs), y: Math.max(...ys) },
+    bounds,
+    shelfRow,
+  );
+  return box && { ...box, polygon: outline };
+}
+
 function clamp(value: number, minimum: number, maximum: number): number {
   return Math.min(Math.max(value, minimum), maximum);
 }

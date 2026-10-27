@@ -10,6 +10,7 @@ const VERIFY: KeyContext = {
   selectedIsProduct: true,
   hasSelection: true,
   hasCopy: true,
+  hasOutlineDraft: false,
 };
 
 const ASSIGN: KeyContext = {
@@ -99,5 +100,12 @@ describe("canvas key commands", () => {
       expect(canvasCommand(press("o"), context)).toEqual({ type: "toggleBoxes" });
       expect(canvasCommand(press("x"), context)).toBeNull();
     }
+  });
+
+  it("finishes a smart polygon outline with Enter only while one is open", () => {
+    expect(canvasCommand(press("Enter"), { ...VERIFY, hasOutlineDraft: true })).toEqual({
+      type: "finishOutline",
+    });
+    expect(canvasCommand(press("Enter"), VERIFY)).toBeNull();
   });
 });

@@ -3,6 +3,7 @@ import { useEffect, useRef } from "react";
 type Context = {
   mode: "verify" | "assign";
   isGapReview: boolean;
+  outlinesProducts: boolean;
 };
 
 type Shortcut = {
@@ -13,6 +14,9 @@ type Shortcut = {
 
 const verifying = ({ mode }: Context) => mode === "verify";
 const assigning = ({ mode }: Context) => mode === "assign";
+const drawingProducts = (context: Context) => verifying(context) && !context.isGapReview;
+const smartBoxing = (context: Context) => drawingProducts(context) && !context.outlinesProducts;
+const smartOutlining = (context: Context) => drawingProducts(context) && context.outlinesProducts;
 
 const GROUPS: Array<{ title: string; shortcuts: Shortcut[] }> = [
   {
@@ -59,13 +63,24 @@ const GROUPS: Array<{ title: string; shortcuts: Shortcut[] }> = [
       {
         keys: "B",
         action: "Draw a box, named with the previous SKU",
-        when: (context) => verifying(context) && !context.isGapReview,
+        when: drawingProducts,
       },
       {
         keys: "M",
         action: "Smart box: click a product and SAM boxes it",
-        when: (context) => verifying(context) && !context.isGapReview,
+        when: smartBoxing,
       },
+      {
+        keys: "M",
+        action: "Smart polygon: click a product and SAM outlines it",
+        when: smartOutlining,
+      },
+      {
+        keys: "Click, Shift + click",
+        action: "Add an area to the outline, or remove one",
+        when: smartOutlining,
+      },
+      { keys: "Enter, Esc", action: "Finish the outline, or cancel it", when: smartOutlining },
       { keys: "G", action: "Draw a gap", when: verifying },
     ],
   },
