@@ -10,6 +10,7 @@ from sqlalchemy import Connection, delete, insert, select, update
 from sqlalchemy.exc import IntegrityError
 
 from shelfsight_api.data_model import (
+    REVISION_VALUE_KEYS,
     AnnotationNotFoundError,
     DatasetSnapshotNotFoundError,
     DatasetVersionFrozenError,
@@ -17,6 +18,7 @@ from shelfsight_api.data_model import (
     SnapshotArtifactConflictError,
     StaleAnnotationRevisionError,
     append_annotation_revision,
+    copy_revision_values,
     create_annotation,
     get_dataset_snapshot,
     register_snapshot_artifact,
@@ -25,6 +27,7 @@ from shelfsight_api.data_model import (
 from shelfsight_api.models import (
     annotation_records,
     annotation_revisions,
+    dataset_snapshot_annotations,
     dataset_snapshots,
     dataset_version_annotations,
     dataset_version_images,
@@ -73,6 +76,16 @@ def create_dataset_fixture(
         )
     )
     return dataset_id, version_id, image_id
+
+
+SQUARE = [[10.0, 10.0], [30.0, 10.0], [30.0, 40.0], [10.0, 40.0]]
+# Fields revision_values leaves to their column defaults, spelled out for full copies.
+EMPTY_FIELDS: dict[str, Any] = {
+    "sku_id": None,
+    "occluded": False,
+    "truncated": False,
+    "shelf_row": None,
+}
 
 
 def revision_values(**overrides: Any) -> dict[str, Any]:
@@ -266,6 +279,70 @@ def test_snapshot_pins_revisions_and_freezes_membership(
         snapshot_dataset_version(database_connection, version_id)
     with pytest.raises(DatasetVersionNotFoundError, match="does not exist"):
         snapshot_dataset_version(database_connection, uuid4())
+
+
+def test_revision_copies_carry_every_revision_column() -> None:
+    # A column missing here would be dropped by accept, review, propagation, and merges.
+    stored_by_each_revision = set(annotation_revisions.c.keys()) - {
+        "annotation_id",
+        "revision",
+        "created_at",
+    }
+
+    row = {
+        **revision_values(polygon=SQUARE),
+        **EMPTY_FIELDS,
+        "annotation_id": uuid4(),
+        "revision": 3,
+    }
+    copied = copy_revision_values(row)
+
+    assert set(REVISION_VALUE_KEYS) == stored_by_each_revision
+    assert copied["polygon"] == SQUARE
+    assert "revision" not in copied and "annotation_id" not in copied
+
+
+def test_snapshot_keeps_product_outlines(database_connection: Connection) -> None:
+    _, version_id, image_id = create_dataset_fixture(database_connection)
+    outlined = create_annotation(
+        database_connection,
+        image_id,
+        revision_values(polygon=SQUARE),
+    )
+    boxed = create_annotation(database_connection, image_id, revision_values(class_type="gap"))
+
+    snapshot_dataset_version(database_connection, version_id)
+
+    outlines = dict(
+        database_connection.execute(
+            select(
+                dataset_snapshot_annotations.c.annotation_id,
+                dataset_snapshot_annotations.c.polygon,
+            ).where(dataset_snapshot_annotations.c.dataset_version_id == version_id)
+        ).all()
+    )
+    assert outlines == {outlined: SQUARE, boxed: None}
+
+
+@pytest.mark.parametrize(
+    ("overrides", "constraint"),
+    [
+        ({"class_type": "gap", "polygon": SQUARE}, "ck_annotation_revisions_polygon_class"),
+        ({"polygon": [[10, 10], [30, 40]]}, "ck_annotation_revisions_polygon_points"),
+        ({"polygon": {"x": 10}}, "ck_annotation_revisions_polygon_points"),
+    ],
+)
+def test_outline_rules_hold_in_the_database(
+    database_connection: Connection,
+    overrides: dict[str, Any],
+    constraint: str,
+) -> None:
+    _, _, image_id = create_dataset_fixture(database_connection)
+
+    savepoint = database_connection.begin_nested()
+    with pytest.raises(IntegrityError, match=constraint):
+        create_annotation(database_connection, image_id, revision_values(**overrides))
+    savepoint.rollback()
 
 
 def test_empty_version_can_be_snapshotted(database_connection: Connection) -> None:

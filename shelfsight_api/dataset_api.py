@@ -63,9 +63,14 @@ class CatalogImportSku(BaseModel):
         return stripped or None
 
 
+ProjectType = Literal["object_detection", "instance_segmentation"]
+
+
 class CreateDatasetRequest(BaseModel):
     name: Annotated[str, Field(min_length=1, max_length=255)]
     description: Annotated[str | None, Field(max_length=4000)] = None
+    # Fixed at creation: it decides whether products are labeled with boxes or outlines.
+    project_type: ProjectType = "object_detection"
     catalog: Annotated[list[CatalogImportSku], Field(max_length=2500)] = Field(
         default_factory=list
     )
@@ -98,6 +103,7 @@ class DatasetResponse(BaseModel):
     id: UUID
     name: str
     description: str | None
+    project_type: ProjectType
     open_version_id: UUID
     imported_skus: int
 
@@ -106,6 +112,7 @@ class DatasetSummaryResponse(BaseModel):
     id: UUID
     name: str
     description: str | None
+    project_type: ProjectType
     created_at: datetime
     open_version_id: UUID | None
     latest_version_id: UUID
@@ -257,6 +264,7 @@ def create_dataset(request: CreateDatasetRequest, user: OwnerUser) -> DatasetRes
                 request.name,
                 request.description,
                 [sku.model_dump() for sku in request.catalog],
+                project_type=request.project_type,
             )
         return DatasetResponse.model_validate(created)
     except DatasetCatalogUpcConflictError as error:

@@ -11,6 +11,7 @@ from sqlalchemy.exc import IntegrityError, SQLAlchemyError
 from shelfsight_api.annotation_service import (
     AnnotationImageNotFoundError,
     InvalidAnnotationGeometryError,
+    InvalidAnnotationPolygonError,
     InvalidAnnotationSkuError,
     InvalidAnnotationStateError,
     accept_image_annotation,
@@ -30,6 +31,7 @@ from shelfsight_api.data_model import (
     StaleAnnotationRevisionError,
 )
 from shelfsight_api.database import get_engine
+from shelfsight_api.models import MAX_POLYGON_POINTS
 
 router = APIRouter(prefix="/api")
 
@@ -48,6 +50,14 @@ class AnnotationFields(BaseModel):
     occluded: bool = False
     truncated: bool = False
     shelf_row: Annotated[int, Field(ge=0)] | None = None
+    # A product outline in an instance segmentation project; the box must be its bounds.
+    polygon: (
+        Annotated[
+            list[tuple[FiniteFloat, FiniteFloat]],
+            Field(min_length=3, max_length=MAX_POLYGON_POINTS),
+        ]
+        | None
+    ) = None
 
 
 class CreateAnnotationRequest(AnnotationFields):
@@ -116,6 +126,7 @@ class AnnotationResponse(BaseModel):
     occluded: bool
     truncated: bool
     shelf_row: int | None
+    polygon: list[tuple[float, float]] | None
     created_at: datetime
     updated_at: datetime
     revision_created_at: datetime
@@ -392,6 +403,12 @@ def _raise_annotation_error(error: Exception) -> None:
         raise api_error(
             status.HTTP_422_UNPROCESSABLE_CONTENT,
             "invalid_geometry",
+            str(error),
+        ) from error
+    if isinstance(error, InvalidAnnotationPolygonError):
+        raise api_error(
+            status.HTTP_422_UNPROCESSABLE_CONTENT,
+            "invalid_polygon",
             str(error),
         ) from error
     if isinstance(error, InvalidAnnotationSkuError):

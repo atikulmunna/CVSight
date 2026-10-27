@@ -11,14 +11,21 @@ from shelfsight_api.data_model import (
     AnnotationNotFoundError,
     StaleAnnotationRevisionError,
     append_annotation_revision,
+    copy_revision_values,
     create_annotation,
+    revision_value_columns,
 )
 from shelfsight_api.models import (
     annotation_records,
     annotation_revisions,
+    datasets,
     images,
     skus,
 )
+
+# How far, in pixels, a box may differ from its outline's bounds. Bounds computed from
+# the same points agree far more closely; this only absorbs float formatting.
+POLYGON_BOUNDS_TOLERANCE = 0.01
 
 
 class AnnotationImageNotFoundError(ValueError):
@@ -27,6 +34,10 @@ class AnnotationImageNotFoundError(ValueError):
 
 class InvalidAnnotationGeometryError(ValueError):
     """Raised when a box is outside canonical image bounds."""
+
+
+class InvalidAnnotationPolygonError(ValueError):
+    """Raised when an outline is not allowed or does not fit its box and image."""
 
 
 class InvalidAnnotationStateError(ValueError):
@@ -53,7 +64,7 @@ def accept_image_annotation(
     ):
         raise InvalidAnnotationStateError("annotation is already accepted")
 
-    revision_values = _copy_revision_values(current)
+    revision_values = copy_revision_values(current)
     revision_values["lifecycle_state"] = "verified"
     revision_values["review_state"] = "accepted"
     revision_values["source"] = "human"
@@ -84,7 +95,7 @@ def reopen_image_annotation(
     if current["lifecycle_state"] != "verified":
         raise InvalidAnnotationStateError("only a verified annotation can be reopened")
 
-    revision_values = _copy_revision_values(current)
+    revision_values = copy_revision_values(current)
     revision_values["lifecycle_state"] = "proposed"
     revision_values["review_state"] = "unreviewed"
     revision_values["source"] = "human"
@@ -119,7 +130,7 @@ def assign_annotation_sku(
         raise InvalidAnnotationSkuError("only product annotations may reference a SKU")
     _require_active_sku(connection, sku_id)
 
-    revision_values = _copy_revision_values(current)
+    revision_values = copy_revision_values(current)
     revision_values["sku_id"] = sku_id
     revision_values["source"] = "human"
     revision_values["provenance"] = _provenance(
@@ -281,7 +292,7 @@ def reject_image_annotation(
     if current["lifecycle_state"] == "rejected":
         raise InvalidAnnotationStateError("annotation is already rejected")
 
-    revision_values = _copy_revision_values(current)
+    revision_values = copy_revision_values(current)
     revision_values["lifecycle_state"] = "rejected"
     revision_values["source"] = "human"
     revision_values["provenance"] = _provenance(actor, "reject", reason=reason)
@@ -319,7 +330,7 @@ def restore_image_annotation(
     if previous is None:
         raise InvalidAnnotationStateError("annotation has no restorable revision")
 
-    revision_values = _copy_revision_values(dict(previous))
+    revision_values = copy_revision_values(dict(previous))
     revision_values["source"] = "human"
     revision_values["provenance"] = _provenance(
         actor,
@@ -351,20 +362,7 @@ def _current_annotation_query() -> Any:
         annotation_records.c.current_revision.label("revision"),
         annotation_records.c.created_at,
         annotation_records.c.updated_at,
-        annotation_revisions.c.x,
-        annotation_revisions.c.y,
-        annotation_revisions.c.width,
-        annotation_revisions.c.height,
-        annotation_revisions.c.class_type,
-        annotation_revisions.c.sku_id,
-        annotation_revisions.c.lifecycle_state,
-        annotation_revisions.c.review_state,
-        annotation_revisions.c.source,
-        annotation_revisions.c.provenance,
-        annotation_revisions.c.confidence,
-        annotation_revisions.c.occluded,
-        annotation_revisions.c.truncated,
-        annotation_revisions.c.shelf_row,
+        *revision_value_columns(),
         annotation_revisions.c.created_at.label("revision_created_at"),
     ).select_from(
         annotation_records.join(
@@ -382,15 +380,21 @@ def _validate_values(
     image_id: UUID,
     values: Mapping[str, Any],
 ) -> None:
-    image_size = connection.execute(
-        select(images.c.canonical_width, images.c.canonical_height).where(
-            images.c.id == image_id
-        )
+    image = connection.execute(
+        select(images.c.canonical_width, images.c.canonical_height, datasets.c.project_type)
+        .join(datasets, datasets.c.id == images.c.dataset_id)
+        .where(images.c.id == image_id)
     ).one_or_none()
-    if image_size is None:
+    if image is None:
         raise AnnotationImageNotFoundError("image does not exist")
 
-    _require_box_inside(values, image_size.canonical_width, image_size.canonical_height)
+    _require_box_inside(values, image.canonical_width, image.canonical_height)
+    _require_valid_polygon(
+        values,
+        image.project_type,
+        image.canonical_width,
+        image.canonical_height,
+    )
 
     sku_id = values.get("sku_id")
     if values["class_type"] != "product" and sku_id is not None:
@@ -419,6 +423,38 @@ def _require_box_inside(values: Mapping[str, Any], image_width: int, image_heigh
         )
 
 
+def _require_valid_polygon(
+    values: Mapping[str, Any],
+    project_type: str,
+    image_width: int,
+    image_height: int,
+) -> None:
+    polygon = values.get("polygon")
+    if polygon is None:
+        return
+    if project_type != "instance_segmentation":
+        raise InvalidAnnotationPolygonError(
+            "only instance segmentation projects store outlines"
+        )
+    if values["class_type"] != "product":
+        raise InvalidAnnotationPolygonError("only product annotations may have an outline")
+    xs = [float(point[0]) for point in polygon]
+    ys = [float(point[1]) for point in polygon]
+    if (
+        not all(math.isfinite(value) and value >= 0 for value in xs + ys)
+        or max(xs) > image_width
+        or max(ys) > image_height
+    ):
+        raise InvalidAnnotationPolygonError("outline must fit inside canonical image bounds")
+    bounds = (min(xs), min(ys), max(xs) - min(xs), max(ys) - min(ys))
+    box = (values["x"], values["y"], values["width"], values["height"])
+    if any(
+        abs(edge - float(box_edge)) > POLYGON_BOUNDS_TOLERANCE
+        for edge, box_edge in zip(bounds, box, strict=True)
+    ):
+        raise InvalidAnnotationPolygonError("box must be the bounds of its outline")
+
+
 def _require_active_sku(connection: Connection, sku_id: UUID) -> None:
     sku_status = connection.execute(
         select(skus.c.status).where(skus.c.id == sku_id)
@@ -433,26 +469,6 @@ def _require_expected_revision(
 ) -> None:
     if current["revision"] != expected_revision:
         raise StaleAnnotationRevisionError("annotation revision is stale")
-
-
-def _copy_revision_values(values: Mapping[str, Any]) -> dict[str, Any]:
-    keys = (
-        "x",
-        "y",
-        "width",
-        "height",
-        "class_type",
-        "sku_id",
-        "lifecycle_state",
-        "review_state",
-        "source",
-        "provenance",
-        "confidence",
-        "occluded",
-        "truncated",
-        "shelf_row",
-    )
-    return {key: values[key] for key in keys}
 
 
 def _provenance(actor: str, action: str, **details: Any) -> dict[str, Any]:

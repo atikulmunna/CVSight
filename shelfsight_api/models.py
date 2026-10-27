@@ -27,15 +27,34 @@ metadata = MetaData()
 
 identifier = UUID(as_uuid=True)
 json_document = JSON().with_variant(JSONB(), "postgresql")
+# For optional documents: Python None is stored as SQL NULL, not as a JSON null value,
+# so "IS NULL" checks and constraints see a missing document as missing.
+optional_json_document = JSON(none_as_null=True).with_variant(
+    JSONB(none_as_null=True), "postgresql"
+)
 
+MAX_POLYGON_POINTS = 1000
+
+# project_type is chosen when a project is created: object_detection projects label
+# products with boxes, instance_segmentation projects with outlines.
 datasets = Table(
     "datasets",
     metadata,
     Column("id", identifier, primary_key=True, server_default=text("gen_random_uuid()")),
     Column("name", String(255), nullable=False),
     Column("description", Text),
+    Column(
+        "project_type",
+        String(32),
+        nullable=False,
+        server_default=text("'object_detection'"),
+    ),
     Column("created_at", DateTime(timezone=True), nullable=False, server_default=func.now()),
     CheckConstraint("btrim(name) <> ''", name="ck_datasets_name_not_blank"),
+    CheckConstraint(
+        "project_type IN ('object_detection', 'instance_segmentation')",
+        name="ck_datasets_project_type",
+    ),
     UniqueConstraint("name", name="uq_datasets_name"),
 )
 
@@ -290,6 +309,8 @@ annotation_revisions = Table(
     Column("occluded", Boolean, nullable=False, server_default=text("false")),
     Column("truncated", Boolean, nullable=False, server_default=text("false")),
     Column("shelf_row", Integer),
+    # A product outline as [[x, y], ...] in canonical image pixels; the box is its bounds.
+    Column("polygon", optional_json_document),
     Column("created_at", DateTime(timezone=True), nullable=False, server_default=func.now()),
     CheckConstraint("revision > 0", name="ck_annotation_revisions_revision_positive"),
     CheckConstraint(
@@ -328,6 +349,15 @@ annotation_revisions = Table(
     CheckConstraint(
         "shelf_row IS NULL OR shelf_row >= 0",
         name="ck_annotation_revisions_shelf_row",
+    ),
+    CheckConstraint(
+        "polygon IS NULL OR class_type = 'product'",
+        name="ck_annotation_revisions_polygon_class",
+    ),
+    CheckConstraint(
+        "polygon IS NULL OR (jsonb_typeof(polygon) = 'array' "
+        f"AND jsonb_array_length(polygon) BETWEEN 3 AND {MAX_POLYGON_POINTS})",
+        name="ck_annotation_revisions_polygon_points",
     ),
 )
 
@@ -548,6 +578,7 @@ dataset_snapshot_annotations = Table(
     Column("occluded", Boolean, nullable=False),
     Column("truncated", Boolean, nullable=False),
     Column("shelf_row", Integer),
+    Column("polygon", optional_json_document),
     ForeignKeyConstraint(
         ["dataset_version_id", "image_id"],
         [

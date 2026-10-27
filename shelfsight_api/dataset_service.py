@@ -82,6 +82,7 @@ def _dataset_summary_query() -> Select[Any]:
             datasets.c.id,
             datasets.c.name,
             datasets.c.description,
+            datasets.c.project_type,
             datasets.c.created_at,
             open_versions.c.id.label("open_version_id"),
             latest_version_id.label("latest_version_id"),
@@ -104,6 +105,8 @@ def create_dataset_with_open_version(
     name: str,
     description: str | None,
     catalog: list[Mapping[str, Any]] | None = None,
+    *,
+    project_type: str = "object_detection",
 ) -> dict[str, Any]:
     # The catalog is shared by every dataset, so a repeated UPC is reported with its
     # value instead of surfacing as a bare constraint violation.
@@ -122,6 +125,7 @@ def create_dataset_with_open_version(
             id=dataset_id,
             name=name,
             description=description,
+            project_type=project_type,
         )
     )
     connection.execute(
@@ -136,6 +140,7 @@ def create_dataset_with_open_version(
         "id": dataset_id,
         "name": name,
         "description": description,
+        "project_type": project_type,
         "open_version_id": version_id,
         "imported_skus": len(catalog or []),
     }

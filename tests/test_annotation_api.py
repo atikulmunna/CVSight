@@ -89,6 +89,98 @@ def create_annotation(
     return response.json()
 
 
+# Its bounds are annotation_payload's box: x 10, y 10, width 20, height 30.
+SQUARE = [[10.0, 10.0], [30.0, 10.0], [30.0, 40.0], [10.0, 40.0]]
+
+
+def use_instance_segmentation(database_engine: Engine, dataset_id: UUID) -> None:
+    with database_engine.begin() as connection:
+        connection.execute(
+            update(datasets)
+            .where(datasets.c.id == dataset_id)
+            .values(project_type="instance_segmentation")
+        )
+
+
+def test_outlines_are_kept_only_for_products_in_segmentation_projects(
+    database_engine: Engine,
+    annotation_target: tuple[UUID, UUID, UUID],
+) -> None:
+    dataset_id, image_id, sku_id = annotation_target
+    url = f"/api/images/{image_id}/annotations"
+    in_detection = client.post(
+        url, headers=ACTOR_HEADERS, json=annotation_payload(sku_id, polygon=SQUARE)
+    )
+    use_instance_segmentation(database_engine, dataset_id)
+
+    created = create_annotation(image_id, sku_id, polygon=SQUARE)
+    rejected = {
+        "gap": annotation_payload(sku_id, polygon=SQUARE, class_type="gap", sku_id=None),
+        "box_not_bounds": annotation_payload(sku_id, polygon=SQUARE, width=25),
+        # The box is inside the image; the outline overshoots within the bounds tolerance.
+        "outside_image": annotation_payload(
+            sku_id,
+            x=80,
+            width=20,
+            polygon=[[80, 10], [100.005, 10], [100.005, 40], [80, 40]],
+        ),
+    }
+    responses = {
+        name: client.post(url, headers=ACTOR_HEADERS, json=payload)
+        for name, payload in rejected.items()
+    }
+    too_few = client.post(
+        url,
+        headers=ACTOR_HEADERS,
+        json=annotation_payload(sku_id, polygon=[[10, 10], [30, 40]]),
+    )
+
+    assert in_detection.status_code == 422
+    assert in_detection.json()["detail"] == {
+        "code": "invalid_polygon",
+        "message": "only instance segmentation projects store outlines",
+    }
+    assert created["polygon"] == SQUARE
+    assert {name: response.json()["detail"]["code"] for name, response in responses.items()} == {
+        "gap": "invalid_polygon",
+        "box_not_bounds": "invalid_polygon",
+        "outside_image": "invalid_polygon",
+    }
+    assert too_few.status_code == 422
+
+
+def test_outline_survives_every_revision_transition(
+    database_engine: Engine,
+    annotation_target: tuple[UUID, UUID, UUID],
+) -> None:
+    dataset_id, image_id, sku_id = annotation_target
+    use_instance_segmentation(database_engine, dataset_id)
+    created = create_annotation(image_id, sku_id, polygon=SQUARE)
+    url = f"/api/annotations/{created['id']}"
+
+    steps = [
+        client.post(f"{url}/accept", headers=ACTOR_HEADERS, json={"expected_revision": 1}),
+        client.post(
+            f"{url}/assign-sku",
+            headers=ACTOR_HEADERS,
+            json={"expected_revision": 2, "sku_id": str(sku_id)},
+        ),
+        client.post(f"{url}/reopen", headers=ACTOR_HEADERS, json={"expected_revision": 3}),
+        client.post(f"{url}/reject", headers=ACTOR_HEADERS, json={"expected_revision": 4}),
+        client.post(f"{url}/restore", headers=ACTOR_HEADERS, json={"expected_revision": 5}),
+    ]
+    # PUT replaces the whole annotation, so an outline the request leaves out is removed.
+    replaced = client.put(
+        url,
+        headers=ACTOR_HEADERS,
+        json=annotation_payload(sku_id, expected_revision=6),
+    )
+
+    assert [step.status_code for step in steps] == [200] * 5
+    assert [step.json()["polygon"] for step in steps] == [SQUARE] * 5
+    assert replaced.json()["polygon"] is None
+
+
 def test_create_and_read_annotation_records_actor_and_provenance(
     database_engine: Engine,
     annotation_target: tuple[UUID, UUID, UUID],

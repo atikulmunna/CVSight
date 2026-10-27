@@ -59,6 +59,39 @@ def test_create_dataset_opens_a_version_and_normalizes_input(
         connection.execute(delete(datasets).where(datasets.c.id == body["id"]))
 
 
+def test_project_type_is_chosen_at_creation_and_defaults_to_detection(
+    database_engine: Engine,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    configure_dataset_api(monkeypatch, database_engine)
+    detection = client.post("/api/datasets", json={"name": f"boxes-{uuid4()}"})
+    segmentation = client.post(
+        "/api/datasets",
+        json={"name": f"outlines-{uuid4()}", "project_type": "instance_segmentation"},
+    )
+    unknown = client.post(
+        "/api/datasets",
+        json={"name": f"points-{uuid4()}", "project_type": "keypoints"},
+    )
+    created_ids = [detection.json()["id"], segmentation.json()["id"]]
+
+    try:
+        listed = {
+            project["id"]: project["project_type"]
+            for project in client.get("/api/datasets").json()
+        }
+        detail = client.get(f"/api/datasets/{segmentation.json()['id']}")
+
+        assert detection.json()["project_type"] == "object_detection"
+        assert segmentation.json()["project_type"] == "instance_segmentation"
+        assert unknown.status_code == 422
+        assert listed[created_ids[0]] == "object_detection"
+        assert detail.json()["project_type"] == "instance_segmentation"
+    finally:
+        with database_engine.begin() as connection:
+            connection.execute(delete(datasets).where(datasets.c.id.in_(created_ids)))
+
+
 def test_project_catalog_import_is_validated_and_transactional(
     database_engine: Engine,
     monkeypatch: pytest.MonkeyPatch,
@@ -383,7 +416,7 @@ def test_dataset_validation_duplicate_and_snapshot_errors_are_stable(
 
     assert snapshot.status_code == 200
     assert snapshot.json()["captured_annotations"] == 0
-    assert snapshot.json()["schema_version"] == "shelfsight-dataset-snapshot/v2"
+    assert snapshot.json()["schema_version"] == "shelfsight-dataset-snapshot/v3"
     assert len(snapshot.json()["content_sha256"]) == 64
     assert repeated.status_code == 409
     assert repeated.json()["detail"]["code"] == "dataset_version_frozen"

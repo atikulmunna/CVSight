@@ -6,7 +6,7 @@ from uuid import UUID
 
 from sqlalchemy import Connection, and_, delete, func, insert, select, update
 
-from shelfsight_api.data_model import append_annotation_revision
+from shelfsight_api.data_model import append_annotation_revision, copy_revision_values
 from shelfsight_api.models import (
     annotation_records,
     annotation_revisions,
@@ -179,22 +179,7 @@ def _repoint_current_annotations(
     ).mappings()
     count = 0
     for row in current_rows:
-        values = {
-            key: row[key]
-            for key in (
-                "x",
-                "y",
-                "width",
-                "height",
-                "class_type",
-                "lifecycle_state",
-                "review_state",
-                "confidence",
-                "occluded",
-                "truncated",
-                "shelf_row",
-            )
-        }
+        values = copy_revision_values(dict(row))
         values.update(
             sku_id=target_id,
             source="human",

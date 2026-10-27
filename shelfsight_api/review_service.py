@@ -10,6 +10,8 @@ from shelfsight_api.annotation_service import get_current_annotation
 from shelfsight_api.data_model import (
     StaleAnnotationRevisionError,
     append_annotation_revision,
+    copy_revision_values,
+    revision_value_columns,
     snapshot_dataset_version,
 )
 from shelfsight_api.models import (
@@ -112,7 +114,7 @@ def record_review_decision(
     if decision == "flag" and "manual_flag" not in risk_codes:
         risk_codes.append("manual_flag")
 
-    revision_values = _copy_revision_values(row)
+    revision_values = copy_revision_values(row)
     revision_values["review_state"] = "accepted" if decision == "approve" else "flagged"
     revision_values["source"] = "human"
     revision_values["provenance"] = {
@@ -242,20 +244,7 @@ def _current_annotation_query() -> Any:
             annotation_records.c.id.label("annotation_id"),
             annotation_records.c.image_id,
             annotation_records.c.current_revision.label("revision"),
-            annotation_revisions.c.x,
-            annotation_revisions.c.y,
-            annotation_revisions.c.width,
-            annotation_revisions.c.height,
-            annotation_revisions.c.class_type,
-            annotation_revisions.c.sku_id,
-            annotation_revisions.c.lifecycle_state,
-            annotation_revisions.c.review_state,
-            annotation_revisions.c.source,
-            annotation_revisions.c.provenance,
-            annotation_revisions.c.confidence,
-            annotation_revisions.c.occluded,
-            annotation_revisions.c.truncated,
-            annotation_revisions.c.shelf_row,
+            *revision_value_columns(),
             images.c.original_filename,
             images.c.canonical_width,
             images.c.canonical_height,
@@ -489,26 +478,6 @@ def _provenance_uuid(value: Any, key: str) -> UUID | None:
 def _risk_reason(code: str) -> dict[str, Any]:
     label, weight = RISK_REASONS[code]
     return {"code": code, "label": label, "weight": weight, "blocking": True}
-
-
-def _copy_revision_values(values: Mapping[str, Any]) -> dict[str, Any]:
-    keys = (
-        "x",
-        "y",
-        "width",
-        "height",
-        "class_type",
-        "sku_id",
-        "lifecycle_state",
-        "review_state",
-        "source",
-        "provenance",
-        "confidence",
-        "occluded",
-        "truncated",
-        "shelf_row",
-    )
-    return {key: values[key] for key in keys}
 
 
 def _queue_response(

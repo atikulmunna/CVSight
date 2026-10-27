@@ -26,7 +26,37 @@ from shelfsight_api.models import (
     snapshot_artifacts,
 )
 
-SNAPSHOT_SCHEMA_VERSION = "shelfsight-dataset-snapshot/v2"
+# v3 adds each annotation's polygon outline.
+SNAPSHOT_SCHEMA_VERSION = "shelfsight-dataset-snapshot/v3"
+
+# Every value an annotation revision carries. Each path that moves an annotation to a
+# new revision copies these forward, so a field added here survives accept, review,
+# propagation, and SKU merges alike.
+REVISION_VALUE_KEYS = (
+    "x",
+    "y",
+    "width",
+    "height",
+    "class_type",
+    "sku_id",
+    "lifecycle_state",
+    "review_state",
+    "source",
+    "provenance",
+    "confidence",
+    "occluded",
+    "truncated",
+    "shelf_row",
+    "polygon",
+)
+
+
+def revision_value_columns() -> list[Any]:
+    return [annotation_revisions.c[key] for key in REVISION_VALUE_KEYS]
+
+
+def copy_revision_values(values: Mapping[str, Any]) -> dict[str, Any]:
+    return {key: values[key] for key in REVISION_VALUE_KEYS}
 
 
 class AnnotationNotFoundError(ValueError):
@@ -162,20 +192,7 @@ def snapshot_dataset_version(
             dataset_version_images.c.image_id,
             annotation_records.c.id.label("annotation_id"),
             annotation_records.c.current_revision.label("annotation_revision"),
-            annotation_revisions.c.x,
-            annotation_revisions.c.y,
-            annotation_revisions.c.width,
-            annotation_revisions.c.height,
-            annotation_revisions.c.class_type,
-            annotation_revisions.c.sku_id,
-            annotation_revisions.c.lifecycle_state,
-            annotation_revisions.c.review_state,
-            annotation_revisions.c.source,
-            annotation_revisions.c.provenance,
-            annotation_revisions.c.confidence,
-            annotation_revisions.c.occluded,
-            annotation_revisions.c.truncated,
-            annotation_revisions.c.shelf_row,
+            *revision_value_columns(),
         )
         .select_from(
             dataset_version_images.join(

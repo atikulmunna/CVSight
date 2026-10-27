@@ -24,6 +24,8 @@ from shelfsight_api.data_model import (
     AnnotationNotFoundError,
     StaleAnnotationRevisionError,
     append_annotation_revision,
+    copy_revision_values,
+    revision_value_columns,
 )
 from shelfsight_api.job_service import (
     JobClaim,
@@ -523,20 +525,7 @@ def _current_annotation_select() -> Any:
             annotation_records.c.id,
             annotation_records.c.image_id,
             annotation_records.c.current_revision.label("revision"),
-            annotation_revisions.c.x,
-            annotation_revisions.c.y,
-            annotation_revisions.c.width,
-            annotation_revisions.c.height,
-            annotation_revisions.c.class_type,
-            annotation_revisions.c.sku_id,
-            annotation_revisions.c.lifecycle_state,
-            annotation_revisions.c.review_state,
-            annotation_revisions.c.source,
-            annotation_revisions.c.provenance,
-            annotation_revisions.c.confidence,
-            annotation_revisions.c.occluded,
-            annotation_revisions.c.truncated,
-            annotation_revisions.c.shelf_row,
+            *revision_value_columns(),
             images.c.dataset_id,
             images.c.content_sha256,
             images.c.canonical_width,
@@ -754,22 +743,7 @@ def _confirm_candidate(
         or _embedding_eligibility_error(candidate) is not None
     ):
         raise StaleAnnotationRevisionError("propagation candidate changed")
-    values = {
-        key: candidate[key]
-        for key in (
-            "x",
-            "y",
-            "width",
-            "height",
-            "class_type",
-            "lifecycle_state",
-            "review_state",
-            "confidence",
-            "occluded",
-            "truncated",
-            "shelf_row",
-        )
-    }
+    values = copy_revision_values(candidate)
     values.update(
         {
             "sku_id": seed["sku_id"],
