@@ -5341,7 +5341,9 @@ kbd {
 /* Top bar */
 
 .topbar {
-  grid-template-columns: minmax(200px, 1fr) auto minmax(0, 1.3fr);
+  /* The status column takes the width it needs, so its chips never slide under the
+     mode tabs; the project path in the brand column truncates instead. */
+  grid-template-columns: minmax(0, 1fr) auto max-content;
   gap: 16px;
   background: var(--surface);
   border-bottom: 1px solid var(--ws-line);
