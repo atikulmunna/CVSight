@@ -1346,7 +1346,18 @@ Canvas controls:
   this browser, except hiding every box, which lasts for the current photo.
 - The drawing tools show a crosshair at the pointer.
 - `M` picks the smart box tool: a click on a product asks SAM 3 for the box around it.
-  It needs the SAM service described in [Smart box](#smart-box).
+  It needs the SAM service described in [Smart box](#smart-box). In an instance
+  segmentation project `M` is the [smart polygon](#smart-polygon) instead.
+- In an instance segmentation project `P` draws a product outline in place of `B`. Each
+  click adds a point on the photo the first click landed on, and an edge follows the
+  pointer from the last one. A click on the first point, or `Enter`, closes the outline
+  once it has three points; `Backspace` takes back the last point and `Escape` cancels.
+  The finished outline is saved like a drawn box, with its bounds as the box.
+- A selected outline shows a handle on every point and a smaller one in the middle of
+  every edge, in place of the box handles. Dragging a point moves it, dragging a
+  middle handle adds a point there, and `Alt` plus a click removes a point, keeping at
+  least three. Dragging inside the outline moves all of it. The box always follows the
+  outline's bounds, and each change is one undo step.
 - `Alt` plus an arrow key nudges the selected box by one pixel.
 - `Alt` plus `Shift` plus an arrow key resizes the selected box by one pixel.
 - `+`, `-`, or the mouse wheel changes zoom.
