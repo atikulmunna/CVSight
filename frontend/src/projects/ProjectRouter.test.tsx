@@ -1,4 +1,4 @@
-import { fireEvent, render, screen, waitFor } from "@testing-library/react";
+import { fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 import { afterEach, describe, expect, it, vi } from "vitest";
 
 import { ProjectRouter } from "./ProjectRouter";
@@ -24,7 +24,7 @@ afterEach(() => {
 });
 
 describe("ProjectRouter", () => {
-  it("shows the project dashboard after sign in", async () => {
+  it("shows the project list after sign in", async () => {
     vi.stubGlobal(
       "fetch",
       vi.fn().mockResolvedValue({ ok: true, json: async () => [PROJECT] }),
@@ -37,12 +37,16 @@ describe("ProjectRouter", () => {
       />,
     );
 
-    expect(screen.getByRole("heading", { name: "Your projects" })).toBeInTheDocument();
-    expect(await screen.findByText("Retail Q3 audit")).toBeInTheDocument();
-    expect(screen.getByText("Dhaka stores")).toBeInTheDocument();
-    expect(screen.getByText("24 shelf images")).toBeInTheDocument();
-    expect(screen.getByText("Object detection")).toBeInTheDocument();
+    expect(screen.getByRole("heading", { name: "Projects" })).toBeInTheDocument();
+    expect(screen.getByRole("searchbox", { name: "Search projects" })).toBeInTheDocument();
     expect(screen.getByRole("button", { name: "New project" })).toBeInTheDocument();
+    const row = await screen.findByRole("row", { name: /Retail Q3 audit/ });
+    expect(within(row).getByRole("rowheader")).toHaveTextContent(/^Retail Q3 audit/);
+    expect(within(row).getByText("Dhaka stores")).toBeInTheDocument();
+    expect(within(row).getByRole("cell", { name: "Object detection" })).toBeInTheDocument();
+    expect(within(row).getByRole("cell", { name: "24" })).toBeInTheDocument();
+    expect(within(row).getByText("Open", { selector: "td" })).toBeInTheDocument();
+    expect(within(row).getByRole("button", { name: "Open Retail Q3 audit" })).toBeEnabled();
   });
 
   it("creates a project and opens its first-image checklist", async () => {
@@ -265,7 +269,7 @@ describe("ProjectRouter", () => {
         onLogout={vi.fn()}
       />,
     );
-    fireEvent.click(await screen.findByRole("button", { name: "Open project" }));
+    fireEvent.click(await screen.findByRole("button", { name: "Open Retail Q3 audit" }));
 
     expect(await screen.findByText("Project overview")).toBeInTheDocument();
     expect(screen.getByRole("heading", { name: "Retail Q3 audit" })).toBeInTheDocument();
@@ -656,7 +660,7 @@ describe("ProjectRouter", () => {
       />,
     );
 
-    expect(await screen.findByRole("heading", { name: "Your projects" })).toBeInTheDocument();
+    expect(await screen.findByRole("heading", { name: "Projects" })).toBeInTheDocument();
   });
 });
 

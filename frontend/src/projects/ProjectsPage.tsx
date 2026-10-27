@@ -18,7 +18,9 @@ import {
 } from "./api";
 import { CatalogCsvError, parseCatalogCsv, type CatalogImportSku } from "./catalogCsv";
 import { loadProjectImages } from "./imagesApi";
+import { ProjectList, type ReviewProgress } from "./ProjectList";
 import { ProjectsHeader } from "./ProjectsHeader";
+import { loadProjectProgress } from "./progressApi";
 
 const PROJECT_TYPE_CHOICES: Array<[ProjectType, string]> = [
   ["object_detection", "Label each product with a box. Smart box draws one from a click."],
@@ -53,6 +55,7 @@ export function ProjectsPage({
   const [search, setSearch] = useState("");
   const [refreshKey, setRefreshKey] = useState(0);
   const [previews, setPreviews] = useState<Record<string, string[]>>({});
+  const [progress, setProgress] = useState<Record<string, ReviewProgress>>({});
 
   useEffect(() => {
     let active = true;
@@ -83,6 +86,26 @@ export function ProjectsPage({
     };
   }, [refreshKey]);
 
+  // Each row fills in on its own, and searching reuses what is already loaded.
+  useEffect(() => {
+    let active = true;
+    for (const project of projects) {
+      loadProjectProgress(project.openVersionId ?? project.latestVersionId)
+        .then(
+          (loaded): ReviewProgress => loaded,
+          (): ReviewProgress => "unavailable",
+        )
+        .then((result) => {
+          if (active) {
+            setProgress((current) => ({ ...current, [project.id]: result }));
+          }
+        });
+    }
+    return () => {
+      active = false;
+    };
+  }, [projects]);
+
   const visibleProjects = useMemo(() => {
     const query = search.trim().toLocaleLowerCase();
     if (!query) {
@@ -112,20 +135,12 @@ export function ProjectsPage({
           />
         ) : (
           <>
-            <section className="projects-heading">
+            <header className="projects-heading">
               <div>
-                <h1>Your projects</h1>
+                <h1>Projects</h1>
                 <p>Create a project for each shelf-audit dataset and annotation run.</p>
               </div>
-              {currentUser.role === "owner" && (
-                <button className="projects-primary-action" type="button" onClick={onNewProject}>
-                  <span aria-hidden="true">+</span> New project
-                </button>
-              )}
-            </section>
-
-            <section className="projects-toolbar" aria-label="Project filters">
-              <label>
+              <label className="projects-search">
                 <span className="sr-only">Search projects</span>
                 <input
                   type="search"
@@ -134,8 +149,12 @@ export function ProjectsPage({
                   onChange={(event) => setSearch(event.target.value)}
                 />
               </label>
-              <span>{projects.length} {projects.length === 1 ? "project" : "projects"}</span>
-            </section>
+              {currentUser.role === "owner" && (
+                <button className="projects-primary-action" type="button" onClick={onNewProject}>
+                  <span aria-hidden="true">+</span> New project
+                </button>
+              )}
+            </header>
 
             {loading ? (
               <ProjectMessage title="Loading projects" detail="Reading your CVSight workspace." />
@@ -154,16 +173,13 @@ export function ProjectsPage({
             ) : visibleProjects.length === 0 ? (
               <ProjectMessage title="No matching projects" detail="Try a different project name or description." />
             ) : (
-              <section className="project-grid" aria-label="Projects">
-                {visibleProjects.map((project) => (
-                  <ProjectCard
-                    key={project.id}
-                    project={project}
-                    previews={previews[project.id] ?? []}
-                    onOpen={onOpenProject}
-                  />
-                ))}
-              </section>
+              <ProjectList
+                projects={visibleProjects}
+                totalProjects={projects.length}
+                previews={previews}
+                progress={progress}
+                onOpen={onOpenProject}
+              />
             )}
           </>
         )}
@@ -328,47 +344,6 @@ function CreateProjectForm({
   );
 }
 
-function ProjectCard({
-  project,
-  previews,
-  onOpen,
-}: {
-  project: ProjectSummary;
-  previews: string[];
-  onOpen: (project: ProjectSummary) => void;
-}) {
-  return (
-    <article className="project-card">
-      <div className={`project-card-preview${previews.length > 0 ? " has-photos" : ""}`}>
-        {previews.length > 0 ? (
-          previews.map((url) => <img key={url} src={url} alt="" loading="lazy" />)
-        ) : (
-          <img src="/cvsight-mark.svg" alt="" />
-        )}
-        <span>{project.imageCount === 0 ? "Ready for images" : `${project.imageCount} shelf ${project.imageCount === 1 ? "image" : "images"}`}</span>
-      </div>
-      <div className="project-card-body">
-        <div>
-          <h2>{project.name}</h2>
-          <p>{project.description ?? "No description added."}</p>
-        </div>
-        <dl>
-          <div><dt>Type</dt><dd>{PROJECT_TYPE_LABELS[project.projectType]}</dd></div>
-          <div><dt>Images</dt><dd>{project.imageCount}</dd></div>
-          <div><dt>Created</dt><dd>{formatProjectDate(project.createdAt)}</dd></div>
-        </dl>
-        <button
-          type="button"
-          disabled={!project.openVersionId}
-          onClick={() => onOpen(project)}
-        >
-          {project.openVersionId ? "Open project" : "No open version"}
-        </button>
-      </div>
-    </article>
-  );
-}
-
 // Previews are decoration: any failure leaves the tile with its placeholder.
 async function loadPreviews(projects: ProjectSummary[]): Promise<Record<string, string[]>> {
   const entries = await Promise.all(
@@ -381,7 +356,7 @@ async function loadPreviews(projects: ProjectSummary[]): Promise<Record<string, 
             project.openVersionId ?? project.latestVersionId,
             null,
             0,
-            3,
+            2,
           );
           return [project.id, page.images.map((image) => image.thumbnailUrl)] as const;
         } catch {
@@ -429,12 +404,4 @@ function projectCreateError(error: unknown): string {
     return "The catalog CSV breaks a catalog rule. Check the rows and try again.";
   }
   return "The project could not be created. Try again.";
-}
-
-function formatProjectDate(value: string): string {
-  return new Intl.DateTimeFormat(undefined, {
-    day: "numeric",
-    month: "short",
-    year: "numeric",
-  }).format(new Date(value));
 }
