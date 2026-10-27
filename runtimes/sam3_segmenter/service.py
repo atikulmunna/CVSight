@@ -151,6 +151,13 @@ def create_app(segmenter: Segmenter, token: str, cache_size: int = 8) -> FastAPI
         cache.move_to_end(image_sha256)
         return encoded
 
+    @app.get("/v1/images/{image_sha256}", status_code=status.HTTP_204_NO_CONTENT)
+    def image_loaded(image_sha256: str, request: Request) -> Response:
+        """204 when the photo's encoding is held, so a caller can skip the upload."""
+        authorize(request)
+        cached(image_sha256)
+        return Response(status_code=status.HTTP_204_NO_CONTENT)
+
     def require_inside(encoded: _Encoded, x: float, y: float) -> None:
         if x >= encoded.width or y >= encoded.height:
             raise _error(status.HTTP_422_UNPROCESSABLE_CONTENT, "point_outside_image")

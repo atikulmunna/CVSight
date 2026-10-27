@@ -4,7 +4,7 @@ from collections.abc import Callable
 from typing import Annotated
 from uuid import UUID
 
-from fastapi import APIRouter, status
+from fastapi import APIRouter, Response, status
 from pydantic import BaseModel, ConfigDict, Field, FiniteFloat, model_validator
 from sqlalchemy.exc import SQLAlchemyError
 
@@ -101,6 +101,14 @@ def smart_polygon(image_id: UUID, request: SmartPolygonRequest) -> SmartPolygonR
         lambda client, image, content: client.polygon_at(image, content, points),
     )
     return SmartPolygonResponse(polygon=outline.points, score=outline.score)
+
+
+@router.post("/images/{image_id}/smart-prepare", status_code=status.HTTP_204_NO_CONTENT)
+def smart_prepare(image_id: UUID) -> Response:
+    """Sends the photo to the SAM service ahead of the first smart click. Nothing is
+    saved."""
+    _ask_segmenter(image_id, lambda client, image, content: client.prepare(content))
+    return Response(status_code=status.HTTP_204_NO_CONTENT)
 
 
 def _ask_segmenter[T](

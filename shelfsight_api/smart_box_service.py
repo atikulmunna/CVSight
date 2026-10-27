@@ -105,6 +105,15 @@ class SegmenterClient:
         }
         return _validated_polygon(self._ask(content, "/v1/polygon", prompt), image)
 
+    def prepare(self, content: bytes) -> None:
+        """Sends the photo unless the service already holds it, so the first click on the
+        photo does not wait for the upload and SAM's encoding."""
+        sha256 = hashlib.sha256(content).hexdigest()
+        try:
+            self._send("GET", f"/v1/images/{sha256}", None, "application/json")
+        except _ImageNotLoaded:
+            self._upload(sha256, content)
+
     def _ask(self, content: bytes, path: str, prompt: dict[str, Any]) -> Any:
         sha256 = hashlib.sha256(content).hexdigest()
         body = json.dumps({"image_sha256": sha256, **prompt}).encode("utf-8")
@@ -117,7 +126,7 @@ class SegmenterClient:
     def _upload(self, sha256: str, content: bytes) -> None:
         self._send("PUT", f"/v1/images/{sha256}", content, "application/octet-stream")
 
-    def _send(self, method: str, path: str, body: bytes, content_type: str) -> Any:
+    def _send(self, method: str, path: str, body: bytes | None, content_type: str) -> Any:
         request = urllib.request.Request(
             self._settings.url + path,
             data=body,

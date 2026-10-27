@@ -149,6 +149,20 @@ def test_refuses_outline_clicks_it_cannot_answer(
     assert segmenter.prompts == [[PromptPoint(2, 15, include=True)]]
 
 
+def test_says_whether_it_holds_a_photo(client: TestClient) -> None:
+    body = png()
+    sha = hashlib.sha256(body).hexdigest()
+
+    before = client.get(f"/v1/images/{sha}", headers=AUTH)
+    upload(client, body)
+    after = client.get(f"/v1/images/{sha}", headers=AUTH)
+
+    assert before.status_code == 404
+    assert before.json() == {"detail": {"code": "image_not_loaded"}}
+    assert after.status_code == 204
+    assert client.get(f"/v1/images/{sha}").status_code == 401
+
+
 def test_rejects_every_request_without_the_token(
     client: TestClient,
     segmenter: FakeSegmenter,

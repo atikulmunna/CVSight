@@ -188,6 +188,20 @@ def test_refuses_an_outline_it_cannot_trust(answer: Any, code: str) -> None:
     assert (raised.value.code, raised.value.status_code) == (code, 502)
 
 
+def test_prepares_a_photo_by_uploading_only_what_the_service_lacks() -> None:
+    opener, sent = scripted(b"", http_error(404, {"detail": {"code": "image_not_loaded"}}), b"")
+    segmenter = SegmenterClient(SETTINGS, opener=opener)
+
+    segmenter.prepare(b"held")
+    segmenter.prepare(b"photo")
+
+    checksum = hashlib.sha256(b"photo").hexdigest()
+    assert [request.get_method() for request in sent] == ["GET", "GET", "PUT"]
+    assert sent[0].full_url.endswith(hashlib.sha256(b"held").hexdigest())
+    assert sent[2].full_url == f"http://segmenter.test/v1/images/{checksum}"
+    assert sent[2].data == b"photo"
+
+
 def test_refuses_a_point_outside_the_image_without_calling_the_service() -> None:
     opener, sent = scripted()
 
@@ -225,6 +239,17 @@ class FakeSegmenter:
             points=[(first.x - 10, first.y - 10), (right, first.y - 10), (first.x, first.y + 10)],
             score=0.6,
         )
+
+
+def connect_runtime(monkeypatch: pytest.MonkeyPatch, segmenter: FakeSegmenter) -> None:
+    """Points the API at the real service app, run in process around a fake SAM."""
+    runtime = TestClient(create_app(segmenter, TOKEN))
+    monkeypatch.setenv(SEGMENTER_URL_ENV, "http://segmenter.test")
+    monkeypatch.setenv(SEGMENTER_TOKEN_ENV, TOKEN)
+    monkeypatch.setattr(
+        "shelfsight_api.smart_box_api.segmenter_client",
+        lambda settings: SegmenterClient(settings, opener=runtime_opener(runtime)),
+    )
 
 
 def runtime_opener(runtime: TestClient) -> Callable[..., Any]:
@@ -291,13 +316,7 @@ def test_finds_the_box_under_a_click_through_the_service(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     segmenter = FakeSegmenter()
-    runtime = TestClient(create_app(segmenter, TOKEN))
-    monkeypatch.setenv(SEGMENTER_URL_ENV, "http://segmenter.test")
-    monkeypatch.setenv(SEGMENTER_TOKEN_ENV, TOKEN)
-    monkeypatch.setattr(
-        "shelfsight_api.smart_box_api.segmenter_client",
-        lambda settings: SegmenterClient(settings, opener=runtime_opener(runtime)),
-    )
+    connect_runtime(monkeypatch, segmenter)
     annotator = {"X-ShelfSight-Actor": "annotator:test"}
     url = f"/api/images/{photo}/smart-box"
 
@@ -319,13 +338,7 @@ def test_outlines_the_object_under_clicks_through_the_service(
     photo: UUID,
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    runtime = TestClient(create_app(FakeSegmenter(), TOKEN))
-    monkeypatch.setenv(SEGMENTER_URL_ENV, "http://segmenter.test")
-    monkeypatch.setenv(SEGMENTER_TOKEN_ENV, TOKEN)
-    monkeypatch.setattr(
-        "shelfsight_api.smart_box_api.segmenter_client",
-        lambda settings: SegmenterClient(settings, opener=runtime_opener(runtime)),
-    )
+    connect_runtime(monkeypatch, FakeSegmenter())
     url = f"/api/images/{photo}/smart-polygon"
     included = {"x": 40, "y": 30, "include": True}
     excluded = {"x": 48, "y": 30, "include": False}
@@ -342,6 +355,23 @@ def test_outlines_the_object_under_clicks_through_the_service(
     assert only_excluded.status_code == 422
     assert too_many.status_code == 422
     assert outside.json()["detail"]["code"] == "point_outside_image"
+
+
+def test_prepares_a_photo_once_ahead_of_the_first_click(
+    photo: UUID,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    segmenter = FakeSegmenter()
+    connect_runtime(monkeypatch, segmenter)
+
+    first = client.post(f"/api/images/{photo}/smart-prepare")
+    again = client.post(f"/api/images/{photo}/smart-prepare")
+    click = client.post(f"/api/images/{photo}/smart-box", json={"x": 40, "y": 30})
+    missing = client.post(f"/api/images/{uuid4()}/smart-prepare")
+
+    assert (first.status_code, again.status_code, click.status_code) == (204, 204, 200)
+    assert segmenter.encoded == 1
+    assert missing.json()["detail"]["code"] == "image_not_found"
 
 
 def test_says_when_no_smart_box_service_is_configured(
