@@ -25,8 +25,10 @@ from shelfsight_api.models import (
     review_decisions,
     skus,
 )
+from shelfsight_api.sku_service import get_sku
 
 MODEL_AGREEMENT_IOU_THRESHOLD = 0.75
+MAX_LINEUP_ITEMS = 200
 
 RISK_REASONS: dict[str, tuple[str, int]] = {
     "annotation_flagged": ("Annotation is flagged", 120),
@@ -181,6 +183,52 @@ def sign_off_dataset_version(
         .returning(dataset_review_signoffs)
     ).mappings().one()
     return dict(signoff)
+
+
+def list_sku_lineup(
+    connection: Connection,
+    dataset_version_id: UUID,
+    sku_id: UUID,
+) -> dict[str, Any]:
+    """Every accepted product box of one SKU across the version's photos, so a reviewer
+    can compare them side by side. A frozen version is read through the current
+    revisions of its images too."""
+    _version(connection, dataset_version_id)
+    sku = get_sku(connection, sku_id)
+    rows = connection.execute(
+        _current_annotation_query()
+        .where(
+            dataset_version_images.c.dataset_version_id == dataset_version_id,
+            annotation_revisions.c.class_type == "product",
+            annotation_revisions.c.lifecycle_state == "verified",
+            annotation_revisions.c.review_state == "accepted",
+            annotation_revisions.c.sku_id == sku_id,
+        )
+        .order_by(
+            images.c.original_filename,
+            images.c.id,
+            annotation_revisions.c.x,
+            annotation_records.c.id,
+        )
+        .limit(MAX_LINEUP_ITEMS + 1)
+    ).mappings().all()
+    return {
+        "dataset_version_id": dataset_version_id,
+        "sku": sku,
+        "items": [_lineup_item(dict(row)) for row in rows[:MAX_LINEUP_ITEMS]],
+        "truncated": len(rows) > MAX_LINEUP_ITEMS,
+    }
+
+
+def _lineup_item(row: Mapping[str, Any]) -> dict[str, Any]:
+    revision = int(row["revision"])
+    return {
+        "annotation_id": row["annotation_id"],
+        "revision": revision,
+        "image_id": row["image_id"],
+        "image_name": row["original_filename"],
+        "crop_url": f"/api/annotations/{row['annotation_id']}/crop?revision={revision}",
+    }
 
 
 def _version(

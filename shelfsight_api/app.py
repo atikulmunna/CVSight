@@ -67,7 +67,9 @@ async def add_api_security_headers(
 ) -> Response:
     response = await call_next(request)
     if request.url.path.startswith("/api/"):
-        response.headers["Cache-Control"] = "private, no-store"
+        # A route that serves immutable content, such as a crop of a pinned revision, may
+        # allow private caching; everything else stays out of every cache.
+        response.headers.setdefault("Cache-Control", "private, no-store")
         response.headers["X-Content-Type-Options"] = "nosniff"
     return response
 

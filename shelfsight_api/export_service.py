@@ -13,7 +13,7 @@ from typing import Any, Literal
 from uuid import UUID
 from zipfile import ZIP_DEFLATED, BadZipFile, ZipFile, ZipInfo
 
-from PIL import Image, UnidentifiedImageError
+from PIL import Image
 from sqlalchemy import Connection, select
 
 from shelfsight_api.dataset_formats import ExportBox, ExportImage, write_dataset
@@ -25,7 +25,11 @@ from shelfsight_api.export_split import (
     normalize_split,
 )
 from shelfsight_api.geometry import pixel_crop_bounds
-from shelfsight_api.media import resolve_media_path
+from shelfsight_api.media import (
+    MediaValidationError,
+    open_canonical_image,
+    read_canonical_media,
+)
 from shelfsight_api.models import (
     dataset_snapshot_annotations,
     dataset_snapshot_images,
@@ -648,33 +652,24 @@ def _open_canonical_image(
     media_root: Path,
     image: Mapping[str, Any],
 ) -> Image.Image:
-    content = _read_canonical_media(media_root, image)
     try:
-        opened = Image.open(BytesIO(content))
-        opened.load()
-    except (OSError, UnidentifiedImageError) as error:
-        raise ExportMediaError("canonical image cannot be decoded") from error
-    if opened.size != (
-        int(image["canonical_width"]),
-        int(image["canonical_height"]),
-    ):
-        opened.close()
-        raise ExportMediaError("canonical image dimensions do not match metadata")
-    return opened
+        return open_canonical_image(
+            media_root,
+            str(image["canonical_media_key"]),
+            (int(image["canonical_width"]), int(image["canonical_height"])),
+        )
+    except MediaValidationError as error:
+        raise ExportMediaError(str(error)) from error
 
 
 def _read_canonical_media(
     media_root: Path,
     image: Mapping[str, Any],
 ) -> bytes:
-    path = resolve_media_path(media_root, str(image["canonical_media_key"]))
     try:
-        content = path.read_bytes()
-    except OSError as error:
-        raise ExportMediaError("canonical image is missing") from error
-    if not content:
-        raise ExportMediaError("canonical image is empty")
-    return content
+        return read_canonical_media(media_root, str(image["canonical_media_key"]))
+    except MediaValidationError as error:
+        raise ExportMediaError(str(error)) from error
 
 
 def _manifest_bytes(

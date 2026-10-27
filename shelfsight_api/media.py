@@ -46,6 +46,10 @@ class UnsafePathError(MediaValidationError):
     code = "unsafe_path"
 
 
+class MediaMissingError(MediaValidationError):
+    code = "media_missing"
+
+
 @dataclass(frozen=True)
 class PreparedImage:
     original_bytes: bytes
@@ -143,7 +147,7 @@ def prepare_image(
     extension, media_type = SUPPORTED_FORMATS[image_format]
     canonical = _canonical_mode(canonical, image_format)
     canonical_bytes = _encode_canonical(canonical, image_format)
-    thumbnail_bytes = _encode_thumbnail(canonical, thumbnail_size)
+    thumbnail_bytes = encode_thumbnail(canonical, thumbnail_size)
     prefix = digest[:2]
 
     return PreparedImage(
@@ -208,6 +212,36 @@ def resolve_media_path(media_root: Path, media_key: str) -> Path:
     return resolved
 
 
+def read_canonical_media(media_root: Path, media_key: str) -> bytes:
+    path = resolve_media_path(media_root, media_key)
+    try:
+        content = path.read_bytes()
+    except OSError as error:
+        raise MediaMissingError("canonical image is missing") from error
+    if not content:
+        raise CorruptImageError("canonical image is empty")
+    return content
+
+
+def open_canonical_image(
+    media_root: Path,
+    media_key: str,
+    size: tuple[int, int],
+) -> Image.Image:
+    """The decoded canonical image. Boxes are stored in canonical pixels, so a file whose
+    size differs from the size recorded at ingest cannot be cropped safely."""
+    content = read_canonical_media(media_root, media_key)
+    try:
+        opened = Image.open(BytesIO(content))
+        opened.load()
+    except (OSError, UnidentifiedImageError) as error:
+        raise CorruptImageError("canonical image cannot be decoded") from error
+    if opened.size != size:
+        opened.close()
+        raise CorruptImageError("canonical image dimensions do not match metadata")
+    return opened
+
+
 def resolve_import_path(import_root: Path, relative_path: str) -> Path:
     resolved = resolve_import_location(import_root, relative_path)
     if not resolved.is_file():
@@ -261,7 +295,7 @@ def _encode_canonical(image: Image.Image, image_format: str) -> bytes:
     return output.getvalue()
 
 
-def _encode_thumbnail(image: Image.Image, max_size: int) -> bytes:
+def encode_thumbnail(image: Image.Image, max_size: int) -> bytes:
     thumbnail = image.copy()
     thumbnail.thumbnail((max_size, max_size), Image.Resampling.LANCZOS)
     if thumbnail.mode != "RGB":

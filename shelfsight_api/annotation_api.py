@@ -4,10 +4,15 @@ from datetime import datetime
 from typing import Annotated, Any, Literal
 from uuid import UUID
 
-from fastapi import APIRouter, status
+from fastapi import APIRouter, Query, Response, status
 from pydantic import BaseModel, Field, FiniteFloat, PositiveInt
 from sqlalchemy.exc import IntegrityError, SQLAlchemyError
 
+from shelfsight_api.annotation_crop import (
+    AnnotationRevisionNotFoundError,
+    crop_source,
+    render_crop,
+)
 from shelfsight_api.annotation_service import (
     AnnotationImageNotFoundError,
     InvalidAnnotationGeometryError,
@@ -26,11 +31,13 @@ from shelfsight_api.annotation_service import (
 )
 from shelfsight_api.api_errors import api_error
 from shelfsight_api.auth import AnnotationActor
+from shelfsight_api.config import ConfigurationError, get_media_root
 from shelfsight_api.data_model import (
     AnnotationNotFoundError,
     StaleAnnotationRevisionError,
 )
 from shelfsight_api.database import get_engine
+from shelfsight_api.media import MediaMissingError, MediaValidationError
 from shelfsight_api.models import MAX_POLYGON_POINTS
 
 router = APIRouter(prefix="/api")
@@ -165,6 +172,29 @@ def annotation(annotation_id: UUID) -> AnnotationResponse:
     except Exception as error:
         _raise_annotation_error(error)
         raise
+
+
+@router.get(
+    "/annotations/{annotation_id}/crop",
+    response_class=Response,
+    responses={status.HTTP_200_OK: {"content": {"image/jpeg": {}}}},
+)
+def annotation_crop(
+    annotation_id: UUID,
+    # The revision column is a 32-bit integer.
+    revision: Annotated[int | None, Query(ge=1, le=2_147_483_647)] = None,
+) -> Response:
+    """A small JPEG of the box with some shelf around it. A named revision never changes,
+    so the browser may keep its crop for a day."""
+    try:
+        with get_engine().connect() as connection:
+            source = crop_source(connection, annotation_id, revision)
+        content = render_crop(get_media_root(), source)
+    except Exception as error:
+        _raise_crop_error(error)
+        raise
+    cache_control = "private, no-store" if revision is None else "private, max-age=86400"
+    return Response(content, media_type="image/jpeg", headers={"Cache-Control": cache_control})
 
 
 @router.post(
@@ -372,6 +402,34 @@ def batch_annotations(
     except Exception as error:
         _raise_annotation_error(error)
         raise
+
+
+def _raise_crop_error(error: Exception) -> None:
+    if isinstance(error, AnnotationRevisionNotFoundError):
+        raise api_error(
+            status.HTTP_404_NOT_FOUND,
+            "annotation_revision_not_found",
+            "annotation revision does not exist",
+        ) from error
+    if isinstance(error, MediaMissingError):
+        raise api_error(
+            status.HTTP_404_NOT_FOUND,
+            "media_missing",
+            "managed image file does not exist",
+        ) from error
+    if isinstance(error, MediaValidationError):
+        raise api_error(
+            status.HTTP_422_UNPROCESSABLE_CONTENT,
+            error.code,
+            str(error),
+        ) from error
+    if isinstance(error, (ConfigurationError, OSError)):
+        raise api_error(
+            status.HTTP_503_SERVICE_UNAVAILABLE,
+            "storage_unavailable",
+            "managed storage is unavailable",
+        ) from error
+    _raise_annotation_error(error)
 
 
 def _raise_annotation_error(error: Exception) -> None:

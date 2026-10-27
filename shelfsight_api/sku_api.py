@@ -232,7 +232,7 @@ def upload_sku_reference_image(
             sku_id,
             prepared,
         )
-        return _reference_response(get_sku_reference(engine, ingested.id))
+        return reference_response(get_sku_reference(engine, ingested.id))
     except Exception as error:
         _raise_sku_error(error)
         raise
@@ -263,7 +263,7 @@ def sku_reference_media(
 
 def _sku_response(row: dict[str, Any]) -> SkuResponse:
     references = [
-        _reference_response(reference)
+        reference_response(reference)
         for reference in row.get("reference_images", [])
         if isinstance(reference, dict)
     ]
@@ -271,7 +271,7 @@ def _sku_response(row: dict[str, Any]) -> SkuResponse:
     return SkuResponse.model_validate(values)
 
 
-def _reference_response(row: dict[str, Any]) -> ReferenceImageResponse:
+def reference_response(row: dict[str, Any]) -> ReferenceImageResponse:
     reference_id = UUID(str(row["id"]))
     return ReferenceImageResponse.model_validate({**row, **_reference_urls(reference_id)})
 

@@ -19,9 +19,12 @@ from shelfsight_api.review_service import (
     ReviewVersionFrozenError,
     ReviewVersionNotFoundError,
     list_review_queue,
+    list_sku_lineup,
     record_review_decision,
     sign_off_dataset_version,
 )
+from shelfsight_api.sku_api import ReferenceImageResponse, reference_response
+from shelfsight_api.sku_service import SkuNotFoundError
 
 router = APIRouter(prefix="/api")
 
@@ -106,6 +109,28 @@ class ReviewDecisionResponse(BaseModel):
     decision: ReviewDecisionRecordResponse
 
 
+class SkuLineupSkuResponse(BaseModel):
+    id: UUID
+    name: str
+    reference_images: list[ReferenceImageResponse]
+
+
+class SkuLineupItemResponse(BaseModel):
+    annotation_id: UUID
+    revision: int
+    image_id: UUID
+    image_name: str
+    crop_url: str
+
+
+class SkuLineupResponse(BaseModel):
+    dataset_version_id: UUID
+    sku: SkuLineupSkuResponse
+    items: list[SkuLineupItemResponse]
+    # True when the SKU has more accepted boxes than the lineup shows.
+    truncated: bool
+
+
 @router.get(
     "/dataset-versions/{dataset_version_id}/review-queue",
     response_model=ReviewQueueResponse,
@@ -125,6 +150,33 @@ def review_queue(
     except Exception as error:
         _raise_review_error(error)
         raise
+
+
+@router.get(
+    "/dataset-versions/{dataset_version_id}/sku-lineup",
+    response_model=SkuLineupResponse,
+)
+def sku_lineup(
+    dataset_version_id: UUID,
+    sku_id: Annotated[UUID, Query()],
+) -> SkuLineupResponse:
+    try:
+        with get_engine().connect() as connection:
+            result = list_sku_lineup(connection, dataset_version_id, sku_id)
+    except Exception as error:
+        _raise_review_error(error)
+        raise
+    sku = result["sku"]
+    return SkuLineupResponse(
+        dataset_version_id=result["dataset_version_id"],
+        sku=SkuLineupSkuResponse(
+            id=sku["id"],
+            name=sku["name"],
+            reference_images=[reference_response(row) for row in sku["reference_images"]],
+        ),
+        items=[SkuLineupItemResponse.model_validate(item) for item in result["items"]],
+        truncated=result["truncated"],
+    )
 
 
 @router.post(
@@ -177,6 +229,12 @@ def _raise_review_error(error: Exception) -> None:
             status.HTTP_404_NOT_FOUND,
             "dataset_version_not_found",
             "dataset version does not exist",
+        ) from error
+    if isinstance(error, SkuNotFoundError):
+        raise api_error(
+            status.HTTP_404_NOT_FOUND,
+            "sku_not_found",
+            "SKU does not exist",
         ) from error
     if isinstance(error, ReviewAnnotationNotFoundError):
         raise api_error(
