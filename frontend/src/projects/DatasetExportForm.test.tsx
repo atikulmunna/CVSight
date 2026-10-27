@@ -30,6 +30,17 @@ describe("training dataset export", () => {
     );
   });
 
+  it("offers YOLO segmentation for product outlines", () => {
+    render(<DatasetExportForm versionId={VERSION_ID} generated={[]} />);
+
+    fireEvent.change(screen.getByLabelText("Format"), { target: { value: "yolo-seg" } });
+
+    expect(screen.getByRole("link", { name: "Download YOLO segmentation ZIP" })).toHaveAttribute(
+      "href",
+      `${BASE}/yolo-seg?classes=product&split=70%2C20%2C10`,
+    );
+  });
+
   it("replaces the download with the problem while the split is invalid", () => {
     render(<DatasetExportForm versionId={VERSION_ID} generated={[]} />);
 

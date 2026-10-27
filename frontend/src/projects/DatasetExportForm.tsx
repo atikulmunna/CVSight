@@ -13,6 +13,7 @@ import {
 const FORMAT_LABELS: Record<TrainingFormat, string> = {
   coco: "COCO JSON",
   yolo: "YOLO",
+  "yolo-seg": "YOLO segmentation",
   csv: "CSV",
   createml: "CreateML JSON",
   tfrecord: "TFRecord",

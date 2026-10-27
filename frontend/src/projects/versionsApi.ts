@@ -1,5 +1,5 @@
 export type ProjectVersionStatus = "working" | "released" | "frozen";
-export const TRAINING_FORMATS = ["coco", "yolo", "csv", "createml", "tfrecord"] as const;
+export const TRAINING_FORMATS = ["coco", "yolo", "yolo-seg", "csv", "createml", "tfrecord"] as const;
 export type TrainingFormat = (typeof TRAINING_FORMATS)[number];
 export type ProjectExportType = "detection" | "recognition" | TrainingFormat;
 export type ClassMode = "product" | "sku";

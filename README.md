@@ -985,7 +985,7 @@ Only immutable, snapshotted dataset versions can be exported:
 - `GET /api/dataset-versions/{version_id}/exports/detection`
 - `GET /api/dataset-versions/{version_id}/exports/recognition`
 - `GET /api/dataset-versions/{version_id}/exports/{format}?classes=product&split=70,20,10`
-  for the training formats `coco`, `yolo`, `csv`, `createml`, and `tfrecord`
+  for the training formats `coco`, `yolo`, `yolo-seg`, `csv`, `createml`, and `tfrecord`
 
 Every route returns a deterministic ZIP file with `manifest.json`. The manifest records
 the dataset and version identifiers, snapshot timestamp, artifact schema, export
@@ -1010,9 +1010,17 @@ format, a class mode, and split percentages.
 | --- | --- |
 | COCO JSON | `train/`, `valid/`, `test/`, each with its images and `_annotations.coco.json` |
 | YOLO | `images/` and `labels/` with `train`, `val`, and `test` folders, plus `data.yaml` |
+| YOLO segmentation | the YOLO layout, with one polygon per label line: `class x1 y1 ... xn yn`, normalized to the photo |
 | CSV | one folder per split with its images and `_annotations.csv`: one row per box with `filename,width,height,class,xmin,ymin,xmax,ymax` in pixels |
 | CreateML JSON | one folder per split with its images and `_annotations.createml.json`, boxes by center |
 | TFRecord | `train/train.tfrecord` and the other splits, plus `label_map.pbtxt`, using the TensorFlow Object Detection API feature names |
+
+Product outlines from instance segmentation projects travel with their boxes. In COCO
+each annotation carries a `segmentation`: the outline's points, with the outline's area
+as `area`, or an empty list for a box without an outline. YOLO segmentation cannot mix
+boxes and polygons in one label file, so a box without an outline, such as a gap or a
+shelf label, is written as its four corners. CSV, CreateML, TFRecord, and plain YOLO
+hold boxes only. `manifest.json` counts the outlined annotations.
 
 `classes=product` names boxes by class type (product, gap, shelf label) in that fixed
 order. `classes=sku` names each product box by its SKU, the way Roboflow exports a
