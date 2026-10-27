@@ -18,6 +18,7 @@ from shelfsight_api.config import (
 from shelfsight_api.database import get_engine
 from shelfsight_api.media import resolve_media_path
 from shelfsight_api.smart_box_service import (
+    Exemplar,
     PromptPoint,
     SegmenterClient,
     SmartBoxError,
@@ -26,6 +27,7 @@ from shelfsight_api.smart_box_service import (
 )
 
 MAX_PROMPT_POINTS = 16
+MAX_EXEMPLARS = 8
 
 router = APIRouter(prefix="/api")
 
@@ -70,6 +72,33 @@ class SmartPolygonResponse(BaseModel):
     score: float
 
 
+class SmartFindExemplar(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    x: Annotated[FiniteFloat, Field(ge=0)]
+    y: Annotated[FiniteFloat, Field(ge=0)]
+    width: Annotated[FiniteFloat, Field(gt=0)]
+    height: Annotated[FiniteFloat, Field(gt=0)]
+
+
+class SmartFindRequest(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    text: str | None = Field(default=None, max_length=200)
+    exemplars: list[SmartFindExemplar] = Field(default_factory=list, max_length=MAX_EXEMPLARS)
+    threshold: Annotated[FiniteFloat, Field(ge=0.05, le=0.95)] = 0.5
+
+    @model_validator(mode="after")
+    def _requires_a_prompt(self) -> SmartFindRequest:
+        if not (self.text and self.text.strip()) and not self.exemplars:
+            raise ValueError("a phrase or at least one example box is required")
+        return self
+
+
+class SmartFindResponse(BaseModel):
+    objects: list[SmartPolygonResponse]
+
+
 def segmenter_client(settings: SegmenterSettings) -> SegmenterClient:
     return SegmenterClient(settings)
 
@@ -101,6 +130,23 @@ def smart_polygon(image_id: UUID, request: SmartPolygonRequest) -> SmartPolygonR
         lambda client, image, content: client.polygon_at(image, content, points),
     )
     return SmartPolygonResponse(polygon=outline.points, score=outline.score)
+
+
+@router.post("/images/{image_id}/smart-find", response_model=SmartFindResponse)
+def smart_find(image_id: UUID, request: SmartFindRequest) -> SmartFindResponse:
+    """The outlines of every object on the photo that matches a phrase, example boxes, or
+    both, best first. Nothing is saved; the canvas offers them as proposals."""
+    text = request.text.strip() if request.text and request.text.strip() else None
+    exemplars = [Exemplar(item.x, item.y, item.width, item.height) for item in request.exemplars]
+    found = _ask_segmenter(
+        image_id,
+        lambda client, image, content: client.find_all(
+            image, content, text, exemplars, request.threshold
+        ),
+    )
+    return SmartFindResponse(
+        objects=[SmartPolygonResponse(polygon=item.points, score=item.score) for item in found]
+    )
 
 
 @router.post("/images/{image_id}/smart-prepare", status_code=status.HTTP_204_NO_CONTENT)

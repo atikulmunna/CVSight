@@ -18,6 +18,7 @@ from sqlalchemy import Engine, delete, insert
 
 from runtimes.sam3_segmenter.service import (
     PromptPoint,
+    Region,
     SegmentedBox,
     SegmentedPolygon,
     create_app,
@@ -31,8 +32,13 @@ from shelfsight_api.config import (
     get_segmenter_settings,
 )
 from shelfsight_api.models import datasets, images
+from shelfsight_api.smart_box_service import (
+    Exemplar,
+    SegmenterClient,
+    SmartBoxError,
+    SmartBoxImage,
+)
 from shelfsight_api.smart_box_service import PromptPoint as ClickPoint
-from shelfsight_api.smart_box_service import SegmenterClient, SmartBoxError, SmartBoxImage
 
 client = TestClient(app)
 TOKEN = "s" * 40
@@ -202,6 +208,33 @@ def test_prepares_a_photo_by_uploading_only_what_the_service_lacks() -> None:
     assert sent[2].data == b"photo"
 
 
+def test_finds_objects_by_phrase_and_example_and_checks_every_outline() -> None:
+    opener, sent = scripted(
+        json.dumps({"objects": [{"polygon": TRIANGLE, "score": 0.8}]}).encode(),
+        json.dumps({"objects": [{"polygon": TRIANGLE[:2], "score": 0.8}]}).encode(),
+    )
+    segmenter = SegmenterClient(SETTINGS, opener=opener)
+    example = Exemplar(10, 12, 20, 30)
+
+    found = segmenter.find_all(IMAGE, b"photo", "bottle", [example], 0.4)
+    with pytest.raises(SmartBoxError) as malformed:
+        segmenter.find_all(IMAGE, b"photo", None, [example], 0.5)
+    with pytest.raises(SmartBoxError) as outside:
+        segmenter.find_all(IMAGE, b"photo", None, [Exemplar(90, 12, 20, 30)], 0.5)
+
+    assert [(item.points, item.score) for item in found] == [([(10, 12), (30, 12), (20, 42)], 0.8)]
+    assert sent[0].full_url == "http://segmenter.test/v1/find"
+    assert json.loads(sent[0].data or b"") == {
+        "image_sha256": hashlib.sha256(b"photo").hexdigest(),
+        "text": "bottle",
+        "exemplars": [{"x": 10, "y": 12, "width": 20, "height": 30}],
+        "threshold": 0.4,
+    }
+    assert malformed.value.code == "segmenter_failed"
+    assert outside.value.code == "exemplar_outside_image"
+    assert len(sent) == 2
+
+
 def test_refuses_a_point_outside_the_image_without_calling_the_service() -> None:
     opener, sent = scripted()
 
@@ -230,6 +263,20 @@ class FakeSegmenter:
 
     def segment(self, encoded: Any, x: float, y: float) -> SegmentedBox | None:
         return SegmentedBox(x=x - 5, y=y - 5, width=10, height=10, score=0.75)
+
+    def find(
+        self,
+        encoded: Any,
+        text: str | None,
+        exemplars: Sequence[Region],
+        threshold: float,
+    ) -> list[SegmentedPolygon]:
+        # One object per example box, and one more for a phrase.
+        squares = [(box.x + 30, box.y) for box in exemplars] + ([(5, 5)] if text else [])
+        return [
+            SegmentedPolygon(points=[(x, y), (x + 10, y), (x + 10, y + 10), (x, y + 10)], score=0.7)
+            for x, y in squares
+        ]
 
     def outline(self, encoded: Any, points: Sequence[PromptPoint]) -> SegmentedPolygon | None:
         # Each excluded click trims the right edge, so the test sees every click arrive.
@@ -355,6 +402,29 @@ def test_outlines_the_object_under_clicks_through_the_service(
     assert only_excluded.status_code == 422
     assert too_many.status_code == 422
     assert outside.json()["detail"]["code"] == "point_outside_image"
+
+
+def test_finds_objects_on_a_photo_through_the_service(
+    photo: UUID,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    connect_runtime(monkeypatch, FakeSegmenter())
+    url = f"/api/images/{photo}/smart-find"
+    example = {"x": 10, "y": 20, "width": 15, "height": 25}
+
+    found = client.post(url, json={"text": " bottle ", "exemplars": [example]})
+    no_prompt = client.post(url, json={"text": "  "})
+    outside = client.post(url, json={"exemplars": [{**example, "x": 90}]})
+
+    assert found.status_code == 200
+    assert found.json() == {
+        "objects": [
+            {"polygon": [[40, 20], [50, 20], [50, 30], [40, 30]], "score": 0.7},
+            {"polygon": [[5, 5], [15, 5], [15, 15], [5, 15]], "score": 0.7},
+        ]
+    }
+    assert no_prompt.status_code == 422
+    assert outside.json()["detail"]["code"] == "exemplar_outside_image"
 
 
 def test_prepares_a_photo_once_ahead_of_the_first_click(

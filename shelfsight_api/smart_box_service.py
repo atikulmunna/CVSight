@@ -15,8 +15,9 @@ from sqlalchemy import Connection, select
 from shelfsight_api.config import SegmenterSettings
 from shelfsight_api.models import MAX_POLYGON_POINTS, images
 
-# A full outline is about 25 bytes a point.
-MAX_SEGMENTER_RESPONSE_BYTES = 64 * 1024
+# A find answers with up to 300 outlines of up to 1,000 points, about 25 bytes a point.
+MAX_SEGMENTER_RESPONSE_BYTES = 8 * 1024 * 1024
+MAX_FOUND_OBJECTS = 300
 
 
 class SmartBoxError(RuntimeError):
@@ -56,6 +57,16 @@ class PromptPoint:
 class SmartPolygon:
     points: list[tuple[float, float]]
     score: float
+
+
+@dataclass(frozen=True)
+class Exemplar:
+    """An example box, in pixels, of the objects to find."""
+
+    x: float
+    y: float
+    width: float
+    height: float
 
 
 def smart_box_image(connection: Connection, image_id: UUID) -> SmartBoxImage:
@@ -113,6 +124,36 @@ class SegmenterClient:
             self._send("GET", f"/v1/images/{sha256}", None, "application/json")
         except _ImageNotLoaded:
             self._upload(sha256, content)
+
+    def find_all(
+        self,
+        image: SmartBoxImage,
+        content: bytes,
+        text: str | None,
+        exemplars: Sequence[Exemplar],
+        threshold: float,
+    ) -> list[SmartPolygon]:
+        """The outlines of every object matching a phrase, example boxes, or both."""
+        for exemplar in exemplars:
+            if exemplar.x + exemplar.width > image.width or (
+                exemplar.y + exemplar.height > image.height
+            ):
+                raise SmartBoxError(
+                    "exemplar_outside_image", 422, "an example box is outside the image"
+                )
+        prompt = {
+            "text": text,
+            "exemplars": [
+                {"x": item.x, "y": item.y, "width": item.width, "height": item.height}
+                for item in exemplars
+            ],
+            "threshold": threshold,
+        }
+        answer = self._ask(content, "/v1/find", prompt)
+        objects = answer.get("objects") if isinstance(answer, dict) else None
+        if not isinstance(objects, list) or len(objects) > MAX_FOUND_OBJECTS:
+            raise _failed("the smart box service answer is malformed")
+        return [_validated_polygon(item, image) for item in objects]
 
     def _ask(self, content: bytes, path: str, prompt: dict[str, Any]) -> Any:
         sha256 = hashlib.sha256(content).hexdigest()
