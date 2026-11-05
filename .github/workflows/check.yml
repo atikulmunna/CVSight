@@ -65,3 +65,55 @@ jobs:
 
       - name: Run the quality gate
         run: pwsh ./scripts/check.ps1
+
+  e2e:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+
+    services:
+      database:
+        image: pgvector/pgvector:0.8.6-pg17
+        env:
+          POSTGRES_DB: shelfsight_e2e
+          POSTGRES_USER: shelfsight
+          POSTGRES_PASSWORD: shelfsight-ci
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U shelfsight -d shelfsight_e2e"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 20
+
+    env:
+      SHELFSIGHT_E2E_DATABASE_URL: postgresql+psycopg://shelfsight:shelfsight-ci@127.0.0.1:5432/shelfsight_e2e
+
+    steps:
+      - uses: actions/checkout@v5
+
+      - uses: astral-sh/setup-uv@v7
+        with:
+          enable-cache: true
+
+      - uses: actions/setup-node@v5
+        with:
+          node-version: 24
+          cache: npm
+          cache-dependency-path: frontend/package-lock.json
+
+      - name: Install dependencies
+        run: |
+          uv sync --frozen
+          npm --prefix frontend ci
+          npm --prefix frontend exec -- playwright install --with-deps chromium
+
+      - name: Run the browser tests
+        run: pwsh ./scripts/e2e.ps1
+
+      - name: Keep the failure traces
+        if: failure()
+        uses: actions/upload-artifact@v7
+        with:
+          name: playwright-traces
+          path: frontend/test-results/
+          retention-days: 7

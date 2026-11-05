@@ -50,6 +50,8 @@ fiftyone-local/
 frontend/node_modules/
 frontend/dist/
 frontend/coverage/
+frontend/playwright-report/
+frontend/test-results/
 frontend/public/local-fixtures/
 
 # Operating-system metadata
