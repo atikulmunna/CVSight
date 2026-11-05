@@ -14,7 +14,7 @@ dependencies = [
     "google-crc32c>=1.7,<2",
     "pgvector>=0.4,<1",
     "pillow==13.0.0",
-    "psycopg[binary]>=3.2,<4",
+    "psycopg[binary]>=3.3.6,<4",
     "python-multipart==0.0.33",
     "pyyaml>=6.0,<7",
     "sqlalchemy>=2.0,<3",
