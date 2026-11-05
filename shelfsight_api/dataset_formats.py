@@ -149,7 +149,7 @@ def _ultralytics(
     label_line: Callable[[ExportBox, ExportImage], str],
 ) -> dict[str, bytes]:
     entries: dict[str, bytes] = {}
-    present = set()
+    present: set[str] = set()
     for image in images:
         folder = YOLO_FOLDERS[image.split]
         present.add(folder)
@@ -157,7 +157,7 @@ def _ultralytics(
         entries[f"labels/{folder}/{PurePosixPath(image.file_name).stem}.txt"] = "".join(
             label_line(box, image) for box in image.boxes
         ).encode("utf-8")
-    data = {
+    data: dict[str, object] = {
         "path": ".",
         **{folder: f"images/{folder}" for folder in ("train", "val", "test") if folder in present},
         "nc": len(classes),
