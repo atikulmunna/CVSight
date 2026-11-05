@@ -29,3 +29,11 @@ updates:
       - /docker/web
     schedule:
       interval: weekly
+    # CI, the tooling and the images share one Python and one Node version, so moving
+    # to a new one is a deliberate change made everywhere at once, not an image bump.
+    # Dependabot reads Python 3.13 to 3.15 as a minor update.
+    ignore:
+      - dependency-name: python
+        update-types: [version-update:semver-major, version-update:semver-minor]
+      - dependency-name: node
+        update-types: [version-update:semver-major]
