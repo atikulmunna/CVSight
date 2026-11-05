@@ -9,16 +9,16 @@ license = "MIT"
 license-files = ["LICENSE"]
 requires-python = ">=3.12"
 dependencies = [
-    "alembic>=1.16,<2",
-    "fastapi>=0.116,<1",
+    "alembic>=1.20.1,<2",
+    "fastapi>=0.162.0,<1",
     "google-crc32c>=1.7,<2",
-    "pgvector>=0.4,<1",
+    "pgvector>=0.5.1,<1",
     "pillow==13.0.0",
     "psycopg[binary]>=3.2,<4",
-    "python-multipart==0.0.32",
+    "python-multipart==0.0.33",
     "pyyaml>=6.0,<7",
-    "sqlalchemy>=2.0,<3",
-    "uvicorn>=0.35,<1",
+    "sqlalchemy>=2.1.6,<3",
+    "uvicorn>=0.54.0,<1",
 ]
 
 [dependency-groups]
@@ -26,8 +26,8 @@ dev = [
     "httpx>=0.28,<1",
     "mypy>=1.17,<2",
     "pip-audit==2.10.1",
-    "pytest>=8.4,<10",
-    "ruff>=0.12,<1",
+    "pytest>=9.2.0,<10",
+    "ruff>=0.17.3,<1",
     "types-pyyaml>=6.0,<7",
 ]
 
