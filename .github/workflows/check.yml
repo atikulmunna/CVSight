@@ -38,7 +38,7 @@ jobs:
       SHELFSIGHT_SESSION_COOKIE_SECURE: "false"
 
     steps:
-      - uses: actions/checkout@v5
+      - uses: actions/checkout@v7
 
       - uses: astral-sh/setup-uv@v7
         with:
@@ -89,7 +89,7 @@ jobs:
       SHELFSIGHT_E2E_DATABASE_URL: postgresql+psycopg://shelfsight:shelfsight-ci@127.0.0.1:5432/shelfsight_e2e
 
     steps:
-      - uses: actions/checkout@v5
+      - uses: actions/checkout@v7
 
       - uses: astral-sh/setup-uv@v7
         with:
