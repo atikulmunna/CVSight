@@ -8,6 +8,11 @@ updates:
     groups:
       python-minor-and-patch:
         update-types: [minor, patch]
+    # SQLAlchemy 2.1 types result rows differently, which needs annotations across the
+    # data layer before strict mypy passes. Take it as its own change.
+    ignore:
+      - dependency-name: sqlalchemy
+        versions: [">=2.1"]
 
   - package-ecosystem: npm
     directory: /frontend
