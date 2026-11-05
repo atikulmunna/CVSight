@@ -6,21 +6,19 @@ RUN npm ci
 COPY frontend/ ./
 RUN npm run build
 
-# Custom Caddy: the standard modules plus sign-in rate limiting. Caddy 2.11.4, the latest
-# release, pins Go 1.26.3 and module versions with fixed HIGH vulnerabilities, so it is
-# built with the patched toolchain and those modules raised to fixed versions.
-FROM golang:1.26.6-alpine@sha256:3889b425f035be855a72fb4755265311293b6d414521f0a519d819df32222d83 AS caddy
+# Custom Caddy: the standard modules plus sign-in rate limiting, built with a patched Go.
+FROM golang:1.26.10-alpine@sha256:a2012b4a1d1f9f7e9f44e0d39b805a901e856b1dd80b4e6ee4338db547050308 AS caddy
 RUN apk add --no-cache git
 WORKDIR /src
 COPY docker/web/caddy/main.go ./
 RUN go mod init cvsight/caddy \
-    && go get github.com/caddyserver/caddy/v2@v2.11.4 \
+    && go get github.com/caddyserver/caddy/v2@v2.11.9 \
         github.com/mholt/caddy-ratelimit@v0.1.0 \
-        golang.org/x/crypto@v0.55.0 golang.org/x/net@v0.58.0 golang.org/x/text@v0.41.0 \
-        google.golang.org/grpc@v1.83.2 \
     && go mod tidy \
     && CGO_ENABLED=0 go build -trimpath -ldflags "-s -w" -o /caddy .
 
+# No official 2.11.9 image is published yet. Only this stage's files outlast the build,
+# and the binary above replaces the one it ships.
 FROM caddy:2.11.4-alpine@sha256:6aeddd44c3078b0f9a35206472a11420648a79c184603ef95957d0a20044cb2b
 RUN apk upgrade --no-cache
 COPY --from=caddy /caddy /usr/bin/caddy

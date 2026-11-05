@@ -104,6 +104,17 @@ around 116 MiB and a slow link otherwise exhausts the scan timeout before any sc
 starts. Operators running the image outside the gate must rebuild it the same way rather
 than trusting a locally cached build.
 
+The `security` workflow runs the same gate every Monday, so a new advisory fails a run
+even when nothing has changed in the repository.
+
+On 2026-11-05 the gate found new advisories, all fixed by upgrades. Pillow moved from
+12.3.0 to 13.0.0. Vite moved to 8.3.6 and Vitest to 4.1.12, and `npm audit fix` raised
+`brace-expansion`, `source-map-js`, `undici` and `zod`. The web image now builds Caddy
+2.11.9 with Go 1.26.10, which removed seven high findings. Caddy 2.11.9 carries fixed
+module versions itself, so the separate module pins are gone. Ten moderate npm advisories
+remain in the ESLint packages, which only run during development. They are below the
+gate's threshold, and npm's only suggested fix is a major downgrade.
+
 On 2026-09-26 the gate was extended to the deployment images. The API image passes
 after its runtime stage dropped pip, which vendors old msgpack and setuptools code, and
 the uv binary and cache, which only the build stage needs. Stock Caddy images failed the
