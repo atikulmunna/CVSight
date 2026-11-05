@@ -1,0 +1,30 @@
+name: security
+
+# New advisories appear without any change here, so this runs on a schedule rather than
+# on every push. It rebuilds the images from scratch, which is too slow for each commit.
+on:
+  schedule:
+    - cron: "23 4 * * 1"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  security:
+    runs-on: ubuntu-latest
+    timeout-minutes: 90
+
+    steps:
+      - uses: actions/checkout@v5
+
+      - uses: astral-sh/setup-uv@v7
+        with:
+          enable-cache: true
+
+      - uses: actions/setup-node@v5
+        with:
+          node-version: 24
+
+      - name: Run the security gate
+        run: pwsh ./scripts/security-check.ps1 -Output "$RUNNER_TEMP/security-report.json"
