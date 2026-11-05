@@ -7,7 +7,7 @@ COPY frontend/ ./
 RUN npm run build
 
 # Custom Caddy: the standard modules plus sign-in rate limiting, built with a patched Go.
-FROM golang:1.26.10-alpine@sha256:a2012b4a1d1f9f7e9f44e0d39b805a901e856b1dd80b4e6ee4338db547050308 AS caddy
+FROM golang:1.27.3-alpine@sha256:d200d2dd76b03a99b52651fd1325aff7dcd35422c35c01bac56571b0507f3deb AS caddy
 RUN apk add --no-cache git
 WORKDIR /src
 COPY docker/web/caddy/main.go ./
