@@ -2,6 +2,7 @@ from __future__ import annotations
 
 from datetime import datetime, timedelta
 from pathlib import Path
+from typing import Any
 
 import pytest
 
@@ -91,7 +92,7 @@ def test_gap_candidates_are_row_assigned_and_exclude_outer_space() -> None:
         [[0.1, 0.2, float("nan"), 0.3]],
     ),
 )
-def test_gap_candidates_reject_invalid_normalized_boxes(boxes) -> None:
+def test_gap_candidates_reject_invalid_normalized_boxes(boxes: Any) -> None:
     with pytest.raises(ValueError, match="normalized boxes"):
         derive_gap_candidates(boxes)
 

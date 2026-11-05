@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+from collections.abc import Iterator
 from io import BytesIO
 from pathlib import Path
 from typing import Any
@@ -30,7 +31,7 @@ def catalog_target(
     database_engine: Engine,
     monkeypatch: pytest.MonkeyPatch,
     tmp_path: Path,
-) -> Engine:
+) -> Iterator[Engine]:
     monkeypatch.setattr("shelfsight_api.sku_api.get_engine", lambda: database_engine)
     monkeypatch.setattr("shelfsight_api.sku_api.get_media_root", lambda: tmp_path)
     yield database_engine
@@ -59,7 +60,8 @@ def create_sku(**overrides: Any) -> dict[str, Any]:
         json=sku_payload(**overrides),
     )
     assert response.status_code == 201
-    return response.json()
+    body: dict[str, Any] = response.json()
+    return body
 
 
 def test_catalog_crud_search_deprecation_and_unknown(

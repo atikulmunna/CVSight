@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import os
 from collections.abc import Iterator
+from typing import cast
 from uuid import UUID
 
 import pytest
@@ -11,7 +12,7 @@ from sqlalchemy import Connection, Engine, create_engine
 from shelfsight_api.app import app
 from shelfsight_api.auth import get_current_user
 from shelfsight_api.auth_service import AuthenticatedUser
-from shelfsight_api.config import DATABASE_URL_ENV
+from shelfsight_api.config import DATABASE_URL_ENV, Role
 from shelfsight_api.database import get_engine
 
 TEST_DATABASE_URL_ENV = "SHELFSIGHT_TEST_DATABASE_URL"
@@ -23,7 +24,7 @@ def authenticated_api_requests() -> Iterator[None]:
     def current_test_user(request: Request) -> AuthenticatedUser:
         actor = request.headers.get("X-ShelfSight-Actor", "owner:test")
         prefix, _, username = actor.partition(":")
-        role = prefix if prefix in {"owner", "annotator", "reviewer"} else "owner"
+        role = cast(Role, prefix if prefix in {"owner", "annotator", "reviewer"} else "owner")
         return AuthenticatedUser(
             username=username or actor,
             role=role,

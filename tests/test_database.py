@@ -32,14 +32,14 @@ def test_database_url_accepts_psycopg_driver() -> None:
     assert get_database_url({"SHELFSIGHT_DATABASE_URL": value}) == value
 
 
-def test_database_readiness_hides_connection_errors(monkeypatch) -> None:
+def test_database_readiness_hides_connection_errors(monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.delenv("SHELFSIGHT_DATABASE_URL", raising=False)
     get_engine.cache_clear()
 
     assert database_is_ready() is False
 
 
-def test_media_and_import_roots_are_required_and_resolved(tmp_path) -> None:
+def test_media_and_import_roots_are_required_and_resolved(tmp_path: Path) -> None:
     with pytest.raises(ConfigurationError, match="SHELFSIGHT_MEDIA_ROOT is required"):
         get_media_root({})
     with pytest.raises(ConfigurationError, match="SHELFSIGHT_IMPORT_ROOT is required"):

@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from collections.abc import Mapping
+from collections.abc import Iterator, Mapping
 from datetime import UTC, datetime, timedelta
 from typing import Any
 from uuid import UUID, uuid4
@@ -24,7 +24,7 @@ from shelfsight_api.worker import JobDefinition, JobReporter, JobWorker
 
 
 @pytest.fixture(autouse=True)
-def clean_jobs(database_engine: Engine) -> None:
+def clean_jobs(database_engine: Engine) -> Iterator[None]:
     with database_engine.begin() as connection:
         connection.execute(delete(worker_heartbeats))
         connection.execute(delete(jobs))
@@ -218,14 +218,14 @@ def test_result_writer_and_success_commit_atomically_across_retry(
     dataset_name = f"job-effect-{uuid4()}"
     writer_calls = 0
 
-    def run(_claim: JobClaim, reporter: JobReporter) -> dict[str, int]:
+    def run(claim: JobClaim, reporter: JobReporter) -> dict[str, int]:
         reporter.progress(1, 1)
         return {"written": 1}
 
     def write_result(
         connection: Connection,
-        _claim: JobClaim,
-        _result: Mapping[str, Any],
+        claim: JobClaim,
+        result: Mapping[str, Any],
     ) -> None:
         nonlocal writer_calls
         writer_calls += 1

@@ -19,11 +19,11 @@ from benchmark_tool.training import (
     run_rfdetr_training,
 )
 from benchmark_tool.training_evaluation import (
-    EVALUATION_SCHEMA,
     PREDICTION_SCHEMA,
     evaluate_training_predictions,
     generate_test_predictions,
 )
+from shelfsight_api.detector_metrics import EVALUATION_SCHEMA
 
 
 def test_prepares_reproducible_leakage_safe_class_agnostic_dataset(

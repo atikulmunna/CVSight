@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import getpass
 import json
 from pathlib import Path
 
@@ -83,7 +84,7 @@ def test_cli_adds_a_user_with_a_working_password(
 ) -> None:
     path = tmp_path / ".env"
     path.write_text(env_text([OWNER]), encoding="utf-8")
-    monkeypatch.setattr(auth_cli.getpass, "getpass", lambda _prompt: "correct horse")
+    monkeypatch.setattr(getpass, "getpass", lambda _prompt: "correct horse")
 
     auth_cli.main(["users", "--env-file", str(path), "add", "rahim", "annotator"])
 
@@ -105,7 +106,7 @@ def test_cli_checks_the_username_before_asking_for_a_password(
     def refuse(_prompt: str) -> str:
         raise AssertionError("asked for a password for an invalid username")
 
-    monkeypatch.setattr(auth_cli.getpass, "getpass", refuse)
+    monkeypatch.setattr(getpass, "getpass", refuse)
 
     with pytest.raises(SystemExit):
         auth_cli.main(["users", "--env-file", str(path), "add", "bad name", "annotator"])
@@ -122,7 +123,7 @@ def test_cli_refuses_mismatched_passwords_without_writing(
     original = env_text([OWNER])
     path.write_text(original, encoding="utf-8")
     answers = iter(["first", "second"])
-    monkeypatch.setattr(auth_cli.getpass, "getpass", lambda _prompt: next(answers))
+    monkeypatch.setattr(getpass, "getpass", lambda _prompt: next(answers))
 
     with pytest.raises(SystemExit):
         auth_cli.main(["users", "--env-file", str(path), "add", "rahim", "reviewer"])

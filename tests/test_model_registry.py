@@ -385,7 +385,7 @@ def test_subset_recall_cannot_be_left_out_when_the_subset_may_exist(
     registry_evidence: RegistryEvidence,
     count: object,
 ) -> None:
-    metrics = {**_metrics(0.7), "dense_scene_recall_at_iou_50": None}
+    metrics: dict[str, object] = {**_metrics(0.7), "dense_scene_recall_at_iou_50": None}
     if count is not None:
         metrics["dense_scene_images"] = count
 

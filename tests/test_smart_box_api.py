@@ -7,6 +7,7 @@ import urllib.error
 import urllib.parse
 import urllib.request
 from collections.abc import Callable, Iterator, Sequence
+from email.message import Message
 from pathlib import Path
 from typing import Any
 from uuid import UUID, uuid4
@@ -46,6 +47,11 @@ SETTINGS = SegmenterSettings(url="http://segmenter.test", token=TOKEN)
 IMAGE = SmartBoxImage(canonical_media_key="canonical/x.png", width=100, height=80)
 
 
+def _sent_json(request: urllib.request.Request) -> Any:
+    assert isinstance(request.data, bytes)
+    return json.loads(request.data)
+
+
 class FakeResponse:
     def __init__(self, body: bytes) -> None:
         self._body = body
@@ -63,7 +69,7 @@ class FakeResponse:
 def http_error(code: int, body: Any = None) -> urllib.error.HTTPError:
     content = json.dumps(body).encode() if body is not None else b""
     return urllib.error.HTTPError(
-        "http://segmenter.test", code, "error", hdrs=None, fp=io.BytesIO(content)
+        "http://segmenter.test", code, "error", hdrs=Message(), fp=io.BytesIO(content)
     )
 
 
@@ -129,7 +135,7 @@ def test_uploads_a_photo_only_when_the_service_asks_for_it() -> None:
     ]
     assert sent[1].data == b"photo"
     assert sent[0].get_header("Authorization") == f"Bearer {TOKEN}"
-    assert json.loads(sent[0].data or b"") == {"image_sha256": checksum, "x": 15, "y": 20}
+    assert _sent_json(sent[0]) == {"image_sha256": checksum, "x": 15, "y": 20}
 
 
 @pytest.mark.parametrize(
@@ -162,7 +168,7 @@ def test_asks_for_an_outline_with_every_click() -> None:
     assert outline.points == [(10, 12), (30, 12), (20, 42)]
     assert outline.score == 0.7
     assert sent[0].full_url == "http://segmenter.test/v1/polygon"
-    assert json.loads(sent[0].data or b"") == {
+    assert _sent_json(sent[0]) == {
         "image_sha256": hashlib.sha256(b"photo").hexdigest(),
         "points": [
             {"x": 15, "y": 20, "include": True},
@@ -224,7 +230,7 @@ def test_finds_objects_by_phrase_and_example_and_checks_every_outline() -> None:
 
     assert [(item.points, item.score) for item in found] == [([(10, 12), (30, 12), (20, 42)], 0.8)]
     assert sent[0].full_url == "http://segmenter.test/v1/find"
-    assert json.loads(sent[0].data or b"") == {
+    assert _sent_json(sent[0]) == {
         "image_sha256": hashlib.sha256(b"photo").hexdigest(),
         "text": "bottle",
         "exemplars": [{"x": 10, "y": 12, "width": 20, "height": 30}],
@@ -314,7 +320,7 @@ def runtime_opener(runtime: TestClient) -> Callable[..., Any]:
                 request.full_url,
                 response.status_code,
                 "error",
-                hdrs=None,
+                hdrs=Message(),
                 fp=io.BytesIO(response.content),
             )
         return FakeResponse(response.content)

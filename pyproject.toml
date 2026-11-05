@@ -41,12 +41,20 @@ line-length = 100
 target-version = "py312"
 
 [tool.ruff.lint]
-select = ["B", "E", "F", "I", "UP"]
+select = ["B", "C90", "E", "F", "I", "UP"]
+
+[tool.ruff.lint.mccabe]
+max-complexity = 15
 
 [tool.mypy]
 python_version = "3.13"
 strict = true
-files = ["shelfsight_api"]
+files = ["shelfsight_api", "benchmark_tool", "tests"]
+
+# Only the GPU runtimes install these, so they are absent where the checks run.
+[[tool.mypy.overrides]]
+module = ["cv2", "numpy", "sam3", "sam3.*", "torch"]
+ignore_missing_imports = true
 
 [tool.setuptools.packages.find]
 include = ["benchmark_tool*", "shelfsight_api*"]

@@ -1,4 +1,5 @@
 from datetime import UTC, datetime
+from typing import Any
 
 import pytest
 
@@ -14,7 +15,7 @@ from benchmark_tool.analytics import (
 )
 
 
-def test_count_share_of_shelf_preserves_unknown_bucket():
+def test_count_share_of_shelf_preserves_unknown_bucket() -> None:
     result = count_share_of_shelf(["brand_a", "brand_a", "brand_b", None])
 
     assert result == {
@@ -26,12 +27,12 @@ def test_count_share_of_shelf_preserves_unknown_bucket():
     }
 
 
-def test_count_share_of_shelf_rejects_empty_scope():
+def test_count_share_of_shelf_rejects_empty_scope() -> None:
     with pytest.raises(ValueError):
         count_share_of_shelf([])
 
 
-def test_image_area_share_of_shelf_includes_unknown_area():
+def test_image_area_share_of_shelf_includes_unknown_area() -> None:
     result = image_area_share_of_shelf(
         [("brand_a", 100), ("brand_b", 50), (None, 50)]
     )
@@ -48,12 +49,12 @@ def test_image_area_share_of_shelf_includes_unknown_area():
     "facings",
     ([], [("brand", 0)], [("brand", -1)], [("brand", float("nan"))]),
 )
-def test_image_area_share_of_shelf_rejects_invalid_input(facings):
+def test_image_area_share_of_shelf_rejects_invalid_input(facings: Any) -> None:
     with pytest.raises(ValueError):
         image_area_share_of_shelf(facings)
 
 
-def test_share_summary_labels_count_and_diagnostic_area_metrics():
+def test_share_summary_labels_count_and_diagnostic_area_metrics() -> None:
     result = summarize_share_of_shelf(
         [
             {
@@ -90,7 +91,7 @@ def test_share_summary_labels_count_and_diagnostic_area_metrics():
     assert result["image_area_share"]["physical_shelf_share"] is False
 
 
-def test_share_summary_rejects_area_for_severe_oblique_view():
+def test_share_summary_rejects_area_for_severe_oblique_view() -> None:
     result = summarize_share_of_shelf(
         [
             {
@@ -115,7 +116,7 @@ def test_share_summary_rejects_area_for_severe_oblique_view():
     }
 
 
-def test_share_summary_requires_declared_view_for_area_metric():
+def test_share_summary_requires_declared_view_for_area_metric() -> None:
     result = summarize_share_of_shelf(
         [
             {
@@ -143,8 +144,8 @@ def test_share_summary_requires_declared_view_for_area_metric():
     ),
 )
 def test_share_summary_preserves_scope_uncertainty(
-    observation_complete, review_state, identity_state, expected
-):
+    observation_complete: Any, review_state: Any, identity_state: Any, expected: Any
+) -> None:
     result = summarize_share_of_shelf(
         [
             {
@@ -163,7 +164,7 @@ def test_share_summary_preserves_scope_uncertainty(
     assert result["image_area_share"]["status"] == expected
 
 
-def test_share_summary_rejects_duplicate_facing_identifiers():
+def test_share_summary_rejects_duplicate_facing_identifiers() -> None:
     facing = {
         "annotation_id": "duplicate",
         "bbox": [0, 0, 10, 10],
@@ -185,7 +186,7 @@ def test_share_summary_rejects_duplicate_facing_identifiers():
         {"observation_complete": True, "view": "fisheye"},
     ),
 )
-def test_share_summary_rejects_invalid_scope(arguments):
+def test_share_summary_rejects_invalid_scope(arguments: Any) -> None:
     with pytest.raises(ValueError):
         summarize_share_of_shelf(
             [
@@ -199,7 +200,7 @@ def test_share_summary_rejects_invalid_scope(arguments):
         )
 
 
-def test_visible_gap_fraction_clips_and_merges_overlapping_gaps():
+def test_visible_gap_fraction_clips_and_merges_overlapping_gaps() -> None:
     result = visible_gap_fraction(
         row_left=10,
         row_width=100,
@@ -219,15 +220,15 @@ def test_visible_gap_fraction_clips_and_merges_overlapping_gaps():
     ),
 )
 def test_visible_gap_fraction_rejects_invalid_geometry(
-    row_left,
-    row_width,
-    gaps,
-):
+    row_left: Any,
+    row_width: Any,
+    gaps: Any,
+) -> None:
     with pytest.raises(ValueError):
         visible_gap_fraction(row_left, row_width, gaps)
 
 
-def test_order_realogram_groups_rows_and_orders_by_center():
+def test_order_realogram_groups_rows_and_orders_by_center() -> None:
     facings = [
         {
             "annotation_id": "right",
@@ -267,12 +268,12 @@ def test_order_realogram_groups_rows_and_orders_by_center():
         {"annotation_id": "a", "shelf_row_id": 1, "bbox": [0, 0, 1]},
     ),
 )
-def test_order_realogram_rejects_incomplete_facings(facing):
+def test_order_realogram_rejects_incomplete_facings(facing: Any) -> None:
     with pytest.raises(ValueError):
         order_realogram([facing])
 
 
-def test_reconstruct_realogram_clusters_rows_and_preserves_unknown_identity():
+def test_reconstruct_realogram_clusters_rows_and_preserves_unknown_identity() -> None:
     result = reconstruct_realogram(
         [
             {
@@ -312,7 +313,7 @@ def test_reconstruct_realogram_clusters_rows_and_preserves_unknown_identity():
     assert result["rows"][1]["facings"][0]["sku_id"] is None
 
 
-def test_reconstruct_realogram_uses_reviewed_manual_rows_for_complete_result():
+def test_reconstruct_realogram_uses_reviewed_manual_rows_for_complete_result() -> None:
     result = reconstruct_realogram(
         [
             {
@@ -339,7 +340,7 @@ def test_reconstruct_realogram_uses_reviewed_manual_rows_for_complete_result():
     ] == ["left", "right"]
 
 
-def test_reconstruct_realogram_marks_incomplete_observation_partial():
+def test_reconstruct_realogram_marks_incomplete_observation_partial() -> None:
     result = reconstruct_realogram(
         [
             {
@@ -356,7 +357,7 @@ def test_reconstruct_realogram_marks_incomplete_observation_partial():
     assert len(result["rows"]) == 1
 
 
-def test_reconstruct_realogram_splits_distant_rows_deterministically():
+def test_reconstruct_realogram_splits_distant_rows_deterministically() -> None:
     facings = [
         {"annotation_id": "lower", "bbox": [20, 40, 10, 10]},
         {"annotation_id": "upper-b", "bbox": [20, 0, 10, 10]},
@@ -375,7 +376,7 @@ def test_reconstruct_realogram_splits_distant_rows_deterministically():
     ] == [["upper-a", "upper-b"], ["lower"]]
 
 
-def test_reconstruct_realogram_rejects_severe_oblique_view_explicitly():
+def test_reconstruct_realogram_rejects_severe_oblique_view_explicitly() -> None:
     result = reconstruct_realogram(
         [{"annotation_id": "facing", "bbox": [10, 10, 10, 10]}],
         observation_complete=True,
@@ -420,7 +421,7 @@ def test_reconstruct_realogram_rejects_severe_oblique_view_explicitly():
         ],
     ),
 )
-def test_reconstruct_realogram_rejects_incomplete_or_invalid_inputs(facings):
+def test_reconstruct_realogram_rejects_incomplete_or_invalid_inputs(facings: Any) -> None:
     with pytest.raises(ValueError):
         reconstruct_realogram(facings, observation_complete=True)
 
@@ -432,7 +433,7 @@ def test_reconstruct_realogram_rejects_incomplete_or_invalid_inputs(facings):
         {"observation_complete": True, "view": "fisheye"},
     ),
 )
-def test_reconstruct_realogram_rejects_invalid_scope(arguments):
+def test_reconstruct_realogram_rejects_invalid_scope(arguments: Any) -> None:
     with pytest.raises(ValueError):
         reconstruct_realogram(
             [{"annotation_id": "facing", "bbox": [0, 0, 1, 1]}],
@@ -440,7 +441,7 @@ def test_reconstruct_realogram_rejects_invalid_scope(arguments):
         )
 
 
-def test_planogram_comparison_reports_compliance_and_noncompliance_states():
+def test_planogram_comparison_reports_compliance_and_noncompliance_states() -> None:
     result = compare_planogram(
         planogram=_planogram(),
         fixture_id="fixture-1",
@@ -471,7 +472,7 @@ def test_planogram_comparison_reports_compliance_and_noncompliance_states():
     }
 
 
-def test_planogram_comparison_excludes_unknown_slot_from_denominator():
+def test_planogram_comparison_excludes_unknown_slot_from_denominator() -> None:
     result = compare_planogram(
         planogram={
             **_planogram(),
@@ -500,7 +501,7 @@ def test_planogram_comparison_excludes_unknown_slot_from_denominator():
     assert result["slots"][0]["reason"] == "slot_identity_incomplete"
 
 
-def test_planogram_comparison_is_disabled_without_effective_reference():
+def test_planogram_comparison_is_disabled_without_effective_reference() -> None:
     missing = compare_planogram(
         planogram=None,
         fixture_id="fixture-1",
@@ -557,7 +558,7 @@ def test_planogram_comparison_is_disabled_without_effective_reference():
         },
     ),
 )
-def test_planogram_comparison_rejects_invalid_reference(changes):
+def test_planogram_comparison_rejects_invalid_reference(changes: Any) -> None:
     with pytest.raises(ValueError):
         compare_planogram(
             planogram={**_planogram(), **changes},
@@ -609,7 +610,7 @@ def test_planogram_comparison_rejects_invalid_reference(changes):
         ],
     ),
 )
-def test_planogram_comparison_rejects_invalid_facings(facings):
+def test_planogram_comparison_rejects_invalid_facings(facings: Any) -> None:
     with pytest.raises(ValueError):
         compare_planogram(
             planogram={
@@ -706,7 +707,7 @@ def test_planogram_comparison_rejects_invalid_facings(facings):
         ),
     ),
 )
-def test_classify_shelf_availability(arguments, expected):
+def test_classify_shelf_availability(arguments: Any, expected: Any) -> None:
     assert classify_shelf_availability(**arguments) == expected
 
 
@@ -735,7 +736,7 @@ def test_classify_shelf_availability(arguments, expected):
         },
     ),
 )
-def test_classify_shelf_availability_rejects_invalid_counts(arguments):
+def test_classify_shelf_availability_rejects_invalid_counts(arguments: Any) -> None:
     with pytest.raises(ValueError):
         classify_shelf_availability(
             expectation_authoritative=True,
@@ -745,7 +746,7 @@ def test_classify_shelf_availability_rejects_invalid_counts(arguments):
         )
 
 
-def _planogram():
+def _planogram() -> dict[str, Any]:
     return {
         "planogram_id": "planogram-1",
         "fixture_id": "fixture-1",
@@ -780,7 +781,7 @@ def _planogram():
     }
 
 
-def _planogram_facing(annotation_id, sku_id, slot_id):
+def _planogram_facing(annotation_id: str, sku_id: str, slot_id: str) -> dict[str, str]:
     return {
         "annotation_id": annotation_id,
         "sku_id": sku_id,

@@ -313,14 +313,13 @@ def test_snapshot_keeps_product_outlines(database_connection: Connection) -> Non
 
     snapshot_dataset_version(database_connection, version_id)
 
-    outlines = dict(
-        database_connection.execute(
-            select(
-                dataset_snapshot_annotations.c.annotation_id,
-                dataset_snapshot_annotations.c.polygon,
-            ).where(dataset_snapshot_annotations.c.dataset_version_id == version_id)
-        ).all()
-    )
+    rows = database_connection.execute(
+        select(
+            dataset_snapshot_annotations.c.annotation_id,
+            dataset_snapshot_annotations.c.polygon,
+        ).where(dataset_snapshot_annotations.c.dataset_version_id == version_id)
+    ).all()
+    outlines = {row.annotation_id: row.polygon for row in rows}
     assert outlines == {outlined: SQUARE, boxed: None}
 
 

@@ -389,7 +389,7 @@ def _create_lineup_annotations(
 ) -> dict[str, UUID]:
     first = image_ids["first"]
     x, y, width, height = PRODUCT_BOX
-    box = {"x": x, "y": y, "width": width, "height": height}
+    box: dict[str, Any] = {"x": x, "y": y, "width": width, "height": height}
     created = {
         "accepted_right": create_annotation(connection, first, _values(sku_id, **box)),
         "accepted_left": create_annotation(

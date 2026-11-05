@@ -98,6 +98,8 @@ def calibrate_unknown_threshold(
         )
         if best is None or comparison > best[0]:
             best = (comparison, candidate)
+    # candidates always holds at least two thresholds.
+    assert best is not None
     return best[1]
 
 

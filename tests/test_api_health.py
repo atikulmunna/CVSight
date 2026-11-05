@@ -1,3 +1,4 @@
+import pytest
 from fastapi.testclient import TestClient
 
 from shelfsight_api.app import app
@@ -14,7 +15,7 @@ def test_health_is_available_without_database() -> None:
     assert response.headers["x-content-type-options"] == "nosniff"
 
 
-def test_database_health_reports_unavailable(monkeypatch) -> None:
+def test_database_health_reports_unavailable(monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.setattr("shelfsight_api.app.database_is_ready", lambda: False)
 
     response = client.get("/api/health/database")
@@ -23,7 +24,7 @@ def test_database_health_reports_unavailable(monkeypatch) -> None:
     assert response.json() == {"status": "unavailable", "service": "postgresql"}
 
 
-def test_database_health_reports_ready(monkeypatch) -> None:
+def test_database_health_reports_ready(monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.setattr("shelfsight_api.app.database_is_ready", lambda: True)
 
     response = client.get("/api/health/database")

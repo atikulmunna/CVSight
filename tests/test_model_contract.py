@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from collections.abc import Mapping
+from collections.abc import Callable, Mapping
 from pathlib import Path
 from typing import Any
 from uuid import uuid4
@@ -10,12 +10,12 @@ import pytest
 from shelfsight_api.model_adapters import (
     FakeModelAdapter,
     ModelAdapter,
-    ModelProvenance,
     RfdetrAdapter,
 )
 from shelfsight_api.model_contract import (
     DetectResponse,
     EmbedResponse,
+    ModelProvenance,
     RefineResponse,
     RetrieveResponse,
 )
@@ -57,7 +57,7 @@ def image_request(operation: str, **values: Any) -> dict[str, Any]:
     }
 
 
-def resolver(tmp_path: Path):
+def resolver(tmp_path: Path) -> Callable[[object], ResolvedModelImage]:
     image_path = tmp_path / "canonical.png"
     image_path.write_bytes(b"contract-image")
 

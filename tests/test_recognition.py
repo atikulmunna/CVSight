@@ -1,3 +1,5 @@
+from typing import Any
+
 import pytest
 
 from benchmark_tool.recognition import (
@@ -9,15 +11,15 @@ from benchmark_tool.recognition import (
 )
 
 
-def test_normalize_embedding_and_cosine_similarity():
+def test_normalize_embedding_and_cosine_similarity() -> None:
     assert normalize_embedding([3, 4]) == pytest.approx([0.6, 0.8])
     assert cosine_similarity([1, 0], [0, 2]) == pytest.approx(0)
     assert cosine_similarity([1, 1], [2, 2]) == pytest.approx(1)
 
 
-def test_normalize_embedding_does_not_require_scalar_truth_testing():
-    class Vector(list):
-        def __bool__(self):
+def test_normalize_embedding_does_not_require_scalar_truth_testing() -> None:
+    class Vector(list[float]):
+        def __bool__(self) -> None:
             raise ValueError("ambiguous truth value")
 
     assert normalize_embedding(Vector([3, 4])) == pytest.approx([0.6, 0.8])
@@ -27,17 +29,17 @@ def test_normalize_embedding_does_not_require_scalar_truth_testing():
     "embedding",
     ([], [0, 0], [float("nan"), 1], [float("inf"), 1]),
 )
-def test_normalize_embedding_rejects_invalid_values(embedding):
+def test_normalize_embedding_rejects_invalid_values(embedding: Any) -> None:
     with pytest.raises(ValueError):
         normalize_embedding(embedding)
 
 
-def test_cosine_similarity_rejects_dimension_mismatch():
+def test_cosine_similarity_rejects_dimension_mismatch() -> None:
     with pytest.raises(ValueError, match="dimensions"):
         cosine_similarity([1, 0], [1, 0, 0])
 
 
-def test_rank_skus_uses_best_exemplar_and_stable_sku_tie_break():
+def test_rank_skus_uses_best_exemplar_and_stable_sku_tie_break() -> None:
     gallery = {
         "sku_b": [[1, 0], [0, 1]],
         "sku_a": [[1, 0]],
@@ -46,23 +48,20 @@ def test_rank_skus_uses_best_exemplar_and_stable_sku_tie_break():
 
     ranking = rank_skus([1, 0], gallery)
 
-    assert ranking == [
-        ("sku_a", pytest.approx(1)),
-        ("sku_b", pytest.approx(1)),
-        ("sku_c", pytest.approx(-1)),
-    ]
+    assert [name for name, _ in ranking] == ["sku_a", "sku_b", "sku_c"]
+    assert [score for _, score in ranking] == pytest.approx([1, 1, -1])
 
 
 @pytest.mark.parametrize(
     "gallery",
     ({}, {"": [[1, 0]]}, {"sku": []}, {"sku": [[1, 0, 0]]}),
 )
-def test_rank_skus_rejects_invalid_gallery(gallery):
+def test_rank_skus_rejects_invalid_gallery(gallery: Any) -> None:
     with pytest.raises(ValueError):
         rank_skus([1, 0], gallery)
 
 
-def test_calibrate_unknown_threshold_uses_balanced_validation_accuracy():
+def test_calibrate_unknown_threshold_uses_balanced_validation_accuracy() -> None:
     result = calibrate_unknown_threshold(
         known_scores=[0.8, 0.9],
         unknown_scores=[0.1, 0.2],
@@ -78,12 +77,12 @@ def test_calibrate_unknown_threshold_uses_balanced_validation_accuracy():
     ("known", "unknown"),
     (([], [0.1]), ([0.9], []), ([float("nan")], [0.1])),
 )
-def test_calibrate_unknown_threshold_rejects_invalid_scores(known, unknown):
+def test_calibrate_unknown_threshold_rejects_invalid_scores(known: Any, unknown: Any) -> None:
     with pytest.raises(ValueError):
         calibrate_unknown_threshold(known, unknown)
 
 
-def test_evaluate_rankings_reports_open_set_and_hard_pair_metrics():
+def test_evaluate_rankings_reports_open_set_and_hard_pair_metrics() -> None:
     queries = [
         {
             "sku_id": "a",
@@ -113,7 +112,7 @@ def test_evaluate_rankings_reports_open_set_and_hard_pair_metrics():
     assert result["hard_pair_confusion_rate"] == pytest.approx(0.5)
 
 
-def test_evaluate_rankings_rejects_invalid_options_and_empty_ranking():
+def test_evaluate_rankings_rejects_invalid_options_and_empty_ranking() -> None:
     with pytest.raises(ValueError):
         evaluate_rankings([], unknown_threshold=float("nan"))
     with pytest.raises(ValueError):

@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+from typing import Any
+
 import pytest
 
 from benchmark_tool.gap_analytics import (
@@ -84,7 +86,7 @@ def test_derive_gap_proposals_merges_overlap_and_ignores_small_intervals() -> No
         },
     ),
 )
-def test_derive_gap_proposals_rejects_invalid_or_unreviewed_input(arguments) -> None:
+def test_derive_gap_proposals_rejects_invalid_or_unreviewed_input(arguments: Any) -> None:
     with pytest.raises(ValueError):
         derive_gap_proposals(**arguments)
 
@@ -176,7 +178,7 @@ def test_summarize_visible_gaps_marks_occluded_row_partial() -> None:
         ],
     ),
 )
-def test_summarize_visible_gaps_rejects_invalid_evidence(gaps) -> None:
+def test_summarize_visible_gaps_rejects_invalid_evidence(gaps: Any) -> None:
     with pytest.raises(ValueError):
         summarize_visible_gaps(
             rows=[_row(0)],
@@ -286,8 +288,8 @@ def test_present_elsewhere_is_misplaced_with_observation_evidence() -> None:
         {"gap_evidence_ids": ["duplicate", "duplicate"]},
     ),
 )
-def test_availability_rejects_missing_or_inconsistent_evidence(changes) -> None:
-    arguments = {
+def test_availability_rejects_missing_or_inconsistent_evidence(changes: Any) -> None:
+    arguments: dict[str, Any] = {
         "sku_id": "sku-a",
         "expected_facings": 1,
         "observed_in_expected_slot": [],
@@ -487,7 +489,7 @@ def test_gap_evaluation_never_matches_across_images() -> None:
         },
     ),
 )
-def test_gap_evaluation_rejects_unsafe_or_invalid_predictions(gap) -> None:
+def test_gap_evaluation_rejects_unsafe_or_invalid_predictions(gap: Any) -> None:
     with pytest.raises(ValueError):
         evaluate_gap_predictions([], [gap])
 

@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from collections.abc import Mapping
+from collections.abc import Iterator, Mapping
 from pathlib import Path
 from typing import Any
 from uuid import UUID, uuid4
@@ -44,7 +44,7 @@ UNKNOWN_SKU_ID = UUID("00000000-0000-0000-0000-000000000001")
 def propagation_target(
     database_engine: Engine,
     monkeypatch: pytest.MonkeyPatch,
-) -> dict[str, Any]:
+) -> Iterator[dict[str, Any]]:
     dataset_id = uuid4()
     image_id = uuid4()
     other_image_id = uuid4()

@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+from collections.abc import Iterator
 from io import BytesIO
 from pathlib import Path
 from uuid import UUID, uuid4
@@ -22,7 +23,7 @@ def make_image_bytes(color: str = "blue", image_format: str = "JPEG") -> bytes:
 
 
 @pytest.fixture
-def ingest_target(database_engine: Engine) -> tuple[UUID, UUID]:
+def ingest_target(database_engine: Engine) -> Iterator[tuple[UUID, UUID]]:
     dataset_id = uuid4()
     version_id = uuid4()
     with database_engine.begin() as connection:
@@ -210,7 +211,8 @@ def test_image_neighbors_follow_the_grid_order(
     def neighbors(image_id: str) -> dict[str, object]:
         response = client.get(f"{upload_url(dataset_id, version_id)}/{image_id}/neighbors")
         assert response.status_code == 200
-        return response.json()
+        body: dict[str, object] = response.json()
+        return body
 
     def place(previous: str | None, following: str | None, position: int) -> dict[str, object]:
         return {"previous_id": previous, "next_id": following, "position": position, "total": 3}

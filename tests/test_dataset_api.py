@@ -122,7 +122,7 @@ def test_project_catalog_import_is_validated_and_transactional(
             .where(skus.c.is_unknown.is_(False))
             .order_by(skus.c.name)
         ).all()
-    assert imported == [
+    assert [tuple(row) for row in imported] == [
         ("Aurora Cola Zero", "012345678905", "Beverages"),
         ("Northstar Water", None, None),
     ]

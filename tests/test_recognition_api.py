@@ -1,9 +1,9 @@
 from __future__ import annotations
 
-from collections.abc import Mapping
+from collections.abc import Iterator, Mapping
 from dataclasses import replace
 from pathlib import Path
-from typing import Any
+from typing import Any, cast
 from uuid import UUID, uuid4
 
 import pytest
@@ -48,7 +48,7 @@ client = TestClient(app)
 def recognition_target(
     database_engine: Engine,
     monkeypatch: pytest.MonkeyPatch,
-) -> dict[str, Any]:
+) -> Iterator[dict[str, Any]]:
     dataset_id = uuid4()
     image_id = uuid4()
     annotation_id = uuid4()
@@ -98,7 +98,7 @@ def recognition_target(
     }
     target["worker"] = _recognition_worker(
         database_engine,
-        target["vectors"],
+        cast(Mapping[UUID, list[float]], target["vectors"]),
         "recognition-worker",
     )
     yield target

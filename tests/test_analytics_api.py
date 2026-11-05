@@ -10,7 +10,7 @@ from uuid import UUID, uuid4
 
 import pytest
 from fastapi.testclient import TestClient
-from sqlalchemy import Engine, delete, insert
+from sqlalchemy import Connection, Engine, delete, insert
 
 from shelfsight_api.analytics_service import (
     build_analytics_csv,
@@ -296,7 +296,7 @@ def _image_values(
 
 
 def _create_annotation(
-    connection: object,
+    connection: Connection,
     image_id: UUID,
     sku_id: UUID | None,
     x: float,

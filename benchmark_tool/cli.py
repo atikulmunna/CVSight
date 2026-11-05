@@ -130,9 +130,9 @@ def main(argv: list[str] | None = None) -> int:
                 hardware=hardware,
             )
         elif args.command == "run-rfdetr":
-            from benchmark_tool.rfdetr import build_predictor
+            from benchmark_tool.rfdetr import build_predictor as build_rfdetr_predictor
 
-            predict, runtime = build_predictor(
+            predict, runtime = build_rfdetr_predictor(
                 args.checkpoint,
                 args.threshold,
                 args.optimized,

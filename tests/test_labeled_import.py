@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import json
+from collections.abc import Iterator
 from pathlib import Path
 from uuid import UUID, uuid4
 
@@ -169,7 +170,7 @@ def import_target(
     database_engine: Engine,
     monkeypatch: pytest.MonkeyPatch,
     tmp_path: Path,
-) -> tuple[UUID, UUID, UUID, Path]:
+) -> Iterator[tuple[UUID, UUID, UUID, Path]]:
     dataset_id, version_id, sku_id = uuid4(), uuid4(), uuid4()
     with database_engine.begin() as connection:
         connection.execute(insert(datasets).values(id=dataset_id, name=f"dataset-{dataset_id}"))

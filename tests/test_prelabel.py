@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from collections.abc import Mapping
+from collections.abc import Iterator, Mapping
 from pathlib import Path
 from typing import Any
 from uuid import UUID, uuid4
@@ -44,7 +44,7 @@ client = TestClient(app)
 def prelabel_target(
     database_engine: Engine,
     monkeypatch: pytest.MonkeyPatch,
-) -> tuple[UUID, UUID, UUID]:
+) -> Iterator[tuple[UUID, UUID, UUID]]:
     dataset_id = uuid4()
     image_id = uuid4()
     annotation_id = uuid4()
@@ -355,8 +355,8 @@ class ConditionalCandidateDetector(FakeModelAdapter):
         request: object,
         image_path: Path | None,
     ) -> Mapping[str, Any]:
-        result = dict(super().execute(request, image_path))
         assert isinstance(request, DetectRequest)
+        result = dict(super().execute(request, image_path))
         if request.image.image_id == self._failing_image_id:
             predictions = list(result["predictions"])
             predictions[0] = {
@@ -449,7 +449,8 @@ def _enqueue_detect(
             payload,
             max_attempts=1,
         )
-    return job["id"]
+    job_id: UUID = job["id"]
+    return job_id
 
 
 def _prediction(request_id: str, suffix: str, x: int) -> dict[str, Any]:

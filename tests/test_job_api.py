@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+from collections.abc import Iterator
 from datetime import UTC, datetime, timedelta
 from uuid import uuid4
 
@@ -16,7 +17,7 @@ client = TestClient(app)
 
 
 @pytest.fixture(autouse=True)
-def clean_jobs(database_engine: Engine) -> None:
+def clean_jobs(database_engine: Engine) -> Iterator[None]:
     with database_engine.begin() as connection:
         connection.execute(delete(worker_heartbeats))
         connection.execute(delete(jobs))

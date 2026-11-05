@@ -1,3 +1,5 @@
+from __future__ import annotations
+
 from pathlib import Path
 
 import pytest
@@ -6,16 +8,16 @@ from benchmark_tool.sam_image import convert_output, validate_options
 
 
 class FakeTensor:
-    def __init__(self, value):
+    def __init__(self, value: object) -> None:
         self.value = value
 
-    def detach(self):
+    def detach(self) -> FakeTensor:
         return self
 
-    def cpu(self):
+    def cpu(self) -> FakeTensor:
         return self
 
-    def tolist(self):
+    def tolist(self) -> object:
         return self.value
 
 

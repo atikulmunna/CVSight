@@ -52,7 +52,7 @@ def generate_test_predictions(
     model = factory(str(checkpoint_path))
     modes: dict[str, dict[str, Any]] = {}
     for mode, sliced in (("full_image", False), ("sliced_2x2", True)):
-        mode_predictions = []
+        mode_predictions: list[dict[str, Any]] = []
         for image in sorted(images, key=lambda row: int(row["id"])):
             image_path = dataset_dir / "test" / str(image["file_name"])
             if not image_path.is_file():

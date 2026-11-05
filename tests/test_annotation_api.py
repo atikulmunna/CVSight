@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+from collections.abc import Iterator
 from typing import Any
 from uuid import UUID, uuid4
 
@@ -25,7 +26,7 @@ UNKNOWN_SKU_ID = UUID("00000000-0000-0000-0000-000000000001")
 def annotation_target(
     database_engine: Engine,
     monkeypatch: pytest.MonkeyPatch,
-) -> tuple[UUID, UUID, UUID]:
+) -> Iterator[tuple[UUID, UUID, UUID]]:
     dataset_id = uuid4()
     image_id = uuid4()
     sku_id = uuid4()
@@ -86,7 +87,8 @@ def create_annotation(
         json=annotation_payload(active_sku_id, **overrides),
     )
     assert response.status_code == 201
-    return response.json()
+    body: dict[str, Any] = response.json()
+    return body
 
 
 # Its bounds are annotation_payload's box: x 10, y 10, width 20, height 30.
@@ -598,7 +600,7 @@ def test_reject_and_restore_create_auditable_revisions(
             )
             .order_by(annotation_revisions.c.revision)
         ).all()
-    assert states == [(1, "verified"), (2, "rejected"), (3, "verified")]
+    assert [tuple(row) for row in states] == [(1, "verified"), (2, "rejected"), (3, "verified")]
 
 
 def test_batch_operations_are_transactional(

@@ -138,7 +138,8 @@ class _Encoded:
     height: int
 
 
-def create_app(segmenter: Segmenter, token: str, cache_size: int = 8) -> FastAPI:
+# The routes are closures over the model and its lock, and each one's branches count here.
+def create_app(segmenter: Segmenter, token: str, cache_size: int = 8) -> FastAPI:  # noqa: C901
     """Serve clicks against photos the caller uploads once, keyed by their SHA-256.
 
     Every request must carry the bearer token: on a shared cluster the port is reachable
