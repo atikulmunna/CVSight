@@ -162,24 +162,17 @@ hf auth login        # once Meta has approved access to facebook/sam3
 hf download facebook/sam3 sam3.pt --local-dir ~/sam3-checkpoint
 export SAM_SEGMENTER_TOKEN="$(python -c 'import secrets; print(secrets.token_urlsafe(32))')"
 echo "$SAM_SEGMENTER_TOKEN"   # CVSight needs the same value
-python -m runtimes.sam3_segmenter --checkpoint ~/sam3-checkpoint/sam3.pt --host 0.0.0.0
+python -m runtimes.sam3_segmenter --checkpoint ~/sam3-checkpoint/sam3.pt
 ```
 
-The service listens on port 8093 unless `--port` says otherwise. Every request must
-carry the token, because on a shared cluster other users can reach the node's port. The
-token is read from the environment, never from the command line, so it stays out of the
-process list.
+The service listens on `127.0.0.1`, port 8093, unless `--host` or `--port` says
+otherwise. Every request must carry the token, in case other users of a shared node can
+reach the port. The token is read from the environment, never from the command line, so
+it stays out of the process list.
 
-From the PC that runs CVSight, forward a local port to the node through the cluster's
-login host, and keep this running while you label:
-
-```bash
-ssh -N -L 127.0.0.1:8093:NODE:8093 USER@LOGIN_HOST
-```
-
-Some clusters block the login host from reaching ports on the nodes. Then open the
-tunnel from the node instead, to a loopback port on the login host, and forward the PC to
-that port. With this route the service can listen on `127.0.0.1` alone:
+Open a tunnel from the node to a loopback port on the cluster's login host, then forward
+a local port on the PC that runs CVSight to that port. Keep the PC's forward running
+while you label:
 
 ```bash
 # on the node
@@ -187,6 +180,11 @@ ssh -f -N -R 127.0.0.1:47193:127.0.0.1:8093 USER@LOGIN_HOST
 # on the PC
 ssh -N -L 127.0.0.1:8093:127.0.0.1:47193 USER@LOGIN_HOST
 ```
+
+This route also works on clusters that block the login host from reaching ports on the
+nodes, and it keeps the service off the node's network. Where the login host can reach
+the node, you can instead start the service with `--host 0.0.0.0` and forward the PC
+straight to it with `ssh -N -L 127.0.0.1:8093:NODE:8093 USER@LOGIN_HOST`.
 
 Then point CVSight at the forwarded port in `.env`:
 

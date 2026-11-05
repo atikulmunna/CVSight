@@ -124,6 +124,8 @@ Policies: [security](SECURITY.md), [recovery](RECOVERY.md), [releases](RELEASE.m
 
 - Run `./scripts/check.ps1` before every commit: Python tests, Ruff, mypy, frontend
   tests, ESLint, TypeScript and the production build.
+- Run `./scripts/e2e.ps1` when a change touches a main workflow; it drives a real browser
+  through sign-in, upload and drawing.
 - Run `./scripts/security-check.ps1` and `./scripts/license-check.ps1` before a release.
 - Add tests for new logic, including failure paths, independent of network, time and
   order.

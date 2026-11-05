@@ -245,11 +245,39 @@ current migrations. It then runs Python tests, Ruff, mypy, frontend tests, ESLin
 TypeScript checking, and the production frontend build. Without the test database the
 database-backed tests would skip silently, which is why the check fails closed.
 
+The browser tests sign in, create a project, upload a photo and draw a box in Chromium,
+against a real API on port 47801. They need their own database, named by
+`SHELFSIGHT_E2E_DATABASE_URL`, because they leave their projects behind. Set them up once:
+
+```powershell
+docker compose --env-file .env -f compose.dev.yaml exec database createdb -U shelfsight shelfsight_e2e
+npm --prefix frontend exec -- playwright install chromium
+```
+
+Then run them with:
+
+```powershell
+./scripts/e2e.ps1
+```
+
+The script makes up a test account and temporary media folders for the run, and removes
+the folders afterwards. On a failure, `frontend/test-results/` holds a trace for
+`npm --prefix frontend exec -- playwright show-trace`. CI runs them as a separate job.
+
 Run the networked dependency and container vulnerability gate before a release:
 
 ```powershell
 ./scripts/security-check.ps1
 ```
+
+The `security` workflow also runs this gate every Monday, so a new advisory shows up as a
+failed run even when nothing has changed here. Dependabot opens weekly update pull
+requests for Python, the frontend, GitHub Actions and the Docker base images.
+
+Ruff and ESLint both limit a function's cyclomatic complexity to 15. The functions that
+were already over the limit have a ceiling of their own in `frontend/eslint.config.js`,
+or a `noqa` in Python, so they cannot grow. mypy checks `shelfsight_api`, `benchmark_tool`
+and `tests` in strict mode.
 
 The threat model, privacy behavior, retention rules, deletion boundary, access logging,
 and current vulnerability acceptance are documented in [SECURITY.md](../SECURITY.md).
