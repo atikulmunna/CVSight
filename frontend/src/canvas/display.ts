@@ -23,6 +23,7 @@ export const DISPLAY_RANGES = {
 } as const;
 
 const STORAGE_KEY = "shelfsight:canvas-display";
+const FOLDED_STORAGE_KEY = "shelfsight:canvas-display-folded";
 const CLASSES: readonly AnnotationClass[] = ["product", "gap", "shelf_label"];
 
 // The workspace remounts for every photo, so settings are kept in this browser to
@@ -51,6 +52,22 @@ export function saveDisplaySettings(settings: DisplaySettings): void {
     localStorage.setItem(STORAGE_KEY, JSON.stringify(settings));
   } catch {
     // Without storage the settings still apply to this photo; nothing else depends on them.
+  }
+}
+
+export function loadDisplayFolded(): boolean {
+  try {
+    return localStorage.getItem(FOLDED_STORAGE_KEY) === "true";
+  } catch {
+    return false;
+  }
+}
+
+export function saveDisplayFolded(folded: boolean): void {
+  try {
+    localStorage.setItem(FOLDED_STORAGE_KEY, String(folded));
+  } catch {
+    // Without storage the panel still folds on this photo; nothing else depends on it.
   }
 }
 

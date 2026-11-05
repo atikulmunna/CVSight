@@ -2216,7 +2216,9 @@ code {
 
 .topbar {
   display: grid;
-  grid-template-columns: minmax(280px, 1fr) auto minmax(320px, 1fr);
+  /* The status column takes the width it needs, so its chips never slide under the
+     mode tabs; the project path in the brand column truncates instead. */
+  grid-template-columns: minmax(0, 1fr) auto max-content;
   height: 56px;
   align-items: center;
   padding: 0 16px;
@@ -3912,6 +3914,30 @@ kbd {
   font-size: 10px;
 }
 
+.display-heading .display-fold,
+.display-heading .display-fold:hover:not(:disabled) {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 0;
+  border: 0;
+  background: transparent;
+  box-shadow: none;
+}
+
+.display-fold::before {
+  width: 0;
+  height: 0;
+  border-top: 4px solid transparent;
+  border-bottom: 4px solid transparent;
+  border-left: 5px solid var(--ws-text-2);
+  content: "";
+}
+
+.display-fold[aria-expanded="true"]::before {
+  rotate: 90deg;
+}
+
 .display-slider {
   display: grid;
   grid-template-columns: 72px minmax(0, 1fr) 40px;
@@ -4367,10 +4393,6 @@ kbd {
 }
 
 @media (max-width: 1120px) {
-  .topbar {
-    grid-template-columns: minmax(210px, 1fr) auto minmax(220px, 1fr);
-  }
-
   .image-review-bar {
     right: calc(280px + 14px);
   }
@@ -4392,7 +4414,7 @@ kbd {
 
 @media (max-width: 820px) {
   .topbar {
-    grid-template-columns: 1fr auto;
+    grid-template-columns: minmax(0, 1fr) auto;
   }
 
   .image-review-bar {
@@ -5341,9 +5363,6 @@ kbd {
 /* Top bar */
 
 .topbar {
-  /* The status column takes the width it needs, so its chips never slide under the
-     mode tabs; the project path in the brand column truncates instead. */
-  grid-template-columns: minmax(0, 1fr) auto max-content;
   gap: 16px;
   background: var(--surface);
   border-bottom: 1px solid var(--ws-line);
@@ -5411,6 +5430,7 @@ kbd {
   min-width: 0;
   min-height: 32px;
   padding: 0 14px;
+  white-space: nowrap;
   border-radius: 999px;
   background: transparent;
   color: var(--ws-text-2);
@@ -5489,6 +5509,38 @@ kbd {
   padding: 0 12px;
   font-size: 13px;
   font-weight: 600;
+}
+
+/* The top bar gives up its least needed parts first, so the mode tabs stay on one line. */
+@media (max-width: 1380px) {
+  .topbar .progress-track,
+  .topbar .api-status.online {
+    display: none;
+  }
+}
+
+@media (max-width: 1280px) {
+  .mode-tabs button {
+    padding: 0 8px;
+  }
+
+  .topbar .role-chip {
+    display: none;
+  }
+}
+
+@media (max-width: 1180px) {
+  /* The text describing the current mode, the only spans here without a class. */
+  .topbar-status > span:not([class]) {
+    display: none;
+  }
+}
+
+@media (max-width: 1000px) {
+  .topbar .brand,
+  .topbar .session-user {
+    display: none;
+  }
 }
 
 /* Panels and lists */
