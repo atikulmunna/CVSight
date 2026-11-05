@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
+from functools import lru_cache
 from pathlib import Path
 from uuid import UUID
 
@@ -13,6 +14,8 @@ from shelfsight_api.models import annotation_records, annotation_revisions, imag
 
 CROP_PADDING = 0.08
 CROP_MAX_SIZE = 256
+# Crops are around 10 KB, so this holds about 10 MB.
+CROP_CACHE_SIZE = 1024
 
 
 class AnnotationRevisionNotFoundError(ValueError):
@@ -69,8 +72,14 @@ def crop_source(
     )
 
 
+@lru_cache(maxsize=CROP_CACHE_SIZE)
 def render_crop(media_root: Path, source: CropSource) -> bytes:
-    """A JPEG of the box with a little of the shelf around it, small enough for a grid."""
+    """A JPEG of the box with a little of the shelf around it, small enough for a grid.
+
+    Each crop otherwise decodes the whole photo. Canonical media keys name the file's
+    content, so the same photo and box always give the same bytes, and callers still look
+    the annotation up in the database first, so a deleted one is not served from here.
+    """
     x, y, width, height = source.box
     bounds = padded_crop_bounds(x, y, width, height, CROP_PADDING, source.image_size)
     with open_canonical_image(
