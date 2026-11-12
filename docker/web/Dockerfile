@@ -19,7 +19,7 @@ RUN go mod init cvsight/caddy \
 
 # No official 2.11.9 image is published yet. Only this stage's files outlast the build,
 # and the binary above replaces the one it ships.
-FROM caddy:2.11.4-alpine@sha256:6aeddd44c3078b0f9a35206472a11420648a79c184603ef95957d0a20044cb2b
+FROM caddy:2.11.7-alpine@sha256:e70b164da81ef698b3ad19af799ea6086ce6d9e48ed4079eb9fe26f6fbf14ee5
 RUN apk upgrade --no-cache
 COPY --from=caddy /caddy /usr/bin/caddy
 COPY docker/web/Caddyfile /etc/caddy/Caddyfile
