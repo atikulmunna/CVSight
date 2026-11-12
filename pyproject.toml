@@ -10,14 +10,14 @@ license-files = ["LICENSE"]
 requires-python = ">=3.12"
 dependencies = [
     "alembic>=1.16,<2",
-    "fastapi>=0.116,<1",
+    "fastapi>=0.162.2,<1",
     "google-crc32c>=1.7,<2",
     "pgvector>=0.4,<1",
     "pillow==13.0.0",
     "psycopg[binary]>=3.2,<4",
     "python-multipart==0.0.33",
     "pyyaml>=6.0,<7",
-    "sqlalchemy>=2.0,<3",
+    "sqlalchemy>=2.0.57,<3",
     "uvicorn>=0.35,<1",
 ]
 
@@ -27,7 +27,7 @@ dev = [
     "mypy>=1.17,<3",
     "pip-audit==2.10.1",
     "pytest>=8.4,<10",
-    "ruff>=0.12,<1",
+    "ruff>=0.17.4,<1",
     "types-pyyaml>=6.0,<7",
 ]
 
